@@ -87,6 +87,7 @@ MODULE_OBJS := \
 	actor.o \
 	animation.o \
 	bitmap.o \
+	cursor.o \
 	costume.o \
 	color.o \
 	colormap.o \
@@ -123,6 +124,7 @@ MODULE_OBJS := \
 	set.o \
 	sector.o \
 	sound.o \
+	hotspot.o \
 	sprite.o \
 	stuffit.o \
 	textobject.o \

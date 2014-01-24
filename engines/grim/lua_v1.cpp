@@ -702,7 +702,6 @@ STUB_FUNC(Lua_V1::SetCameraRoll)
 STUB_FUNC(Lua_V1::SetCameraInterest)
 STUB_FUNC(Lua_V1::GetCameraPosition)
 STUB_FUNC(Lua_V1::SpewStartup)
-STUB_FUNC(Lua_V1::WorldToScreen)
 STUB_FUNC(Lua_V1::SetActorRoll)
 STUB_FUNC(Lua_V1::SetActorFrustrumCull)
 STUB_FUNC(Lua_V1::DriveActorTo)
@@ -926,6 +925,9 @@ struct luaL_reg grimMainOpcodes[] = {
 	{ "RestoreIMuse", LUA_OPCODE(Lua_V1, RestoreIMuse) },
 	{ "GetMemoryUsage", LUA_OPCODE(Lua_V1, GetMemoryUsage) },
 	{ "dofile", LUA_OPCODE(Lua_V1, new_dofile) },
+	// extensions
+	{ "RegisterHotspot", LUA_OPCODE(Lua_V1, RegisterHotspot) },
+    { "ActivateHotspot", LUA_OPCODE(Lua_V1, ActivateHotspot) }
 };
 
 static struct luaL_reg grimTextOpcodes[] = {

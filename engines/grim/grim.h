@@ -27,6 +27,7 @@
 
 #include "common/str-array.h"
 #include "common/hashmap.h"
+#include "common/array.h"
 #include "common/events.h"
 
 #include "engines/advancedDetector.h"
@@ -47,6 +48,8 @@ class TextObject;
 class PrimitiveObject;
 class Debugger;
 class LuaBase;
+class Cursor;
+class HotspotMan;
 
 enum GrimGameType {
 	GType_GRIM,
@@ -187,6 +190,8 @@ public:
 
 	virtual void openMainMenuDialog() override;
 	void debugLua(const Common::String &str);
+    
+    inline HotspotMan* getHotspotMan() { return _hotspotManager; }
 
 protected:
 	virtual void pauseEngineIntern(bool pause) override;
@@ -260,6 +265,10 @@ protected:
 	Common::Language _gameLanguage;
 	Debugger *_debugger;
 	uint32 _pauseStartTime;
+    
+    Cursor *_cursor;
+    HotspotMan *_hotspotManager;
+    int _opMode;
 };
 
 extern GrimEngine *g_grim;

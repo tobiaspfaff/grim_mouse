@@ -117,9 +117,10 @@ ResourceLoader::ResourceLoader() {
 		} else {
 			if (!SearchMan.hasFile("residualvm-grim-patch.lab"))
 				error("residualvm-grim-patch.lab not found");
-
-			SearchMan.listMatchingMembers(files, "residualvm-grim-patch.lab");
-			SearchMan.listMatchingMembers(files, "data005.lab");
+			
+            SearchMan.listMatchingMembers(files, "residualvm-grim-patch.lab");
+			SearchMan.listMatchingMembers(files, "mouse-support.lab");
+            SearchMan.listMatchingMembers(files, "data005.lab");
 			SearchMan.listMatchingMembers(files, "data004.lab");
 			SearchMan.listMatchingMembers(files, "data003.lab");
 			SearchMan.listMatchingMembers(files, "data002.lab");

@@ -105,7 +105,7 @@ void Lua_V1::MakeTextObject() {
 
 	TextObject *textObject = new TextObject();
 	const char *line = lua_getstring(textObj);
-
+    
 	textObject->setDefaults(&g_grim->_blastTextDefaults);
 	lua_Object tableObj = lua_getparam(2);
 	if (lua_istable(tableObj))

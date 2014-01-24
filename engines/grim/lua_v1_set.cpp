@@ -27,8 +27,10 @@
 #include "engines/grim/actor.h"
 #include "engines/grim/grim.h"
 #include "engines/grim/set.h"
+#include "engines/grim/hotspot.h"
 
 #include "engines/grim/lua/lauxlib.h"
+#include "engines/grim/lua/lapi.h"
 
 namespace Grim {
 
@@ -471,5 +473,26 @@ void Lua_V1::TurnLightOn() {
 		scene->setLightEnabled(lua_getstring(lightObj), isOn);
 	}
 }
+
+// EXTENSIONS
+
+void Lua_V1::RegisterHotspot() {
+    Math::Vector3d pos (lua_getnumber(lua_getparam(2)),
+                        lua_getnumber(lua_getparam(3)),
+                        lua_getnumber(lua_getparam(4)));
+    int n = g_grim->getHotspotMan()->addHotspot(lua_getstring(lua_getparam(1)),pos);
+    lua_pushnumber(n);
+}
+
+void Lua_V1::ActivateHotspot() { 
+    int num = lua_getnumber(lua_getparam(1));    
+    if (num < 0) {
+        g_grim->getHotspotMan()->disableAll();
+    } else {
+        Hotspot& hs = g_grim->getHotspotMan()->get(num);
+        hs._active = getbool(2);
+    }
+}
+
 
 } // end of namespace Grim

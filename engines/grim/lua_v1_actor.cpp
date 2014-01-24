@@ -1538,4 +1538,22 @@ void Lua_V1::GetActorRect() {
 	lua_pushnumber(1);
 }
 
+void Lua_V1::WorldToScreen() {
+    lua_Object xObj = lua_getparam(1);
+    lua_Object yObj = lua_getparam(2);
+    lua_Object zObj = lua_getparam(3);
+    
+    Math::Vector3d pos (lua_getnumber(xObj), lua_getnumber(yObj), lua_getnumber(zObj));
+    int x=0,y=0;
+    g_grim->getCurrSet()->setupCamera();
+    if (g_driver->worldToScreen(pos,x,y)) {    
+        lua_pushnumber(x);
+        lua_pushnumber(y);
+    } else {
+        lua_pushnil();
+        lua_pushnil();
+    }
+}
+
+
 } // end of namespace Grim

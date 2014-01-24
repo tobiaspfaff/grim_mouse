@@ -20,6 +20,8 @@
  *
  */
 
+#define FORBIDDEN_SYMBOL_ALLOW_ALL
+
 #include "common/endian.h"
 #include "common/foreach.h"
 #include "common/system.h"
@@ -46,6 +48,7 @@
 #include "engines/grim/lua/lauxlib.h"
 #include "engines/grim/lua/luadebug.h"
 #include "engines/grim/lua/lualib.h"
+
 
 namespace Grim {
 
@@ -296,13 +299,31 @@ int LuaBase::dofile(const char *filename) {
 		return 2;
 	}
 
-	int32 size = stream->size();
+	/*int32 size = stream->size();
 	char *buffer = new char[size];
-	stream->read(buffer, size);
-	int result = lua_dobuffer(const_cast<char *>(buffer), size, const_cast<char *>(filename));
-	delete stream;
-	delete[] buffer;
-	return result;
+	stream->read(buffer, size);*/
+	
+    char path[1024] = "/home/tpfaff/grimex/";
+    strcat(path,filename);
+    for(int i = 0; path[i]; i++){
+        path[i] = tolower(path[i]);
+    }
+    FILE* fp = fopen(path,"rb");
+    if (!fp) error("cant open %s",path);
+    fseek(fp, 0L, SEEK_END);
+    int sz2 = ftell(fp);
+    //printf("loading %s: %d bytes\n",filename,sz2);
+    fseek(fp, 0L, SEEK_SET);
+    char *buf2 = new char[sz2];
+    fread(buf2,1,sz2,fp);
+    fclose(fp);
+    //if (size != sz2) warning("size different: %s %d vs %d",filename,size,sz2);        
+    
+    int result = lua_dobuffer(const_cast<char *>(buf2), sz2, const_cast<char *>(filename));    
+    //delete stream;
+    //delete[] buffer;
+    delete[] buf2;
+    return result;    
 }
 
 bool LuaBase::callback(const char *name) {

@@ -1999,6 +1999,35 @@ void GfxOpenGL::createSpecialtyTextures() {
 	delete[] buffer;
 }
 
+bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
+    if (_currentShadowArray) return false;
+
+    GLdouble winX, winY, winZ;
+    GLdouble modelView[16], projection[16];
+    GLint viewPort[4];
+
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
+    glGetDoublev(GL_PROJECTION_MATRIX, projection);
+    glGetIntegerv(GL_VIEWPORT, viewPort);
+
+    gluProject(vec.x(), vec.y(), vec.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
+    
+    winY = _gameHeight - winY;
+    
+    if (winX < 0)
+        winX = 0;
+    if (winX >= _gameWidth)
+        winX = _gameWidth - 1;
+    if (winY < 0)
+        winY = 0;
+    if (winY >= _gameHeight)
+        winY = _gameHeight - 1;
+
+    x = (int)winX;
+    y = (int)winY;
+    return x>0 && y>0 && x<_gameWidth-1 && y<_gameHeight-1;
+}
+
 } // end of namespace Grim
 
 #endif
