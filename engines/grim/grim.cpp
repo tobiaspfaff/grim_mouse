@@ -729,10 +729,17 @@ void GrimEngine::mainLoop() {
 			if (type == Common::EVENT_MOUSEMOVE) {
                 _cursor->updatePosition(event.mouse);
                 _hotspotManager->hover(_cursor);
-            } else if (type == Common::EVENT_LBUTTONDOWN || 
+            } else if (type == Common::EVENT_WHEELDOWN) {
+                _opMode = (_opMode+1) % 2;
+                warning("set opMode %d",_opMode);
+            } else if (type == Common::EVENT_WHEELUP) {
+                _opMode = (_opMode-1+2) % 2;
+                warning("set opMode %d",_opMode);
+            } else if (type == Common::EVENT_LBUTTONUP || 
+                       type == Common::EVENT_LBUTTONDOWN || 
                        type == Common::EVENT_RBUTTONDOWN || 
                        type == Common::EVENT_MBUTTONDOWN) {
-                _hotspotManager->event(_cursor->getPosition(), type);
+                _hotspotManager->event(_cursor->getPosition(), type, _opMode);
             } else if (type == Common::EVENT_KEYDOWN || type == Common::EVENT_KEYUP) {
 				if (type == Common::EVENT_KEYDOWN) {
 					// Ignore everything but ESC when movies are playing
