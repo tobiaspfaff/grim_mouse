@@ -1,0 +1,3 @@
+#!/bin/bash
+./mklab --grim dists/engine-data/mouse-data ~/grimdata/mouse-support.lab
+

@@ -1,0 +1,1 @@
+make && ./residualvm --debugflags=engine,scripts grim-win

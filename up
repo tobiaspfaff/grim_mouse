@@ -1,0 +1,6 @@
+#!/bin/bash
+a=`pwd`
+cd ~/grimex/lua
+./luac -o ../$1.lua $1.lua
+cd $a
+
