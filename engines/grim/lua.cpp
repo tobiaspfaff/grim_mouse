@@ -22,6 +22,8 @@
 
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
 
+#include <errno.h>
+
 #include "common/endian.h"
 #include "common/foreach.h"
 #include "common/system.h"
@@ -291,38 +293,42 @@ void LuaBase::setMovieTime(float movieTime) {
 	lua_settable();
 }
 
+//#define USEPACKAGE
+
 int LuaBase::dofile(const char *filename) {
+
+#ifdef USEPACKAGE
 	Common::SeekableReadStream *stream;
 	stream = g_resourceloader->openNewStreamFile(filename);
 	if (!stream) {
 		Debug::warning(Debug::Engine, "Cannot find script %s", filename);
 		return 2;
 	}
-
-	/*int32 size = stream->size();
+	int32 size = stream->size();
 	char *buffer = new char[size];
-	stream->read(buffer, size);*/
-	
-    char path[1024] = "/home/tpfaff/grimex/";
-    strcat(path,filename);
-    for(int i = 0; path[i]; i++){
-        path[i] = tolower(path[i]);
+	stream->read(buffer, size);
+	delete stream;
+#else
+	Common::String path = "/Users/tpfaff/grimex/";
+    int len = strlen(filename);
+    for(int i = 0; i < len; i++)
+    	path += tolower(filename[i]);
+    
+    FILE* fp = fopen(path.c_str(),"rb");
+    if (!fp) {
+    	Debug::warning(Debug::Engine, "cannot open %s : %d",path.c_str(),errno);
+    	return 2;
     }
-    FILE* fp = fopen(path,"rb");
-    if (!fp) error("cant open %s",path);
     fseek(fp, 0L, SEEK_END);
-    int sz2 = ftell(fp);
+    int size = ftell(fp);
     //printf("loading %s: %d bytes\n",filename,sz2);
     fseek(fp, 0L, SEEK_SET);
-    char *buf2 = new char[sz2];
-    fread(buf2,1,sz2,fp);
+    char *buffer = new char[size];
+    fread(buffer,1,size,fp);
     fclose(fp);
-    //if (size != sz2) warning("size different: %s %d vs %d",filename,size,sz2);        
-    
-    int result = lua_dobuffer(const_cast<char *>(buf2), sz2, const_cast<char *>(filename));    
-    //delete stream;
-    //delete[] buffer;
-    delete[] buf2;
+ #endif
+    int result = lua_dobuffer(const_cast<char *>(buffer), size, const_cast<char *>(filename));    
+    delete[] buffer;
     return result;    
 }
 

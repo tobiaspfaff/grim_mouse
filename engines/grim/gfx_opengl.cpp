@@ -49,6 +49,7 @@
 #include "engines/grim/emi/modelemi.h"
 #include "engines/grim/registry.h"
 
+#ifdef USE_OPENGL
 
 #if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program)
 
@@ -2026,6 +2027,23 @@ bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
     x = (int)winX;
     y = (int)winY;
     return x>0 && y>0 && x<_gameWidth-1 && y<_gameHeight-1;
+}
+
+bool GfxOpenGL::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
+    GLdouble modelView[16], projection[16], p0[3], p1[3];
+    GLint viewPort[4];
+
+    GLdouble winX = x, winY = _gameHeight - y;
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
+    glGetDoublev(GL_PROJECTION_MATRIX, projection);
+    glGetIntegerv(GL_VIEWPORT, viewPort);
+    
+    gluUnProject(winX, winY, 0.0, modelView, projection, viewPort, &p0[0], &p0[1], &p0[2]);
+    gluUnProject(winX, winY, 1.0, modelView, projection, viewPort, &p1[0], &p1[1], &p1[2]);
+    
+    r0 = Math::Vector3d(p0[0],p0[1],p0[2]);
+    r1 = Math::Vector3d(p1[0],p1[1],p1[2]);
+    return true;
 }
 
 } // end of namespace Grim

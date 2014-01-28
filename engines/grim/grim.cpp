@@ -262,7 +262,7 @@ Common::Error GrimEngine::run() {
 	}
 
 	ConfMan.registerDefault("check_gamedata", true);
-	if (ConfMan.getBool("check_gamedata")) {
+	if (ConfMan.getBool("check_gamedata") && false) { // HACK
 		MD5CheckDialog d;
 		if (!d.runModal()) {
 			Common::String confirmString("ResidualVM found some problems with your game data files.\n"
@@ -295,6 +295,8 @@ Common::Error GrimEngine::run() {
 	bool fullscreen = ConfMan.getBool("fullscreen");
 	createRenderer();
 	g_driver->setupScreen(640, 480, fullscreen);
+	_system->showMouse(false);
+	_system->lockMouse(false);
 
 	if (getGameType() == GType_MONKEY4 && SearchMan.hasFile("AMWI.m4b")) {
 		// TODO: Play EMI Mac Aspyr logo
@@ -623,7 +625,7 @@ void GrimEngine::drawNormalMode() {
 	_currSet->drawBitmaps(ObjectState::OBJSTATE_OVERLAY);
     
     _cursor->draw();
-    _hotspotManager->drawActive();
+    _hotspotManager->drawActive(_opMode);
 }
 
 void GrimEngine::doFlip() {
@@ -729,14 +731,7 @@ void GrimEngine::mainLoop() {
 			if (type == Common::EVENT_MOUSEMOVE) {
                 _cursor->updatePosition(event.mouse);
                 _hotspotManager->hover(_cursor);
-            } else if (type == Common::EVENT_WHEELDOWN) {
-                _opMode = (_opMode+1) % 2;
-                warning("set opMode %d",_opMode);
-            } else if (type == Common::EVENT_WHEELUP) {
-                _opMode = (_opMode-1+2) % 2;
-                warning("set opMode %d",_opMode);
-            } else if (type == Common::EVENT_LBUTTONUP || 
-                       type == Common::EVENT_LBUTTONDOWN || 
+            } else if (type == Common::EVENT_LBUTTONDOWN || 
                        type == Common::EVENT_RBUTTONDOWN || 
                        type == Common::EVENT_MBUTTONDOWN) {
                 _hotspotManager->event(_cursor->getPosition(), type, _opMode);
@@ -759,10 +754,29 @@ void GrimEngine::mainLoop() {
 					} else if (_mode != DrawMode && (event.kbd.keycode == Common::KEYCODE_PAUSE)) {
 						handlePause();
 						break;
-					} else {
+					} else if (event.kbd.keycode == Common::KEYCODE_F12) {
+                        _hotspotManager->getName(_cursor);
+                        break;
+                    } else if (_opMode > 0 && event.kbd.keycode == Common::KEYCODE_RETURN) {
+                        _hotspotManager->okKey();
+                        break;
+                    } else if (event.kbd.keycode == Common::KEYCODE_LEFTBRACKET) {
+                    	_opMode = (_opMode+1) % 3;
+		                _hotspotManager->cancel();
+		                warning("set opMode %d",_opMode);
+                    } else if (event.kbd.keycode == Common::KEYCODE_RIGHTBRACKET) {
+						_opMode = (_opMode-1+3) % 3;
+		                _hotspotManager->cancel();
+		                warning("set opMode %d",_opMode);
+                    } else if (_opMode > 0 && event.kbd.keycode == Common::KEYCODE_ESCAPE) {
+                        _hotspotManager->cancel();
+                        break;
+
+
+                    } else {
 						handleChars(type, event.kbd);
 					}
-				}
+				}				
 
 				handleControls(type, event.kbd);
 

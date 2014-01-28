@@ -553,7 +553,7 @@ void Lua_V1::WalkActorTo() {
 	lua_Object xObj = lua_getparam(2);
 	lua_Object yObj = lua_getparam(3);
 	lua_Object zObj = lua_getparam(4);
-
+    
 	lua_Object txObj = lua_getparam(5);
 	lua_Object tyObj = lua_getparam(6);
 	lua_Object tzObj = lua_getparam(7);

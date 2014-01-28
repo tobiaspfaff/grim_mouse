@@ -277,6 +277,7 @@ public:
 	/* add-in functionality for mouse support */
     
     virtual bool worldToScreen(const Math::Vector3d &vec, int& x, int &y) { return false; }
+	virtual bool raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) { return false; }
 	
 protected:
 	static const int _gameHeight = 480;
