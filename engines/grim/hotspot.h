@@ -33,6 +33,7 @@ namespace Grim {
 
 class GrimEngine;
 class Cursor;
+class SaveGame;
 
 struct Polygon {
     Common::Array<Common::Point> _pnts;
@@ -42,7 +43,7 @@ struct Polygon {
 };
 
 struct HotObject {
-    Common::String _id;
+    Common::String _id, _desc;
     Math::Vector3d _pos;
     Common::Rect _rect;    
     bool _active;
@@ -54,6 +55,7 @@ struct Hotspot {
     Math::Vector3d _pos;
     int _setup;
     int _type;
+    HotObject* _obj;
 };
 
 class HotspotMan {
@@ -72,10 +74,22 @@ public:
     void hover(Cursor* cursor);
     void updatePerspective();
     void drawActive(int mode);    
-    void reload();
+    void reload(bool always);
+    bool restoreState(SaveGame *savedState);
+    void saveState(SaveGame* savedState);
+    void switchMode(int ctrlMode) { _ctrlMode = ctrlMode; }
+    void setupDialog(int x0, int y0, int w, int h, int lines) { _x0=x0; _y0=y0; _w=w; _h=h; _lines=lines; }
+    void notifyWalkOut();
+    void debug(int num);
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type, const Math::Vector3d& v);
-    
+    int inDialogBox(const Common::Point& p);
+
+    // dialog support
+    int _ctrlMode, _lines;
+    int _x0,_y0,_w,_h;
+
+    unsigned int _lastClick;
     bool _initialized;
     Common::Array<Hotspot> _hotspot;
     Common::String _curScene;

@@ -38,10 +38,10 @@ public:
 	Common::Point getPosition() { return _position; }
 	void updatePosition(Common::Point &mouse) { _position = mouse; }
 	void setCursor(int id) { _curCursor = id; }
+	void reload();
 
 	void draw();
 private:
-	GrimEngine *_vm;
 
     int32 _hotspotx, _hotspoty;
     int32 _curCursor;

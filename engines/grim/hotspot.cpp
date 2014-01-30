@@ -34,8 +34,10 @@
 #include "engines/grim/inputdialog.h"
 #include "engines/grim/cursor.h"
 #include "engines/grim/lua.h"
+#include "engines/grim/lua/lua.h"
 #include "graphics/pixelbuffer.h"
 #include "common/array.h"
+#include "common/system.h"
 
 namespace Grim {
 
@@ -58,32 +60,38 @@ bool Polygon::contains(const Common::Point& pos) {
     return result;
 }
 
-
-    
-HotspotMan::HotspotMan() : _selectMode (0), _initialized(false) {
+HotspotMan::HotspotMan() : _selectMode (0), _initialized(false), _lastClick(0), _ctrlMode(0) {
 }
 
 HotspotMan::~HotspotMan() {
 }
 
 int HotspotMan::addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene) {
+    Common::String id = name, desc = name;
+    for (size_t i=1;i<id.size();i++) {
+        if (id[i]=='/') {
+            id.erase(i);
+            desc.erase(0,i+1);
+            break;                
+        }            
+    }
+    
+    int num=0;
+    for (size_t i=0; i<_hotobject.size(); i++) {
+        if (_hotobject[i]._id.hasPrefix(id))
+            num++;        
+    }
+    if (num>0)
+        id += Common::String::format("_%d",num);
+    
     HotObject hs;
-    hs._id = name;
+    hs._id = id;
+    hs._desc = desc;
     hs._pos = pos;
     hs._active = false;
     _hotobject.push_back(hs);
     
     return _hotobject.size() - 1;
-        
-    /*Common::String text = LuaBase::instance()->parseMsgText(name.c_str(), NULL);
-    char fn[256];
-    sprintf(fn,"hs/%s.txt",scene.c_str());
-    printf(fn);
-    printf("\n");
-    FILE *fp = fopen(fn,"a");
-    fprintf(fp, "%s %s\n",name.c_str(),text.c_str());
-    fclose(fp);*/
-    //return 12;
 }
 
 void HotspotMan::disableAll() {
@@ -92,6 +100,14 @@ void HotspotMan::disableAll() {
 }
 
 void HotspotMan::drawActive(int mode) {
+    if (_ctrlMode == 1) {
+        /*for (int i=0; i<_lines; i++) {
+            PrimitiveObject x;
+            x.createRectangle(Common::Point(_x0,_y0+i*_h),Common::Point(_x0+_w,_y0+(i+1)*_h),Color(200,200,200),false);
+            x.draw();
+        }*/
+        return;
+    }
     if (mode == 1) {
         PrimitiveObject prim;
         for (size_t i=0; i<_hotobject.size(); i++) {
@@ -103,7 +119,7 @@ void HotspotMan::drawActive(int mode) {
                 
             }
         }
-        int setup = g_grim->getCurrSet()->getSetup();            
+        int setup = g_grim->getCurrSet()->getSetup();             
         for (size_t i=0; i<_hotspot.size(); i++) {
             if (_hotspot[i]._setup == setup)
                 _hotspot[i]._region.draw(Color(0,200,200));            
@@ -116,7 +132,8 @@ void HotspotMan::drawActive(int mode) {
         Common::Array<PrimitiveObject> pa;
         for (int s=0; s<set->getSectorCount(); s++) {
             Sector* sector = set->getSectorBase(s);
-            if ((sector->getType() & Sector::WalkType) != Sector::WalkType)
+            if ((sector->getType() & Sector::WalkType) != Sector::WalkType &&
+                (sector->getType() & Sector::HotType) != Sector::HotType)
                 continue;
             int num = sector->getNumVertices();
             for (int j=0; j<num; j++) {
@@ -127,7 +144,10 @@ void HotspotMan::drawActive(int mode) {
                 g_driver->worldToScreen(v0, x0, y0);
                 g_driver->worldToScreen(v1, x1, y1);
                 PrimitiveObject p;
-                p.createLine(Common::Point(x0,y0),Common::Point(x1,y1),Color(200,0,0));
+                Color col = Color(0,200,0);
+                if ((sector->getType() & Sector::HotType) == Sector::HotType)
+                    col = Color(200,0,0);
+                p.createLine(Common::Point(x0,y0),Common::Point(x1,y1),col);
                 pa.push_back(p);
             }
         }    
@@ -141,20 +161,34 @@ void HotspotMan::drawActive(int mode) {
         }    
     }
 }
+
 void HotspotMan::updatePerspective() {
-    warning("Entering region %d", g_grim->getCurrSet()->getSetup());
+    //warning("Entering region %d", g_grim->getCurrSet()->getSetup());
     g_grim->getCurrSet()->setupCamera();
     for (size_t i=0; i<_hotobject.size(); i++) {
         int x=0,y=0;
         g_driver->worldToScreen(_hotobject[i]._pos,x,y);
         _hotobject[i]._rect = Common::Rect(x-10,y-10,x+10,y+10);        
-    }    
-    reload();
+    }
+    reload(false);
 }
 
-void HotspotMan::reload() {
+void HotspotMan::notifyWalkOut() {
+    if (_selectMode < 0)
+        okKey();
+}
+
+void HotspotMan::debug(int num) {
+    for (size_t i=0; i<_hotobject.size(); i++) {
+        if (_hotobject[i]._active)
+            warning((_hotobject[i]._id + "/" + _hotobject[i]._desc).c_str());
+    }    
+}
+
+
+void HotspotMan::reload(bool always) {
     Common::String scene = g_grim->getCurrSet()->getName();
-    if (_curScene != scene) {
+    if (_curScene != scene || always) {
         _curScene = scene;
         _hotspot.clear();
         
@@ -171,10 +205,15 @@ void HotspotMan::reload() {
             hs._id = id;
             hs._setup = setup;
             hs._type = type;
+            hs._obj = 0;
             hs._pos = Math::Vector3d(p[0],p[1],p[2]);
             for (int i=0; i<num; i++) {
                 fscanf(fp,"%d %d", &x, &y);
                 hs._region._pnts.push_back(Common::Point(x,y));
+            }
+            for (size_t j=0; j<_hotobject.size(); j++) {
+                if (_hotobject[j]._id == hs._id)
+                    hs._obj = &_hotobject[j];
             }
             _hotspot.push_back(hs);
         }
@@ -209,9 +248,17 @@ void HotspotMan::append_hotspot(const Common::String& id, const Common::String& 
     fclose(fp);                
 }
 
+inline Actor* getManny() {
+    foreach (Actor *a, g_grim->getActiveActors()) {
+        if (a->getName() == "Manny")
+            return a;
+    }
+    return 0;
+}
+
 void HotspotMan::okKey() {
     if (_selectMode > 0) {
-        Common::String defaultText = "";
+        Common::String defaultText = "", desc="";
         
         // find possible object defaults
         for (size_t i=0; i<_hotobject.size(); i++) {
@@ -220,14 +267,14 @@ void HotspotMan::okKey() {
                              (_hotobject[i]._rect.top + _hotobject[i]._rect.bottom)/2);
             if (_selectPoly.contains(p)) {
                 defaultText = _hotobject[i]._id;
-                defaultText.erase(0,3);                
-                defaultText.erase(5);
+                desc = "[default: " + _hotobject[i]._desc + " ]";
+                defaultText.erase(0,3);      
                 break;
             }
         }
         
         // object id
-        InputDialog dlg("Object ID", defaultText);
+        InputDialog dlg("Object ID " +desc, defaultText);
         int res = dlg.runModal();
         Common::String id = dlg.getString();
         
@@ -247,39 +294,55 @@ void HotspotMan::okKey() {
             int type = 1;
             id = "/" + get_scene_id() + id;
             for (size_t i=0; i<_hotobject.size(); i++) {
-                if (strncmp(_hotobject[i]._id.c_str(), id.c_str(), id.size()) == 0) {
-                    name.clear();
-                    for (size_t k=id.size()+1; k<_hotobject[i]._id.size(); k++)
-                        name += _hotobject[i]._id[k];
-                }
+                if (_hotobject[i]._id == id) 
+                    name = _hotobject[i]._desc;
             }
             if (name=="door")
                 type = 2;                                                
             append_hotspot(id, name, type, Math::Vector3d(0,0,0));
         }
-        _curScene = "";
-        reload();
+        reload(true);
         _selectMode = 0;
         _selectPoly._pnts.clear();
     } else if (_selectMode < 0) {
         warning("ok, saving position");
-        foreach (Actor *a, g_grim->getActiveActors()) {
-            if (a->getName() == "Manny") {
-                append_hotspot("to",_lastName, 3, a->getPos());
-                _curScene = "";
-                reload();
-                _selectMode = 0;
-                _selectPoly._pnts.clear();
-                return;
-            }
+        Actor* manny = getManny();
+        if (manny) {
+            append_hotspot("to",_lastName, 3, manny->getPos());
+            reload(true);
+            _selectMode = 0;
+            _selectPoly._pnts.clear();            
         }        
     }
 }
 
+// get min distance s for x0+s*x1, y0+t*y1
+double line_line_dist(const Math::Vector3d& x0, const Math::Vector3d& x1, 
+                      const Math::Vector3d& y0, const Math::Vector3d& y1) {
+    double a = x1.dotProduct(x1), b = -x1.dotProduct(y1), c = y1.dotProduct(y1);
+    double d = -x1.dotProduct(x0-y0), e = y1.dotProduct(x0-y0);
+    return (c*d-b*e)/(c*a-b*b);
+}
 
 void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mode) {
     if (!_initialized)
-        reload();
+        reload(true);
+
+    unsigned int currentTime = g_system->getMillis();
+    bool doubleClick = (currentTime - _lastClick) < 500;
+    _lastClick = currentTime;
+
+    if (_ctrlMode == 1) {
+        // dialog mode
+        int dialog = inDialogBox(cursor), click = 1;
+        if (ev==Common::EVENT_RBUTTONDOWN) click = 2;
+        LuaObjects objects;
+        objects.add(dialog);
+        objects.add(click);
+        LuaBase::instance()->callback("dialogSelect", objects);
+        return;
+    }    
+
     if (mode == 1 && ev == Common::EVENT_LBUTTONDOWN && _selectMode >=0) {
         Common::Point pnt(cursor.x, cursor.y);
         if (_selectMode == 0)
@@ -288,30 +351,28 @@ void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mo
             _selectPoly._pnts[_selectMode] = pnt;
         _selectPoly._pnts.push_back(pnt);
         _selectMode++;
-    } else if (mode==0) {
+    } else if (mode==0 || mode==2) {
+        
+        // ------- click on hot spots ------------
+        
         int setup = g_grim->getCurrSet()->getSetup();    
         for (size_t i=0; i<_hotspot.size(); i++) {
-            Common::String id = _hotspot[i]._id;
-            if (_hotspot[i]._setup == setup && _hotspot[i]._region.contains(cursor)) {
-                
-                if (_hotspot[i]._type == 3) {
+            Hotspot& hs = _hotspot[i];
+            if (hs._setup == setup && hs._region.contains(cursor)) {
+                if (hs._obj && !hs._obj->_active) continue;
+
+                if (hs._type == 3) {
                     LuaObjects objects;
-                    Math::Vector3d v = _hotspot[i]._pos;
+                    Math::Vector3d v = hs._pos;
                     objects.add(v.x());
                     objects.add(v.y());
                     objects.add(v.z());
+                    objects.add(doubleClick ? 1 : 0);
                     LuaBase::instance()->callback("mouseWalk", objects);
                     return;
                 }
                 
-                // find objecct
-                int gid = -1;
-                for (size_t j=0; j<_hotobject.size(); j++) {
-                    if (strncmp(_hotobject[j]._id.c_str(), id.c_str(), id.size()) == 0) {
-                        gid = j;
-                        break;
-                    }
-                }
+                int gid = hs._obj ? (int)(hs._obj-&_hotobject[0]) : -1;
                 if (gid >= 0) {
                     LuaObjects objects;
                     if (ev == Common::EVENT_LBUTTONDOWN)
@@ -322,26 +383,38 @@ void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mo
                         objects.add(3);
                     else
                         return;
-                
-                    objects.add((int)gid);
-                    warning("%d",gid);
+
+                    objects.add(gid);
+                    objects.add(doubleClick ? 1 : 0);
                     LuaBase::instance()->callback("mouseCommand", objects);
                     return;
                 }
             }
         }
-        //Bitmap* zbmp = g_grim->getCurrSet()->getCurrSetup()->_bkgndZBm;
-        //int index = zbmp->getWidth() * cursor.y + cursor.x;
-        //uint32 x = zbmp->getData(zbmp->getActiveImage()-1).getValueAt(index);
-        //warning("%d",x);
+        
+        // ------- free click ------------
         Math::Vector3d r0, r1;
         g_grim->getCurrSet()->setupCamera();    
         g_driver->raycast(cursor.x, cursor.y, r0, r1);
-        //warning("e0 %g %g %g",r0.x(),r0.y(),r0.z());
-        //warning("e1 %g %g %g",r1.x(),r1.y(),r1.z());
-        //Math::Vector3d dfl = r0 + (-r0.z()/r1.z())*r1;
-        //warning("d0 %g %g %g",dfl.x(), dfl.y(), dfl.z());
         
+        // climbing
+        bool climbing = lua_getnumber(LuaBase::instance()->queryVariable("system.currentActor.is_climbing")) != 0;
+        if (climbing) {
+            Actor* manny = getManny();
+            if (!manny) return;
+            r0 += Math::Vector3d(0,0,-0.25);
+            r1 += Math::Vector3d(0,0,-0.25); // center on mannys body, not feet
+            Math::Vector3d p0 = manny->getPos(), p1 = Math::Vector3d(0,0,1);
+            float s = line_line_dist(p0,p1,r0,r1);
+            
+            LuaObjects objects;
+            objects.add(p0.z() + s);
+            objects.add(s);
+            LuaBase::instance()->callback("climbTowards", objects);
+            return;
+        }
+        
+        // walking
         for (int i=0; i<50; i++) {
             Set *set = g_grim->getCurrSet();
             for (int s=0; s<set->getSectorCount(); s++) {
@@ -354,6 +427,8 @@ void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mo
                     objects.add(v.x());
                     objects.add(v.y());
                     objects.add(v.z());
+                    objects.add(doubleClick ? 1 : 0);
+
                     LuaBase::instance()->callback("mouseWalk", objects);
                     return;
                 }
@@ -368,7 +443,7 @@ void HotspotMan::getName(Cursor* cursor) {
     for (size_t i=0; i<_hotobject.size(); i++) {
         if (_hotobject[i]._active && _hotobject[i]._rect.contains(pos)) {
             //cursor->setCursor(1);
-            warning("current obj %s",_hotobject[i]._id.c_str());
+            warning("current obj %s %s",_hotobject[i]._id.c_str(),_hotobject[i]._desc.c_str());
         }
     }
 }
@@ -378,14 +453,72 @@ void HotspotMan::hover(Cursor* cursor) {
     Common::Point pos = cursor->getPosition();
     int setup = g_grim->getCurrSet()->getSetup();
     cursor->setCursor(0);
-    for (size_t i=0; i<_hotspot.size(); i++) {
-        if (_hotspot[i]._setup == setup && _hotspot[i]._region.contains(pos)) {
-            cursor->setCursor(_hotspot[i]._type>1 ? 2 : 1);
+
+    if (_ctrlMode == 0) {
+        // normal operation
+        for (size_t i=0; i<_hotspot.size(); i++) {
+            if (_hotspot[i]._setup == setup && _hotspot[i]._region.contains(pos)) {
+                if (_hotspot[i]._obj && !_hotspot[i]._obj->_active)
+                    continue;
+                cursor->setCursor(_hotspot[i]._type>1 ? 2 : 1);
+            }
         }
-    }
-    if (_selectMode > 0)
-        _selectPoly._pnts[_selectMode] = Common::Point(pos.x, pos.y);    
+        if (_selectMode > 0)
+            _selectPoly._pnts[_selectMode] = Common::Point(pos.x, pos.y);
+    } else if (_ctrlMode == 1) {
+        // dialog mode
+        int dialog = inDialogBox(pos), click = 0;
+        LuaObjects objects;
+        objects.add(dialog);
+        objects.add(click);
+        LuaBase::instance()->callback("dialogSelect", objects);
+    }    
 }
 
+bool HotspotMan::restoreState(SaveGame *savedState) {
+    savedState->beginSection('HOTM');
+    int num = savedState->readLESint32();
+    _hotobject.clear();
+    for (int i=0; i<num; i++) {
+        HotObject hs;
+        hs._id = savedState->readString();
+        hs._desc = savedState->readString();
+        hs._pos = savedState->readVector3d();
+        hs._rect.top = savedState->readLEUint16();
+        hs._rect.left = savedState->readLEUint16();
+        hs._rect.bottom = savedState->readLEUint16();
+        hs._rect.right = savedState->readLEUint16();
+        hs._active = savedState->readBool();
+        _hotobject.push_back(hs);
+    }
+    savedState->endSection();
+
+    reload(true);
+    return true;
+}
+void HotspotMan::saveState(SaveGame *savedState) {
+    savedState->beginSection('HOTM');
+    savedState->writeLESint32(_hotobject.size());
+    for (size_t i=0; i<_hotobject.size(); i++) {
+        HotObject& hs = _hotobject[i];
+        savedState->writeString(hs._id);
+        savedState->writeString(hs._desc);
+        savedState->writeVector3d(hs._pos);
+        savedState->writeLEUint16(hs._rect.top);
+        savedState->writeLEUint16(hs._rect.left);
+        savedState->writeLEUint16(hs._rect.bottom);
+        savedState->writeLEUint16(hs._rect.right);
+        savedState->writeBool(hs._active);
+    }
+    savedState->endSection();
+}
+int HotspotMan::inDialogBox(const Common::Point& p) {
+    for (int i=0; i<_lines; i++) {
+        if (p.x >= _x0 && p.x < _x0 + _w &&
+            p.y >= _y0+i*_h && p.y < _y0+(i+1)*_h)
+            return i+1;
+    }
+    return 0;
+}
 
 } /* namespace */

@@ -580,8 +580,8 @@ void Lua_V1::WalkActorTo() {
 	float ty = lua_getnumber(tyObj);
 	float tz = lua_getnumber(tzObj);
 	Math::Vector3d tVec(tx, ty, tz);
-
-	actor->walkTo(destVec);
+    
+    actor->walkTo(destVec);
 }
 
 /* This draw an actor to an offscreen buffer.

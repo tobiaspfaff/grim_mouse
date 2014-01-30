@@ -337,6 +337,11 @@ bool LuaBase::callback(const char *name) {
 	return callback(name, o);
 }
 
+lua_Object LuaBase::queryVariable(const Common::String& name) {
+    lua_dostring(("return "+name).c_str());    
+    return lua_getresult(1);
+}
+
 bool LuaBase::callback(const char *name, const LuaObjects &objects) {
 	lua_beginblock();
 

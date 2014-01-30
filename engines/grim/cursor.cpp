@@ -33,16 +33,18 @@ const static int numCursors = 3;
 namespace Grim {
 
 Cursor::Cursor(GrimEngine *vm) :
-	_vm(vm),
 	_position(320, 210),
 	_curCursor(0)
 {
-	loadAvailableCursors();
+    _bitmaps = new Bitmap*[numCursors];
+    for (int i=0; i<numCursors; i++)
+        _bitmaps[i] = 0;
+    loadAvailableCursors();
 }
 
 void Cursor::loadAvailableCursors() { 
-	_bitmaps = new Bitmap*[numCursors];
-    
+        warning("%lu",_bitmaps);
+
     for(int i=0; i<numCursors; i++) {
         Common::String fn = Common::String::format("cursor%d.tga",i);
         _bitmaps[i] = Bitmap::create(fn.c_str());
@@ -53,7 +55,13 @@ void Cursor::loadAvailableCursors() {
     CursorMan.showMouse(false);
 }
 
+void Cursor::reload() {
+    loadAvailableCursors();
+}
+
 Cursor::~Cursor() {
+    delete[] _bitmaps;
+    _bitmaps = 0;
 	/*for (int i=0; i<numCursors; i++) {
         if (_bitmaps[i])
             delete _bitmaps[i];

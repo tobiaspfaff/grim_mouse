@@ -2042,7 +2042,7 @@ bool GfxOpenGL::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
     gluUnProject(winX, winY, 1.0, modelView, projection, viewPort, &p1[0], &p1[1], &p1[2]);
     
     r0 = Math::Vector3d(p0[0],p0[1],p0[2]);
-    r1 = Math::Vector3d(p1[0],p1[1],p1[2]);
+    r1 = Math::Vector3d(p1[0],p1[1],p1[2]) - r0;
     return true;
 }
 

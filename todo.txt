@@ -1,0 +1,5 @@
+test if al door works if shut
+replace obj link with id
+glottis shed no objects after egg
+inventory (allow uing objects)
+

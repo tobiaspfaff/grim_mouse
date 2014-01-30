@@ -244,7 +244,7 @@ void Lua_V1::UnLockSet() {
 }
 
 void Lua_V1::MakeCurrentSet() {
-	lua_Object nameObj = lua_getparam(1);
+    lua_Object nameObj = lua_getparam(1);
 	if (!lua_isstring(nameObj)) {
 		// TODO setting current set null
 		warning("Lua_V1::MakeCurrentSet: implement missing case");
@@ -254,6 +254,7 @@ void Lua_V1::MakeCurrentSet() {
 	const char *name = lua_getstring(nameObj);
 	Debug::debug(Debug::Engine, "Entered new scene '%s'.", name);
 	g_grim->setSet(name);
+	g_grim->getHotspotMan()->updatePerspective();
 }
 
 void Lua_V1::MakeCurrentSetup() {
@@ -495,5 +496,21 @@ void Lua_V1::ActivateHotspot() {
     }
 }
 
+void Lua_V1::SwitchControlMode() { 
+    int mode = lua_getnumber(lua_getparam(1));    
+    g_grim->getHotspotMan()->switchMode(mode);
+    if (mode == 1) {
+        int lines = lua_getnumber(lua_getparam(2));    
+        int x0 = lua_getnumber(lua_getparam(3));
+        int y0 = lua_getnumber(lua_getparam(4));
+        int width = lua_getnumber(lua_getparam(5));
+        int height = lua_getnumber(lua_getparam(6));
+        g_grim->getHotspotMan()->setupDialog(x0,y0,width,height,lines);
+    }
+}
+
+void Lua_V1::NotifyWalkOut() { 
+    g_grim->getHotspotMan()->notifyWalkOut();
+}
 
 } // end of namespace Grim

@@ -124,6 +124,8 @@ public:
 	virtual void boot();
 	virtual void postRestoreHandle() { }
 
+	lua_Object queryVariable(const Common::String& name);
+	
 	/**
 	 * Call a Lua function in the system table.
 	 *

@@ -1,1 +1,1 @@
-make && ./residualvm --debugflags=engine,scripts grim-win
+make && ./residualvm --debugflags=engine,scripts $1 $2  grim-win

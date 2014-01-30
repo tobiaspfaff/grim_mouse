@@ -754,20 +754,24 @@ void GrimEngine::mainLoop() {
 					} else if (_mode != DrawMode && (event.kbd.keycode == Common::KEYCODE_PAUSE)) {
 						handlePause();
 						break;
-					} else if (event.kbd.keycode == Common::KEYCODE_F12) {
+					} else if (event.kbd.keycode == Common::KEYCODE_h) {
                         _hotspotManager->getName(_cursor);
                         break;
                     } else if (_opMode > 0 && event.kbd.keycode == Common::KEYCODE_RETURN) {
                         _hotspotManager->okKey();
                         break;
                     } else if (event.kbd.keycode == Common::KEYCODE_LEFTBRACKET) {
-                    	_opMode = (_opMode+1) % 3;
-		                _hotspotManager->cancel();
-		                warning("set opMode %d",_opMode);
+                        _opMode = (_opMode+1) % 3;
+                        _hotspotManager->cancel();
+                        warning("set opMode %d",_opMode);
                     } else if (event.kbd.keycode == Common::KEYCODE_RIGHTBRACKET) {
 						_opMode = (_opMode-1+3) % 3;
 		                _hotspotManager->cancel();
 		                warning("set opMode %d",_opMode);
+                    } else if (event.kbd.keycode == Common::KEYCODE_F5) {
+                        _hotspotManager->reload(true);
+                    } else if (event.kbd.keycode == Common::KEYCODE_F6) {
+                        _hotspotManager->debug(1);
                     } else if (_opMode > 0 && event.kbd.keycode == Common::KEYCODE_ESCAPE) {
                         _hotspotManager->cancel();
                         break;
@@ -915,6 +919,9 @@ void GrimEngine::savegameRestore() {
 	lua_Restore(_savedState);
 	Debug::debug(Debug::Engine, "Lua restored successfully.");
 
+	_hotspotManager->restoreState(_savedState);
+	Debug::debug(Debug::Engine, "Hotspots restored successfully.");
+
 	delete _savedState;
 
 	//Re-read the values, since we may have been in some state that changed them when loading the savegame,
@@ -939,6 +946,7 @@ void GrimEngine::savegameRestore() {
 	foreach (Actor *a, Actor::getPool()) {
 		a->restoreCleanBuffer();
 	}
+	_cursor->reload();
 }
 
 void GrimEngine::restoreGRIM() {
@@ -1076,6 +1084,9 @@ void GrimEngine::savegameSave() {
 	Debug::debug(Debug::Engine, "Iris saved successfully.");
 
 	lua_Save(_savedState);
+
+	_hotspotManager->saveState(_savedState);
+	Debug::debug(Debug::Engine, "HotspotMan saved successfully.");
 
 	delete _savedState;
 

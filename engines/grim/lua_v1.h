@@ -290,6 +290,8 @@ protected:
     // mouse extensions
     DECLARE_LUA_OPCODE(RegisterHotspot);
     DECLARE_LUA_OPCODE(ActivateHotspot);    
+    DECLARE_LUA_OPCODE(SwitchControlMode);
+    DECLARE_LUA_OPCODE(NotifyWalkOut);
 };
 
 }
