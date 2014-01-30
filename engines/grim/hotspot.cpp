@@ -205,7 +205,7 @@ void HotspotMan::reload(bool always) {
             hs._id = id;
             hs._setup = setup;
             hs._type = type;
-            hs._obj = 0;
+            hs._objId = -1;
             hs._pos = Math::Vector3d(p[0],p[1],p[2]);
             for (int i=0; i<num; i++) {
                 fscanf(fp,"%d %d", &x, &y);
@@ -213,7 +213,7 @@ void HotspotMan::reload(bool always) {
             }
             for (size_t j=0; j<_hotobject.size(); j++) {
                 if (_hotobject[j]._id == hs._id)
-                    hs._obj = &_hotobject[j];
+                    hs._objId = j;
             }
             _hotspot.push_back(hs);
         }
@@ -359,7 +359,7 @@ void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mo
         for (size_t i=0; i<_hotspot.size(); i++) {
             Hotspot& hs = _hotspot[i];
             if (hs._setup == setup && hs._region.contains(cursor)) {
-                if (hs._obj && !hs._obj->_active) continue;
+                if (hs._objId>=0 && !_hotobject[hs._objId]._active) continue;
 
                 if (hs._type == 3) {
                     LuaObjects objects;
@@ -372,7 +372,7 @@ void HotspotMan::event(const Common::Point& cursor, Common::EventType ev, int mo
                     return;
                 }
                 
-                int gid = hs._obj ? (int)(hs._obj-&_hotobject[0]) : -1;
+                int gid = hs._objId;
                 if (gid >= 0) {
                     LuaObjects objects;
                     if (ev == Common::EVENT_LBUTTONDOWN)
@@ -458,7 +458,7 @@ void HotspotMan::hover(Cursor* cursor) {
         // normal operation
         for (size_t i=0; i<_hotspot.size(); i++) {
             if (_hotspot[i]._setup == setup && _hotspot[i]._region.contains(pos)) {
-                if (_hotspot[i]._obj && !_hotspot[i]._obj->_active)
+                if (_hotspot[i]._objId>=0 && !_hotobject[_hotspot[i]._objId]._active)
                     continue;
                 cursor->setCursor(_hotspot[i]._type>1 ? 2 : 1);
             }

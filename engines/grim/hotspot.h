@@ -55,7 +55,7 @@ struct Hotspot {
     Math::Vector3d _pos;
     int _setup;
     int _type;
-    HotObject* _obj;
+    int _objId;
 };
 
 class HotspotMan {
@@ -81,6 +81,7 @@ public:
     void setupDialog(int x0, int y0, int w, int h, int lines) { _x0=x0; _y0=y0; _w=w; _h=h; _lines=lines; }
     void notifyWalkOut();
     void debug(int num);
+    inline int getCtrlMode() { return _ctrlMode; }
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type, const Math::Vector3d& v);
     int inDialogBox(const Common::Point& p);

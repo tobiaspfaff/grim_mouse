@@ -763,11 +763,11 @@ void GrimEngine::mainLoop() {
                     } else if (event.kbd.keycode == Common::KEYCODE_LEFTBRACKET) {
                         _opMode = (_opMode+1) % 3;
                         _hotspotManager->cancel();
-                        warning("set opMode %d",_opMode);
+                        warning("set opMode %d %d",_opMode,_hotspotManager->getCtrlMode());
                     } else if (event.kbd.keycode == Common::KEYCODE_RIGHTBRACKET) {
 						_opMode = (_opMode-1+3) % 3;
 		                _hotspotManager->cancel();
-		                warning("set opMode %d",_opMode);
+                        warning("set opMode %d %d",_opMode,_hotspotManager->getCtrlMode());
                     } else if (event.kbd.keycode == Common::KEYCODE_F5) {
                         _hotspotManager->reload(true);
                     } else if (event.kbd.keycode == Common::KEYCODE_F6) {

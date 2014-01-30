@@ -20,6 +20,10 @@
  *
  */
 
+
+//#define FORBIDDEN_SYMBOL_ALLOW_ALL
+//#define DUMP_MODEL
+
 #include "common/algorithm.h"
 #include "common/endian.h"
 #include "common/func.h"
@@ -83,6 +87,37 @@ Model::Model(const Common::String &filename, Common::SeekableReadStream *data, C
 			}
 		}
 	}
+#ifdef DUMP_MODEL
+	// dump model as obj
+	for (int i=0,m=0; i< _numGeosets; i++) {
+		for (int j=0; j<_geosets[i]._numMeshes; j++,m++) {
+			Mesh& mesh = _geosets[i]._meshes[j];
+			if (mesh._numFaces == 0) continue;
+			Common::String path = "/Users/tpfaff/grimex/obj/" + filename;
+			path += Common::String::format("%d.obj",m);
+			FILE* fp = fopen(path.c_str(),"wb");
+			for (int v=0; v<mesh._numVertices; v++) {
+				float* vert = &mesh._vertices[v*3];
+				fprintf(fp,"v %g %g %g\n",vert[0],vert[1],vert[2]);
+				float* norm = &mesh._vertNormals[v*3];
+				fprintf(fp,"vn %g %g %g\n",norm[0],norm[1],norm[2]);
+			}
+			for (int v=0; v<mesh._numTextureVerts; v++) {
+				float* vert = &mesh._textureVerts[v*2];
+				fprintf(fp,"vt %g %g\n",vert[0],vert[1]);
+			}
+			for (int f=0; f<mesh._numFaces; f++) {
+				MeshFace& face = mesh._faces[f];
+				fprintf(fp,"f");
+				for (int v=0; v<face._numVertices; v++) {
+					fprintf(fp," %d/%d/%d",face._vertices[v]+1,
+						face._texVertices[v]+1,face._vertices[v]+1);
+				}
+			}
+			fclose(fp);
+		}
+	}
+#endif
 
 	_bboxSize = max - _bboxPos;
 }
