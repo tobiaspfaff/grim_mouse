@@ -718,6 +718,8 @@ void GrimEngine::mainLoop() {
 			_changeFullscreenState = false;
 		}
 
+		//_hotspotManager->update();
+
 		g_imuse->flushTracks();
 		g_imuse->refreshScripts();
 

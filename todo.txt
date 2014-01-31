@@ -2,4 +2,3 @@ inventory (allow uing objects)
 cy: more conveyer belt work
 ew: controller crane
 bonewagon controls
-ei: controls

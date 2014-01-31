@@ -40,6 +40,7 @@ struct Polygon {
     
     void draw(const Color &col);
     bool contains(const Common::Point& pos);
+    void move(const Common::Point& center);
 };
 
 struct HotObject {
@@ -50,7 +51,7 @@ struct HotObject {
 };
 
 struct Hotspot {
-	Common::String _id;
+	Common::String _id, _desc;
     Polygon _region;
     Math::Vector3d _pos;
     int _setup;
@@ -81,10 +82,13 @@ public:
     void setupDialog(int x0, int y0, int w, int h, int lines) { _x0=x0; _y0=y0; _w=w; _h=h; _lines=lines; }
     void notifyWalkOut();
     void debug(int num);
+    void update();
+    void updateHotspot(const Common::String& id, const Math::Vector3d& pos, int vis);
     inline int getCtrlMode() { return _ctrlMode; }
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type, const Math::Vector3d& v);
     int inDialogBox(const Common::Point& p);
+    void freeClick(const Common::Point& cursor, bool doubleClick);
 
     // dialog support
     int _ctrlMode, _lines;

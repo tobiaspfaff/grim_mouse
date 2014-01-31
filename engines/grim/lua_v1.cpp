@@ -928,6 +928,7 @@ struct luaL_reg grimMainOpcodes[] = {
 	// extensions
 	{ "RegisterHotspot", LUA_OPCODE(Lua_V1, RegisterHotspot) },
     { "ActivateHotspot", LUA_OPCODE(Lua_V1, ActivateHotspot) },
+    { "UpdateHotspot", LUA_OPCODE(Lua_V1, UpdateHotspot) },
     { "SwitchControlMode", LUA_OPCODE(Lua_V1, SwitchControlMode) },
     { "NotifyWalkOut", LUA_OPCODE(Lua_V1, NotifyWalkOut) }
 };

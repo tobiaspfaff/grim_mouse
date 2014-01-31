@@ -496,6 +496,15 @@ void Lua_V1::ActivateHotspot() {
     }
 }
 
+void Lua_V1::UpdateHotspot() { 
+	Common::String id = lua_getstring(lua_getparam(1));
+	Math::Vector3d pos (lua_getnumber(lua_getparam(2)),
+						lua_getnumber(lua_getparam(3)),
+						lua_getnumber(lua_getparam(4)));
+	int visible = lua_getnumber(lua_getparam(5));
+	g_grim->getHotspotMan()->updateHotspot(id,pos,visible);
+}
+
 void Lua_V1::SwitchControlMode() { 
     int mode = lua_getnumber(lua_getparam(1));    
     g_grim->getHotspotMan()->switchMode(mode);

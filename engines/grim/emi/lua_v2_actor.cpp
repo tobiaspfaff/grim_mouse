@@ -960,7 +960,7 @@ void Lua_V2::WalkActorToAvoiding() {
 
 	// TODO: Make this actually avoid the second actor
 
-	actor->walkTo(destVec);
+	actor->walkTo(destVec,false);
 }
 
 void Lua_V2::EnableActorPuck() {

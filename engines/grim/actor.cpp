@@ -553,7 +553,7 @@ void Actor::turnTo(const Math::Angle &pitchParam, const Math::Angle &yawParam, c
 		_turning = false;
 }
 
-void Actor::walkTo(const Math::Vector3d &p) {
+void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 	if (p == _pos)
 		_walking = false;
 	else {
@@ -702,8 +702,10 @@ void Actor::walkTo(const Math::Vector3d &p) {
                     _walking = false;
 					return;
 				}
-				_walking = false;
-                return;
+				if (!force_walk) {
+					_walking = false;
+    	            return;
+    	        }
 			}
 		}
 
@@ -1089,6 +1091,10 @@ Math::Angle Actor::getYawTo(const Math::Vector3d &p) const {
 }
 
 void Actor::sayLine(const char *msgId, bool background) {
+	if (!msgId) {
+		warning("zero pointer in message encountered");
+		return;
+	}
 	assert(msgId);
 
 	if (msgId[0] == 0) {

@@ -28,7 +28,7 @@
 #include "graphics/cursorman.h"
 #include "graphics/decoders/bmp.h"
 
-const static int numCursors = 3;
+const static int numCursors = 7;
 
 namespace Grim {
 
