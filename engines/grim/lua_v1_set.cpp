@@ -505,6 +505,16 @@ void Lua_V1::UpdateHotspot() {
 	g_grim->getHotspotMan()->updateHotspot(id,pos,visible);
 }
 
+void Lua_V1::RegisterInventory() { 
+	Common::String id = lua_getstring(lua_getparam(1));
+	if (id=="reset")
+		g_grim->getHotspotMan()->resetInventory();
+	else { 
+		Common::String pic = lua_getstring(lua_getparam(2));
+		g_grim->getHotspotMan()->addInventory(id,pic);
+	}
+}
+
 void Lua_V1::SwitchControlMode() { 
     int mode = lua_getnumber(lua_getparam(1));    
     g_grim->getHotspotMan()->switchMode(mode);
@@ -514,8 +524,20 @@ void Lua_V1::SwitchControlMode() {
         int y0 = lua_getnumber(lua_getparam(4));
         int width = lua_getnumber(lua_getparam(5));
         int height = lua_getnumber(lua_getparam(6));
-        g_grim->getHotspotMan()->setupDialog(x0,y0,width,height,lines);
+        g_grim->getHotspotMan()->setupDialog(x0,y0,width,height,lines,1);
+    } else if (mode == 3) {
+    	Math::Vector3d axis(lua_getnumber(lua_getparam(2)),
+				    		lua_getnumber(lua_getparam(3)),
+				    		lua_getnumber(lua_getparam(4)));
+    	g_grim->getHotspotMan()->setAxis(axis, lua_getnumber(lua_getparam(5)));
+    } else if (mode == 4) {
+    	g_grim->getHotspotMan()->setupDialog(20,40,100,100,4,6);
     }
+}
+
+void Lua_V1::MouseDown() {
+	int state = g_grim->getEventManager()->getButtonState();
+	lua_pushnumber(state);
 }
 
 void Lua_V1::NotifyWalkOut() { 

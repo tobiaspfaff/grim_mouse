@@ -125,6 +125,7 @@ void Lua_V1::SetActorWalkChore() {
 	lua_Object actorObj = lua_getparam(1);
 	lua_Object choreObj = lua_getparam(2);
 	lua_Object costumeObj = lua_getparam(3);
+	lua_Object walk_bwd = lua_getparam(4);
 	Costume *costume;
 	int chore;
 
@@ -140,8 +141,10 @@ void Lua_V1::SetActorWalkChore() {
 	} else {
 		chore = (int)lua_getnumber(choreObj);
 	}
-	if (!findCostume(costumeObj, actor, &costume))
+	if (!findCostume(costumeObj, actor, &costume)) 
 		return;
+
+	actor->setWalkBwd(lua_isnumber(walk_bwd) && lua_getnumber(walk_bwd) != 0);
 
 	actor->setWalkChore(chore, costume);
 }
@@ -301,6 +304,7 @@ void Lua_V1::PutActorAt() {
 	lua_Object xObj = lua_getparam(2);
 	lua_Object yObj = lua_getparam(3);
 	lua_Object zObj = lua_getparam(4);
+	lua_Object xtraObj = lua_getparam(5);
 	if (!lua_isuserdata(actorObj) || lua_tag(actorObj) != MKTAG('A','C','T','R'))
 		return;
 
@@ -313,7 +317,8 @@ void Lua_V1::PutActorAt() {
 	float x = lua_getnumber(xObj);
 	float y = lua_getnumber(yObj);
 	float z = lua_getnumber(zObj);
-	actor->setPos(Math::Vector3d(x, y, z));
+	int xnum = lua_isnumber(xtraObj) ? lua_getnumber(xtraObj) : 0;
+	actor->setPos(Math::Vector3d(x, y, z), xnum);
 }
 
 void Lua_V1::GetActorPos() {

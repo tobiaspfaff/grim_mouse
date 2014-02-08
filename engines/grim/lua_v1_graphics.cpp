@@ -437,6 +437,11 @@ void Lua_V1::KillPrimitive() {
 }
 
 void Lua_V1::DimScreen() {
+	lua_Object level = lua_getparam(1);
+	if (lua_isnumber(level))
+		g_driver->setDimLevel(lua_getnumber(level));
+	else
+		g_driver->setDimLevel(0.2);
 	g_driver->storeDisplay();
 	g_driver->dimScreen();
 }
@@ -477,6 +482,7 @@ void Lua_V1::SetGamma() {
 }
 
 void Lua_V1::Display() {
+	g_grim->drawCursor();
 	if (g_grim->getFlipEnable()) {
 		g_driver->flipBuffer();
 	}

@@ -1670,7 +1670,7 @@ void GfxOpenGL::dimScreen() {
 		uint8 r = (pixel & 0xFF0000) >> 16;
 		uint8 g = (pixel & 0x00FF00) >> 8;
 		uint8 b = (pixel & 0x0000FF);
-		uint32 color = (r + g + b) / 10;
+		uint32 color = (uint32) (((float)r + (float)g + (float)b) / 3.0 * _dimLevel);
 		data[l] = ((color & 0xFF) << 16) | ((color & 0xFF) << 8) | (color & 0xFF);
 	}
 }
@@ -1821,6 +1821,36 @@ void GfxOpenGL::irisAroundRegion(int x1, int y1, int x2, int y2) {
 	glDepthMask(GL_TRUE);
 }
 
+void GfxOpenGL::blackbox(int x0, int y0, int x1, int y1, float opacity) {
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glDisable(GL_LIGHTING);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glColor4f(0,0,0, opacity);
+
+	glBegin(GL_QUADS);
+    glVertex2f(x0,y0);
+    glVertex2f(x1,y0);
+    glVertex2f(x1,y1);
+    glVertex2f(x0,y1);
+    glEnd();
+
+    glColor4f(1,1,1,1);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+}
+    
 void GfxOpenGL::drawRectangle(const PrimitiveObject *primitive) {
 	float x1 = primitive->getP1().x * _scaleW;
 	float y1 = primitive->getP1().y * _scaleH;

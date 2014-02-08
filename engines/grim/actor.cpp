@@ -474,8 +474,9 @@ void Actor::setRot(const Math::Angle &pitchParam, const Math::Angle &yawParam, c
 	_turning = false;
 }
 
-void Actor::setPos(const Math::Vector3d &position) {
-	_walking = false;
+void Actor::setPos(const Math::Vector3d &position, int xnum) {
+	if (xnum==0)
+		_walking = false;
 	_pos = position;
 
 	// Don't allow positions outside the sectors.
@@ -510,7 +511,7 @@ void Actor::calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, 
 	}
 
 	Math::Matrix3 m;
-	m.buildFromTargetDir(actorForward, lookVector, actorUp, up);
+	m.buildFromTargetDir(actorForward, _walkBwd ? -lookVector : lookVector, actorUp, up);
 
 	if (_puckOrient) {
 		m.getXYZ(yaw, pitch, roll, Math::EO_ZXY);

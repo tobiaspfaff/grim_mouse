@@ -930,7 +930,9 @@ struct luaL_reg grimMainOpcodes[] = {
     { "ActivateHotspot", LUA_OPCODE(Lua_V1, ActivateHotspot) },
     { "UpdateHotspot", LUA_OPCODE(Lua_V1, UpdateHotspot) },
     { "SwitchControlMode", LUA_OPCODE(Lua_V1, SwitchControlMode) },
-    { "NotifyWalkOut", LUA_OPCODE(Lua_V1, NotifyWalkOut) }
+    { "NotifyWalkOut", LUA_OPCODE(Lua_V1, NotifyWalkOut) },
+    { "RegisterInventory", LUA_OPCODE(Lua_V1, RegisterInventory) },
+    { "MouseDown", LUA_OPCODE(Lua_V1, MouseDown) }
 };
 
 static struct luaL_reg grimTextOpcodes[] = {

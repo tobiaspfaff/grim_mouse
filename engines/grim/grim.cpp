@@ -537,6 +537,7 @@ void GrimEngine::updateDisplayScene() {
 		updateNormalMode();
 	} else if (_mode == DrawMode) {
 		updateDrawMode();
+		handleUserPaint();
 	}
 }
 
@@ -623,9 +624,13 @@ void GrimEngine::drawNormalMode() {
 	// The overlay objects should be drawn on top of everything else,
 	// including 3D objects such as Manny and the message tube
 	_currSet->drawBitmaps(ObjectState::OBJSTATE_OVERLAY);
-    
-    _cursor->draw();
+	
+	drawCursor();    
+}
+
+void GrimEngine::drawCursor() {
     _hotspotManager->drawActive(_opMode);
+	_cursor->draw();
 }
 
 void GrimEngine::doFlip() {
@@ -733,10 +738,15 @@ void GrimEngine::mainLoop() {
 			if (type == Common::EVENT_MOUSEMOVE) {
                 _cursor->updatePosition(event.mouse);
                 _hotspotManager->hover(_cursor);
+            } else if (type == Common::EVENT_MBUTTONDOWN || 
+            		  (type == Common::EVENT_LBUTTONDOWN && event.kbd.hasFlags(Common::KBD_CTRL))) {
+            	Common::KeyState kbd(Common::KEYCODE_i);
+            	handleChars(Common::EVENT_KEYDOWN, kbd);
+            	handleControls(Common::EVENT_KEYDOWN, kbd);
             } else if (type == Common::EVENT_LBUTTONDOWN || 
-                       type == Common::EVENT_RBUTTONDOWN || 
-                       type == Common::EVENT_MBUTTONDOWN) {
-                _hotspotManager->event(_cursor->getPosition(), type, _opMode);
+                       type == Common::EVENT_RBUTTONDOWN) {
+                       //type == Common::EVENT_LBUTTONUP) {
+                _hotspotManager->event(_cursor->getPosition(), event, _opMode);
             } else if (type == Common::EVENT_KEYDOWN || type == Common::EVENT_KEYUP) {
 				if (type == Common::EVENT_KEYDOWN) {
 					// Ignore everything but ESC when movies are playing

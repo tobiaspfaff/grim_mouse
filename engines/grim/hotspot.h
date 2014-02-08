@@ -26,8 +26,10 @@
 #include "common/rect.h"
 #include "common/array.h"
 #include "primitives.h"
+#include "common/hashmap.h"
 #include "math/vector3d.h"
 #include "common/events.h"
+#include "common/hash-str.h"
 
 namespace Grim {
 
@@ -59,10 +61,17 @@ struct Hotspot {
     int _objId;
 };
 
+struct InventoryItem {
+    Common::String _id;
+    Bitmap* _bmp;
+};
+
 class HotspotMan {
 public:
     HotspotMan();
     virtual ~HotspotMan();
+
+    enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5 };
     
     int addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene);    
     void disableAll();
@@ -70,29 +79,40 @@ public:
     
     void okKey();
     void cancel();
-    void event(const Common::Point& cursor, Common::EventType ev, int mode);
+    void event(const Common::Point& cursor, const Common::Event& ev, int debug);
     void getName(Cursor* cursor);
     void hover(Cursor* cursor);
     void updatePerspective();
-    void drawActive(int mode);    
+    void drawActive(int debug);    
     void reload(bool always);
     bool restoreState(SaveGame *savedState);
     void saveState(SaveGame* savedState);
     void switchMode(int ctrlMode) { _ctrlMode = ctrlMode; }
-    void setupDialog(int x0, int y0, int w, int h, int lines) { _x0=x0; _y0=y0; _w=w; _h=h; _lines=lines; }
+    void setupDialog(int x0, int y0, int w, int h, int rows, int cols) { _x0=x0; _y0=y0; _w=w; _h=h; _cols=cols; _rows=rows; }
     void notifyWalkOut();
     void debug(int num);
     void update();
+    void resetInventory();
+    void addInventory(const Common::String& id, const Common::String& pic);
     void updateHotspot(const Common::String& id, const Math::Vector3d& pos, int vis);
-    inline int getCtrlMode() { return _ctrlMode; }
+    int getCtrlMode() { return _ctrlMode; }
+    void setAxis(const Math::Vector3d& a, float offset) { _axis = a; _offset=offset; }
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type, const Math::Vector3d& v);
-    int inDialogBox(const Common::Point& p);
-    void freeClick(const Common::Point& cursor, bool doubleClick);
+    int inBox(const Common::Point& p);
+    void freeClick(const Common::Point& cursor, int button, bool doubleClick, bool climbing);
 
     // dialog support
-    int _ctrlMode, _lines;
+    int _ctrlMode, _rows, _cols;
     int _x0,_y0,_w,_h;
+
+    // inventory
+    Common::HashMap<Common::String, Bitmap*> _icons;
+    Common::Array<InventoryItem> _inventory;
+
+    // linear mode
+    Math::Vector3d _axis;
+    float _offset;
 
     unsigned int _lastClick;
     bool _initialized;

@@ -162,6 +162,7 @@ void MaterialData::initEMI(Common::SeekableReadStream *data) {
 	}
 }
 
+
 MaterialData::~MaterialData() {
 	_materials->remove(this);
 	if (_materials->empty()) {

@@ -293,6 +293,8 @@ protected:
     DECLARE_LUA_OPCODE(UpdateHotspot);    
     DECLARE_LUA_OPCODE(SwitchControlMode);
     DECLARE_LUA_OPCODE(NotifyWalkOut);
+    DECLARE_LUA_OPCODE(RegisterInventory);    
+    DECLARE_LUA_OPCODE(MouseDown);
 };
 
 }
