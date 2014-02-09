@@ -518,7 +518,7 @@ void Lua_V1::RegisterInventory() {
 void Lua_V1::SwitchControlMode() { 
     int mode = lua_getnumber(lua_getparam(1));    
     g_grim->getHotspotMan()->switchMode(mode);
-    if (mode == 1) {
+    if (mode == 1 || mode == 5) {
         int lines = lua_getnumber(lua_getparam(2));    
         int x0 = lua_getnumber(lua_getparam(3));
         int y0 = lua_getnumber(lua_getparam(4));

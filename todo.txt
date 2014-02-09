@@ -1,5 +1,2 @@
-test if conveyor w/ ropw really works (cy)
-vo: axe controller
 load set only once, save hotspots in savegame (wegen 4-flag)
-lz obj names
 

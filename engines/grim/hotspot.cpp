@@ -109,14 +109,14 @@ void HotspotMan::disableAll() {
 }
 
 void HotspotMan::drawActive(int debug) {
-    /*if (_ctrlMode == Dialog) {
-        for (int i=0; i<_lines; i++) {
+    if (_ctrlMode == Dialog) {
+        /*for (int i=0; i<_rows; i++) {
             PrimitiveObject x;
             x.createRectangle(Common::Point(_x0,_y0+i*_h),Common::Point(_x0+_w,_y0+(i+1)*_h),Color(200,200,200),false);
             x.draw();
-        }
+        }*/
         //return;
-    }*/
+    }
     if (_ctrlMode == Inventory) {
         const int dx = 5;//, dx2 = 6;
         int num_rows = (_inventory.size()-1)/_cols+1; 

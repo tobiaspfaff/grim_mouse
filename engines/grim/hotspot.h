@@ -116,6 +116,7 @@ protected:
 
     unsigned int _lastClick;
     bool _initialized;
+    Common::HashMap<String,Hotspot> _hotspots;
     Common::Array<Hotspot> _hotspot;
     Common::String _curScene;
     Common::Array<HotObject> _hotobject;
