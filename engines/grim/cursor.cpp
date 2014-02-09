@@ -28,7 +28,7 @@
 #include "graphics/cursorman.h"
 #include "graphics/decoders/bmp.h"
 
-const static int numCursors = 7;
+const static int numCursors = 8;
 
 namespace Grim {
 
@@ -43,9 +43,7 @@ Cursor::Cursor(GrimEngine *vm) :
 }
 
 void Cursor::loadAvailableCursors() { 
-        warning("%lu",_bitmaps);
-
-    for(int i=0; i<numCursors; i++) {
+   for(int i=0; i<numCursors; i++) {
         Common::String fn = Common::String::format("cursor%d.tga",i);
         _bitmaps[i] = Bitmap::create(fn.c_str());
         _bitmaps[i]->_data->load();

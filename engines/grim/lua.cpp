@@ -20,7 +20,11 @@
  *
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL
+#define FORBIDDEN_SYMBOL_EXCEPTION_setjmp
+#define FORBIDDEN_SYMBOL_EXCEPTION_longjmp
+
+#define USEPACKAGE
+//#define FORBIDDEN_SYMBOL_ALLOW_ALL
 
 #include <errno.h>
 
@@ -50,6 +54,7 @@
 #include "engines/grim/lua/lauxlib.h"
 #include "engines/grim/lua/luadebug.h"
 #include "engines/grim/lua/lualib.h"
+#include "engines/grim/lua/lstate.h"
 
 
 namespace Grim {
@@ -88,6 +93,14 @@ void LuaObjects::addNil() {
 	_objects.push_back(obj);
 }
 
+void LuaObjects::add(const float* ar, int len) {
+	Obj obj;
+	obj._type = Obj::Array;
+	obj._elements = len;
+	obj._value.array = ar;
+	_objects.push_back(obj);
+}
+
 void LuaObjects::pushObjects() const {
 	for (Common::List<Obj>::const_iterator i = _objects.begin(); i != _objects.end(); ++i) {
 		const Obj &o = *i;
@@ -103,6 +116,17 @@ void LuaObjects::pushObjects() const {
 				break;
 			case Obj::String:
 				lua_pushstring(o._value.string);
+				break;
+			case Obj::Array:
+				lua_pushnumber(o._elements);
+				lua_Object tbl = lua_createtable();
+				for (int k=0; k<o._elements; k++) {
+					lua_pushobject(tbl);
+					lua_pushnumber(k);
+					lua_pushnumber(o._value.array[k]);
+					lua_settable();
+				}
+				lua_pushobject(tbl);
 				break;
 		}
 	}
@@ -293,7 +317,6 @@ void LuaBase::setMovieTime(float movieTime) {
 	lua_settable();
 }
 
-//#define USEPACKAGE
 
 int LuaBase::dofile(const char *filename) {
 
@@ -337,9 +360,17 @@ bool LuaBase::callback(const char *name) {
 	return callback(name, o);
 }
 
-lua_Object LuaBase::queryVariable(const Common::String& name) {
-    lua_dostring(("return "+name).c_str());    
-    return lua_getresult(1);
+int LuaBase::queryVariable(const Common::String& name, bool direct) {
+    int num = -1;
+    lua_beginblock();
+    if (direct) {
+	    num = lua_getnumber(lua_getglobal(name.c_str()));
+	} else {
+		lua_dostring(("return "+name).c_str());    
+    	num = lua_getnumber(lua_getresult(1));
+	}
+    lua_endblock();
+    return num;
 }
 
 bool LuaBase::callback(const char *name, const LuaObjects &objects) {

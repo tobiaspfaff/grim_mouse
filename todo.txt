@@ -1,2 +1,0 @@
-load set only once, save hotspots in savegame (wegen 4-flag)
-

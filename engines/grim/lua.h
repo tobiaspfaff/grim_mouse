@@ -72,6 +72,7 @@ public:
 	void add(const PoolObjectBase *obj);
 	void add(const char *str);
 	void addNil();
+	void add(const float *ar, int len);
 
 private:
 	/**
@@ -87,13 +88,16 @@ private:
 			Nil,
 			Number,
 			Object,
-			String
+			String,
+			Array
 		} _type;
 		union {
 			float number;
 			const PoolObjectBase *object;
 			const char *string;
+			const float* array;
 		} _value;
+		int _elements;
 	};
 	Common::List<Obj> _objects;
 
@@ -124,8 +128,8 @@ public:
 	virtual void boot();
 	virtual void postRestoreHandle() { }
 
-	lua_Object queryVariable(const Common::String& name);
-	
+	int queryVariable(const Common::String& name, bool direct);
+
 	/**
 	 * Call a Lua function in the system table.
 	 *

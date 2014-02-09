@@ -137,7 +137,7 @@ byte *GfxOpenGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 	_useDepthShader = false;
 	_useDimShader = false;
 
-	g_system->showMouse(!fullscreen);
+	g_system->showMouse(false);
 
 	char GLDriver[1024];
 	sprintf(GLDriver, "ResidualVM: %s/%s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));

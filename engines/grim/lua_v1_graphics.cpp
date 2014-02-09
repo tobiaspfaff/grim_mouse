@@ -261,6 +261,10 @@ void Lua_V1::ChangePrimitive() {
 		return;
 
 	PrimitiveObject *pmodify = getprimitive(param1);
+	if (!pmodify) {
+		warning("empty primitive !");
+		return;
+	}
 	assert(pmodify);
 
 	Color color;

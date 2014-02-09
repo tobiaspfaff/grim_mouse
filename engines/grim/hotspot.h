@@ -43,6 +43,7 @@ struct Polygon {
     void draw(const Color &col);
     bool contains(const Common::Point& pos);
     void move(const Common::Point& center);
+    Common::Point center();
 };
 
 struct HotObject {
@@ -55,10 +56,10 @@ struct HotObject {
 struct Hotspot {
 	Common::String _id, _desc;
     Polygon _region;
-    Math::Vector3d _pos;
     int _setup;
     int _type;
     int _objId;
+    Common::Array<Math::Vector3d> _path;
 };
 
 struct InventoryItem {
@@ -77,14 +78,14 @@ public:
     void disableAll();
     HotObject& getObject(int idx) { return _hotobject[idx]; }
     
-    void okKey();
+    void initialize();
+    void okKey(bool shift);
     void cancel();
     void event(const Common::Point& cursor, const Common::Event& ev, int debug);
-    void getName(Cursor* cursor);
-    void hover(Cursor* cursor);
+    void getName(const Common::Point& cursor);
+    void hover(const Common::Point& cursor);
     void updatePerspective();
     void drawActive(int debug);    
-    void reload(bool always);
     bool restoreState(SaveGame *savedState);
     void saveState(SaveGame* savedState);
     void switchMode(int ctrlMode) { _ctrlMode = ctrlMode; }
@@ -97,10 +98,14 @@ public:
     void updateHotspot(const Common::String& id, const Math::Vector3d& pos, int vis);
     int getCtrlMode() { return _ctrlMode; }
     void setAxis(const Math::Vector3d& a, float offset) { _axis = a; _offset=offset; }
+    void cutSceneMode(int mode);
+    void flashHotspots();
+    void renameHotspot(int id, const Common::String& name);
 protected:
-    void append_hotspot(const Common::String& id, const Common::String& name, int type, const Math::Vector3d& v);
+    void append_hotspot(const Common::String& id, const Common::String& name, int type);
     int inBox(const Common::Point& p);
     void freeClick(const Common::Point& cursor, int button, bool doubleClick, bool climbing);
+    void loadFlashBitmaps();
 
     // dialog support
     int _ctrlMode, _rows, _cols;
@@ -116,15 +121,23 @@ protected:
 
     unsigned int _lastClick;
     bool _initialized;
-    Common::HashMap<String,Hotspot> _hotspots;
-    Common::Array<Hotspot> _hotspot;
+    typedef Common::HashMap<Common::String,Common::Array<Hotspot> > HotDict;
+    HotDict _hotspots;
     Common::String _curScene;
     Common::Array<HotObject> _hotobject;
+    Common::Point _lastCursor;
+    int _cutScene;
     
+    // hotspot display
+    bool _flashHS;
+    unsigned int _flashStart;
+    Bitmap* _flashBitmaps[8];
+
     // hotspot editing
     int _selectMode, _lastSetup;
     Polygon _selectPoly;
-    Common::String _lastName;        
+    Common::String _lastName;  
+    Common::Array<Math::Vector3d> _selectPath;      
 };
 
 } /* namespace  */

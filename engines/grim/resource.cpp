@@ -115,11 +115,11 @@ ResourceLoader::ResourceLoader() {
 			SearchMan.listMatchingMembers(files, "sound001.lab");
 			SearchMan.listMatchingMembers(files, "voice001.lab");
 		} else {
-			if (!SearchMan.hasFile("residualvm-grim-patch.lab"))
-				error("residualvm-grim-patch.lab not found");
+			if (!SearchMan.hasFile("mouse.lab"))
+				error("mouse.lab not found");
 			
-            SearchMan.listMatchingMembers(files, "residualvm-grim-patch.lab");
-			SearchMan.listMatchingMembers(files, "mouse-support.lab");
+            //SearchMan.listMatchingMembers(files, "residualvm-grim-patch.lab");
+			SearchMan.listMatchingMembers(files, "mouse.lab");
             SearchMan.listMatchingMembers(files, "data005.lab");
 			SearchMan.listMatchingMembers(files, "data004.lab");
 			SearchMan.listMatchingMembers(files, "data003.lab");
