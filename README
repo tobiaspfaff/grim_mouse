@@ -1,6 +1,6 @@
 Grim Mouse
 A point-and-click interface for Grim Fandango 
-Version 0.1
+Version 0.2
 
 --------------
 What is this ?
@@ -28,8 +28,9 @@ Running Grim Mouse
 ------------------
 Please read the original documentation of ResidualVM (README.ResidualVM or
 http://residualvm.org) on how to install the VM and set up Grim Fandango.
-In addition, you must copy the file mouse.lab from dists/engine-data
-into your game data folder (where data000.lab etc. are located).
+If you are building form source, you must copy the file mouse.lab from 
+dists/engine-data into your game data folder or into the directory where the
+binaries are located. 
 
 Most of the keyboard controls still work in the original manner;
 while the game should be playable 100% using the mouse only, if there are
@@ -42,14 +43,14 @@ Left-click   : Walk and use
 Double-click : Run and use
                Same as single-click, except Manny will run to the object.
 Right-click  : Look at / Use inventory object on its own
-			   Same as left-click, except Manny will look at an object instead
-			   of using it. If Manny is holding an inventory object, right-click
-			   will use it on its own (e.g. deck of cards, or fire extinguisher
-			   in Beaver Dam)
+               Same as left-click, except Manny will look at an object instead
+               of using it. If Manny is holding an inventory object, right-click
+               will use it on its own (e.g. deck of cards, or fire extinguisher
+               in Beaver Dam)
 Middle-click : Open Inventory
 (or I key)	   If Manny is holding an object, he will put it away.
-			   Left-click within the inventory selects an object, right-click
-			   will make Manny look at it.
+               Left-click within the inventory selects an object, right-click
+               will make Manny look at it.
 Space key    : Show all hotspots in the scene
 
 * Useful old controls *
