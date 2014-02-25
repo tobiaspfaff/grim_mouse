@@ -16,4 +16,4 @@
 #define SCUMMVM_REVISION
 #endif
 
-#define SCUMMVM_VERSION "0.2.0git" SCUMMVM_REVISION
+#define SCUMMVM_VERSION "/ Grim Mouse 0.2 git" SCUMMVM_REVISION
