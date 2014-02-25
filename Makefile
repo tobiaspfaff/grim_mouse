@@ -6,7 +6,7 @@
 srcdir      ?= .
 
 DEFINES     := -DHAVE_CONFIG_H
-LDFLAGS     := -lpng
+LDFLAGS     := 
 INCLUDES    := -I. -I$(srcdir) -I$(srcdir)/engines
 LIBS        := 
 OBJS        :=
