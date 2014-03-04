@@ -764,8 +764,11 @@ bool HotspotMan::restoreState(SaveGame *savedState) {
             for (int k=0; k<pathlen; k++)
                 hs._path.push_back(savedState->readVector3d());
             int polylen = savedState->readLESint32();
-            for (int k=0; k<polylen; k++)
-                hs._region._pnts.push_back(Common::Point(savedState->readLEUint16(),savedState->readLEUint16()));
+            for (int k=0; k<polylen; k++) {
+                int x = savedState->readLEUint16();
+                int y = savedState->readLEUint16();
+                hs._region._pnts.push_back(Common::Point(x,y));
+            }
             hs._setup = savedState->readLESint32();
             hs._type = savedState->readLESint32();
             hs._objId = savedState->readLESint32();
