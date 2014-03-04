@@ -434,6 +434,7 @@ void HotspotMan::okKey(bool shift) {
                 if (name == "up") type = 15; 
                 if (name == "down") type = 16; 
                 _selectPath.push_back(Math::Vector3d(0,0,0));
+                append_hotspot(id,name, type);
             } else if (id[0] == 't' && id[1] == 'x') {
                 Common::String name = "_";
                 int type = 1;
@@ -445,6 +446,7 @@ void HotspotMan::okKey(bool shift) {
                 if (name=="door")
                     type = 2;                                                
                 _selectPath.push_back(Math::Vector3d(0,0,0));
+                append_hotspot(id,name, type);
             } else {
                 _selectMode = -1;
                 _lastName = id;
