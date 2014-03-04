@@ -2,6 +2,15 @@ Grim Mouse
 A point-and-click interface for Grim Fandango 
 Version 0.3
 
+
+Executables are available at
+http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_3.zip (Windows)
+http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_3.dmg (Mac)
+
+Source code is available at:
+https://github.com/tobiaspfaff/grim_mouse
+
+
 --------------
 What is this ?
 --------------
@@ -19,25 +28,31 @@ mod. See below for information on how to report bugs.
 -------------
 Current state
 -------------
-This mod is a very early alpha, and has not been well tested yet. You are
-very likely to run into bugs, which may prevent you from finishing the game --
+This mod is alpha, and has not been well tested yet. You may
+run into bugs, which may prevent you from finishing the game --
 so save often and play at your own risk.
 
-------------------
-Running Grim Mouse
-------------------
-Please read the original documentation of ResidualVM (README.ResidualVM or
-http://residualvm.org) on how to install the VM and set up Grim Fandango.
-If you are building form source, you must copy the file mouse.lab from 
-dists/engine-data into your game data folder or into the directory where the
-binaries are located.
+---------------------
+Installing Grim Mouse
+---------------------
+Installation of Grim Mouse works exactly like installation of ResidualVM.
+In short:
+1. Copy all the files in the 'grimdata' folder of both Grim Fandango CDs
+   into a folder on your hard drive. Overwriting duplicate files is fine.
+2. Download the original v1.1 patch (gfupd101.exe) from residualvm.org/downloads
+   and put it into the same folder.
+3. Extract the Grim Mouse package
+   Mac: Drag the residualvm icon into /Applications
+   Windows: Copy residualvm.exe and mouse.lab into any folder on your hard disk
+4. Start Grim Mouse / ResidualVM
+5. Click 'Add Game' and navigate to your gamedata folder from Step 1
+   The screen should say "Grim Fandango Windows/English". That's ok, even
+   if running it on Mac or Linux.
+6. Click 'OK' and 'Start' -> you're all set.
 
-Binary builds are available at
-http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_2.zip (Windows)
-http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_2.dmg (Mac)
-
-Source code is available at:
-https://github.com/tobiaspfaff/grim_mouse
+If your have any problems installing, you may also consult the original
+ResidualVM guide (residualvm.org) or README.ResidualVM, as the process is
+the same.
 
 --------
 Controls
