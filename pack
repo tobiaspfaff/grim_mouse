@@ -1,9 +1,9 @@
 #!/bin/bash
-rm dists/engine-data/patches/grim_pnc/*
+mkdir -p /tmp/grim_pnc
 ../residualvm-tools/luac -o dists/engine-data/patches/grim_pnc_delta/mouse.lua ~/grimex/lua/mouse.lua
-cp dists/engine-data/patches/grim_pnc_delta/* dists/engine-data/patches/grim_pnc/
+cp dists/engine-data/patches/grim_pnc_delta/* /tmp/grim_pnc/
 python convert_to_bin.py
 python patch_lua.py
-./mklab --grim dists/engine-data/patches/grim_pnc dists/engine-data/mouse.lab
+../residualvm-tools/mklab --grim /tmp/grim_pnc dists/engine-data/mouse.lab
 cp dists/engine-data/mouse.lab .
-
+rm -rf /tmp/grim_pnc

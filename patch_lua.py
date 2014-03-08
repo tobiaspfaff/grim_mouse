@@ -4,7 +4,7 @@ import glob,filecmp,shutil,os,subprocess
 
 modpath = '/Users/tpfaff/grimex'
 origpath = '/Users/tpfaff/grimex_orig'
-patchpath = 'dists/engine-data/patches/grim_pnc'
+patchpath = '/tmp/grim_pnc'
 
 neq = 0
 tot = 0

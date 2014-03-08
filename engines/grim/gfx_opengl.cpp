@@ -49,8 +49,6 @@
 #include "engines/grim/emi/modelemi.h"
 #include "engines/grim/registry.h"
 
-#ifdef USE_OPENGL
-
 #if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program)
 
 // We need SDL.h for SDL_GL_GetProcAddress.

@@ -39,7 +39,7 @@ for file in glob.glob('hs/*.set.hot'):
 		dset.append(data)
 		sname.append(set)
 
-with open('dists/engine-data/patches/grim_pnc/set.bin','wb') as fout:
+with open('/tmp/grim_pnc/set.bin','wb') as fout:
 	fout.write(struct.pack('i',len(dset)))
 	for i in range(len(dset)):
 		writestring(fout,sname[i])
