@@ -396,8 +396,19 @@ Common::List<Math::Line3d> Sector::getBridgesTo(Sector *sector) const {
 				continue;
 			}
 		} else {
-			if (fabs(getProjectionToPlane((*it).begin()).z() - sector->getProjectionToPlane((*it).begin()).z()) > 0.2f ||
-					fabs(getProjectionToPlane((*it).end()).z() - sector->getProjectionToPlane((*it).end()).z()) > 0.2f) {
+			if (fabs(getProjectionToPlane((*it).begin()).z() - sector->getProjectionToPlane((*it).begin()).z()) > 0.4f ||
+				    fabs(getProjectionToPlane((*it).end()).z() - sector->getProjectionToPlane((*it).end()).z()) > 0.4f) {
+				
+				/*warning("disable %s -> %s: %g %g, %g %g",getName().c_str(),sector->getName().c_str(),
+				getProjectionToPlane((*it).begin()).z(),
+				getProjectionToPlane((*it).end()).z(),
+				sector->getProjectionToPlane((*it).begin()).z(),
+				sector->getProjectionToPlane((*it).end()).z());
+				warning("normal %g %g %g",_normal.x(),_normal.y(),_normal.z());
+				warning("vertices[0] %g %g %g",_vertices[0].x(),_vertices[0].y(),_vertices[0].z());
+				warning("line0 %g %g %g",(*it).begin().x(),(*it).begin().y(),(*it).begin().z());
+				warning("line1 %g %g %g",(*it).end().x(),(*it).end().y(),(*it).end().z());
+				*/
 				it = bridges.erase(it);
 				continue;
 			}

@@ -617,7 +617,7 @@ void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 					pathFound = true;
 					break;
 				}
-
+				//warning("cs %s",sector->getName().c_str());
 				for (Common::List<Sector *>::iterator i = sectors.begin(); i != sectors.end(); ++i) {
 					Sector *s = *i;
 					bool inClosed = false;
