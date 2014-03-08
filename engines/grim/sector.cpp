@@ -368,7 +368,6 @@ Common::List<Math::Line3d> Sector::getBridgesTo(Sector *sector) const {
 			bool b2_out = cross_b2.dotProduct(_normal) < -1e-7;
 
 			bool useXZ = (g_grim->getGameType() == GType_MONKEY4);
-
 			if (b1_out && b2_out) {
 				// Both points are outside.
 				it = bridges.erase(it);

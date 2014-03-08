@@ -11,4 +11,4 @@ cp README /tmp/pkg/Readme.txt
 hdiutil create /tmp/grim.dmg -ov -volname "Grim Mouse" -fs HFS+ -srcfolder /tmp/pkg
 rm ~/Downloads/grim*.dmg
 hdiutil convert /tmp/grim.dmg -format UDZO -o ~/Downloads/grim_mouse_0_3.dmg
-
+scp ~/Downloads/grim_*.dmg pamplorange.cs.berkeley.edu:Downloads/
