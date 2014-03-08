@@ -152,3 +152,5 @@ lua.tgz
 mklab
 run
 config_mac
+mouse.lab
+dists/engine-data/patches/grim_pnc
