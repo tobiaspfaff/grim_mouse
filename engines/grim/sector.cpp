@@ -396,8 +396,8 @@ Common::List<Math::Line3d> Sector::getBridgesTo(Sector *sector) const {
 				continue;
 			}
 		} else {
-			if (fabs(getProjectionToPlane((*it).begin()).z() - sector->getProjectionToPlane((*it).begin()).z()) > 0.4f ||
-				    fabs(getProjectionToPlane((*it).end()).z() - sector->getProjectionToPlane((*it).end()).z()) > 0.4f) {
+			if (fabs(getProjectionToPlane((*it).begin()).z() - sector->getProjectionToPlane((*it).begin()).z()) > 0.01f ||
+				    fabs(getProjectionToPlane((*it).end()).z() - sector->getProjectionToPlane((*it).end()).z()) > 0.01f) {
 				
 				/*warning("disable %s -> %s: %g %g, %g %g",getName().c_str(),sector->getName().c_str(),
 				getProjectionToPlane((*it).begin()).z(),
