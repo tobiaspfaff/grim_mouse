@@ -153,3 +153,5 @@ mklab
 run
 mouse.lab
 dists/engine-data/patches/grim_pnc
+*.sublime-project
+*.sublime-workspace
