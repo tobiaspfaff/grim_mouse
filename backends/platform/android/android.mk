@@ -78,14 +78,14 @@ $(PATH_BUILD_LIBRESIDUALVM): libresidualvm.so | $(PATH_BUILD)
 
 $(PATH_BUILD_RES): $(RESOURCES) | $(PATH_BUILD)
 
-setupapk: $(FILE_MANIFEST) $(PATH_BUILD_RES) $(PATH_BUILD_ASSETS) $(JAVA_EXTRA_LIBS) $(PATH_BUILD_LIBRESIDUALVM) | $(PATH_BUILD)
+setupapk: $(FILE_MANIFEST) $(PATH_BUILD_RES) $(PATH_BUILD_ASSETS) $(JAVA_EXTRA_LIBS) $(PATH_BUILD_LIBRESIDUALVM) | $(PATH_BUILD) 
 	$(SDK_ANDROID) update project -p $(PATH_BUILD) -t android-$(ANDROID_TARGET_VERSION) -n ResidualVM
 
-$(APK_MAIN): setupapk | $(PATH_BUILD)
+$(APK_MAIN): setupapk | $(PATH_BUILD) 
 	(cd $(PATH_BUILD); ant debug -Dsource.dir="$(realpath $(DIST_JAVA_SRC_DIR))")
 	$(CP) $(PATH_BUILD)/bin/ResidualVM-debug.apk $@
 
-$(APK_MAIN_RELEASE): setupapk | $(PATH_BUILD)
+$(APK_MAIN_RELEASE): setupapk | $(PATH_BUILD) 
 	(cd $(PATH_BUILD); ant release -Dsource.dir="$(realpath $(DIST_JAVA_SRC_DIR))")
 	$(CP) $(PATH_BUILD)/bin/ResidualVM-release-unsigned.apk $@
 

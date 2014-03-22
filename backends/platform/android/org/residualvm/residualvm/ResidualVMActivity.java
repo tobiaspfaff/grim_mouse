@@ -49,7 +49,8 @@ public View.OnClickListener optionsBtnOnClickListener = new View.OnClickListener
 		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
     }
 
-private static final int KEYCODE_F1 = 133;
+private static final int KEYCODE_F1 = 131;
+
 public View.OnClickListener menuBtnOnClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
@@ -229,13 +230,13 @@ public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener(
 		_residualvm_thread = new Thread(_residualvm, "ResidualVM");
 		_residualvm_thread.start();
 	}
-
+	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.game_menu, menu);
 		return true;
 	}
-
+	
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
