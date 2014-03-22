@@ -473,7 +473,6 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 	case JE_DOUBLE_TAP:
 		if (_show_mouse) {
-			e.type = Common::EVENT_MOUSEMOVE;
 
 			if (_touchpad_mode) {
 				e.mouse = getEventManager()->getMousePos();
@@ -483,26 +482,29 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			}
 
 			{
+				e.type = Common::EVENT_INVALID;
 				Common::EventType dptype = Common::EVENT_INVALID;
 
 				switch (arg3) {
 				case JACTION_DOWN:
-					dptype = Common::EVENT_LBUTTONDOWN;
+					e.type = Common::EVENT_LBUTTONDOWN;
+					dptype = Common::EVENT_LBUTTONUP;
 					_touch_pt_dt.x = -1;
 					_touch_pt_dt.y = -1;
 					break;
 				case JACTION_UP:
+					e.type = Common::EVENT_LBUTTONDOWN;
 					dptype = Common::EVENT_LBUTTONUP;
 					break;
 				// held and moved
 				case JACTION_MOVE:
+					e.type = Common::EVENT_MOUSEMOVE;
 					if (_touch_pt_dt.x == -1 && _touch_pt_dt.y == -1) {
 						_touch_pt_dt.x = arg1;
 						_touch_pt_dt.y = arg2;
 						return;
 					}
 
-					dptype = Common::EVENT_MOUSEMOVE;
 
 					if (_touchpad_mode) {
 						scaleMouse(e.mouse, arg1 - _touch_pt_dt.x,
@@ -519,9 +521,13 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 				}
 
 				lockMutex(_event_queue_lock);
+				if (e.type != Common::EVENT_INVALID) {
 				_event_queue.push(e);
+				}
+				if (dptype != Common::EVENT_INVALID) {
 				e.type = dptype;
 				_event_queue.push(e);
+				}
 				unlockMutex(_event_queue_lock);
 			}
 		} else {
