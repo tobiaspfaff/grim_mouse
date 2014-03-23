@@ -437,16 +437,24 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 			Common::EventType down, up;
 
-			// TODO put these values in some option dlg?
-			if (arg3 > 1000) {
-				down = Common::EVENT_MBUTTONDOWN;
-				up = Common::EVENT_MBUTTONUP;
-			} else if (arg3 > 500) {
+			if (_mouse_action == 0) {
+				// TODO put these values in some option dlg?
+				if (arg3 > 1000) {
+					down = Common::EVENT_MBUTTONDOWN;
+					up = Common::EVENT_MBUTTONUP;
+				} else if (arg3 > 500) {
+					down = Common::EVENT_RBUTTONDOWN;
+					up = Common::EVENT_RBUTTONUP;
+				} else {
+					down = Common::EVENT_LBUTTONDOWN;
+					up = Common::EVENT_LBUTTONUP;
+				}
+			} else if (_mouse_action == 1) {
 				down = Common::EVENT_RBUTTONDOWN;
 				up = Common::EVENT_RBUTTONUP;
-			} else {
-				down = Common::EVENT_LBUTTONDOWN;
-				up = Common::EVENT_LBUTTONUP;
+			} else if (_mouse_action == 2) {
+				down = Common::EVENT_RBUTTONDOWN;
+				up = Common::EVENT_RBUTTONUP;
 			}
 
 			lockMutex(_event_queue_lock);
@@ -463,6 +471,14 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			e.type = up;
 			_queuedEvent = e;
 			_queuedEventTime = getMillis() + kQueuedInputEventDelay;
+
+			if (_mouse_action == 2) {
+				e.kbd.keycode = Common::KEYCODE_KP_PLUS;
+				e.type = Common::EVENT_KEYDOWN;
+				_event_queue.push(e);
+				e.type = Common::EVENT_KEYUP;
+				_event_queue.push(e);
+			}
 
 			unlockMutex(_event_queue_lock);
 		} else {
@@ -628,6 +644,30 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 	case JE_QUIT:
 		e.type = Common::EVENT_QUIT;
+
+		pushEvent(e);
+
+		return;
+
+	case JE_SPECIAL:
+		switch (arg1) {
+		case 1:
+			if (arg2 == 0 || arg2 == 1) {
+				_show_mouse = true;
+				g_system->setFeatureState(OSystem::kFeatureVirtControls, false);
+				_touchpad_mode = (arg2 == 0);
+			} else {
+				_show_mouse = false;
+				g_system->setFeatureState(OSystem::kFeatureVirtControls, true);
+			}
+			break;
+		case 2:
+			_mouse_action = arg2;
+			return;
+		default:
+			LOGE("unhandled special action: %d", arg1);
+			return;
+		}
 
 		pushEvent(e);
 

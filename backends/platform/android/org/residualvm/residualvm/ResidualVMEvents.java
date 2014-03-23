@@ -34,6 +34,7 @@ public class ResidualVMEvents implements
 	public static final int JE_TOUCH = 9;
 	public static final int JE_LONG = 10;
 	public static final int JE_FLING = 11;
+	public static final int JE_SPECIAL = 12;
 	public static final int JE_QUIT = 0x1000;
 
 	private final int REL_SWIPE_MIN_DISTANCE;
@@ -132,10 +133,12 @@ public class ResidualVMEvents implements
 				// only send up events of the menu button to the native side
 				if (action != KeyEvent.ACTION_UP)
 					return true;
+					
+				((ResidualVMActivity)_context).toggleSidebar();
+				return true;
 			}
 
 			_residualvm.pushEvent(JE_SYS_KEY, action, keyCode, 0, 0, 0, 0);
-
 			return true;
 		}
 

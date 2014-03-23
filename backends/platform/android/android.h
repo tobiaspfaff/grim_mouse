@@ -232,6 +232,7 @@ private:
 	int _trackball_scale;
 	int _dpad_scale;
 	int _fingersDown;
+	int _mouse_action; // action to perform on left click
 
 	void clipMouse(Common::Point &p);
 	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true);
