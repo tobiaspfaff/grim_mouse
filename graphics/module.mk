@@ -48,6 +48,11 @@ MODULE_OBJS := \
 	tinygl/zline.o \
 	tinygl/zmath.o \
 	tinygl/ztriangle.o \
+	tinygl/ztriangle_shadow.o
+ifdef USE_OPENGL_SHADERS
+MODULE_OBJS += \
+	projection.o
+endif
 
 ifdef USE_SCALERS
 MODULE_OBJS += \

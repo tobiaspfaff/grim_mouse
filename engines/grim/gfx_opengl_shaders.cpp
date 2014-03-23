@@ -53,6 +53,7 @@
 
 #include "graphics/surface.h"
 #include "graphics/pixelbuffer.h"
+#include "graphics/projection.h"
 
 #include "engines/grim/actor.h"
 #include "engines/grim/bitmap.h"
@@ -1809,6 +1810,88 @@ void GfxOpenGLS::createModel(Mesh *mesh) {
 	shader->enableVertexAttribute("texcoord", mud->_meshInfoVBO, 2, GL_FLOAT, GL_FALSE, sizeof(GrimVertex), 3 * sizeof(float));
 	shader->enableVertexAttribute("normal", mud->_meshInfoVBO, 3, GL_FLOAT, GL_FALSE, sizeof(GrimVertex), 5 * sizeof(float));
 	shader->disableVertexAttribute("color", Math::Vector4d(1.f, 1.f, 1.f, 1.f));
+}
+
+void GfxOpenGLS::blackbox(int x0, int y0, int x1, int y1, float opacity) {
+#if 0
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glDisable(GL_LIGHTING);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glColor4f(0,0,0, opacity);
+
+	glBegin(GL_QUADS);
+    glVertex2f(x0,y0);
+    glVertex2f(x1,y0);
+    glVertex2f(x1,y1);
+    glVertex2f(x0,y1);
+    glEnd();
+
+    glColor4f(1,1,1,1);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+#endif
+}
+
+bool GfxOpenGLS::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
+    if (_currentShadowArray) return false;
+
+    Math::Vector3d win;
+
+    Math::Matrix4 proj(_projMatrix);
+    proj.transpose();
+    Math::Matrix4 view(_viewMatrix);
+    view.transpose();
+
+    const int viewPort[4] = {0,0,_gameWidth,_gameHeight};
+    Graphics::project(vec, view, proj, viewPort, win);
+
+    win.y() = _gameHeight - win.y();
+
+    if (win.x() < 0)
+    	win.x() = 0;
+    if (win.x() >= _gameWidth)
+    	win.x() = _gameWidth - 1;
+    if (win.y() < 0)
+    	win.y() = 0;
+    if (win.y() >= _gameHeight)
+    	win.y() = _gameHeight - 1;
+
+    x = (int)win.x();
+    y = (int)win.y();
+    return x>0 && y>0 && x<_gameWidth-1 && y<_gameHeight-1;
+}
+
+bool GfxOpenGLS::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
+    Math::Vector3d p0, p1;
+
+    const int viewPort[4] = {0,0,_gameWidth,_gameHeight};
+
+    const Math::Vector3d winPos0(x, _gameHeight - y, 0.0);
+    const Math::Vector3d winPos1(x, _gameHeight - y, 1.0);
+
+    Math::Matrix4 proj(_projMatrix);
+    proj.transpose();
+    Math::Matrix4 view(_viewMatrix);
+    view.transpose();
+
+    Graphics::unProject(winPos0, view, proj, viewPort, p0);
+    Graphics::unProject(winPos1, view, proj, viewPort, p1);
+
+    r0 = p0;
+    r1 = p1 - r0;
+    return true;
 }
 
 
