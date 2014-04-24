@@ -294,7 +294,10 @@ Common::Error GrimEngine::run() {
 
 	bool fullscreen = ConfMan.getBool("fullscreen");
 	createRenderer();
-	g_driver->setupScreen(640, 480, fullscreen);
+	if (ConfMan.hasKey("gameWidth") && ConfMan.hasKey("gameHeight")) {
+        g_driver->setupScreen(ConfMan.getInt("gameWidth"), ConfMan.getInt("gameHeight"), fullscreen);
+    }
+    else g_driver->setupScreen(640, 480, fullscreen);
 	_system->showMouse(false);
 	_system->lockMouse(false);
 
