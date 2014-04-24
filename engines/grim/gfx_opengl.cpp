@@ -341,6 +341,9 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 
 			gluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
 
+            winX = winX/_scaleW;
+            winY = winY/_scaleH;
+            
 			if (winX > right)
 				right = winX;
 			if (winX < left)
@@ -410,6 +413,9 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 			
 			gluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
 			
+            winX = winX/_scaleW;
+            winY = winY/_scaleH;
+
 			if (winX > right)
 				right = winX;
 			if (winX < left)
@@ -916,8 +922,8 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 				glBindTexture(GL_TEXTURE_2D, textures[bitmap->_numTex * pic + i]);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexImage2D(GL_TEXTURE_2D, 0, format, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, format, type, NULL);
 			}
 
@@ -1175,10 +1181,10 @@ void GfxOpenGL::createFont(Font *font) {
 
 	}
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size * charsWide, size * charsHigh, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp);
 
 	delete[] data;
@@ -1388,10 +1394,10 @@ void GfxOpenGL::prepareMovieFrame(Graphics::Surface *frame) {
 	glGenTextures(_smushNumTex, _smushTexIds);
 	for (int i = 0; i < _smushNumTex; i++) {
 		glBindTexture(GL_TEXTURE_2D, _smushTexIds[i]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
 	}
 
@@ -1940,6 +1946,9 @@ bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
 
     gluProject(vec.x(), vec.y(), vec.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
     
+    winX = winX/_scaleW;
+    winY = winY/_scaleH;
+    
     winY = _gameHeight - winY;
     
     if (winX < 0)
@@ -1960,7 +1969,7 @@ bool GfxOpenGL::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
     GLdouble modelView[16], projection[16], p0[3], p1[3];
     GLint viewPort[4];
 
-    GLdouble winX = x, winY = _gameHeight - y;
+    GLdouble winX = _scaleW*x, winY = _scaleH*(_gameHeight - y);
     glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
     glGetDoublev(GL_PROJECTION_MATRIX, projection);
     glGetIntegerv(GL_VIEWPORT, viewPort);
