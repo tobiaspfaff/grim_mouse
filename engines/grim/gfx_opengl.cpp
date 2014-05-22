@@ -1012,10 +1012,11 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 				texOut = (byte *)bitmap->getImageData(pic).getRawBuffer();
 			}
 
+			bool smooth = bitmap->_smoothInterpolation && (_scaleW != 1 || _scaleH != 1);
 			for (int i = 0; i < bitmap->_numTex; i++) {
 				glBindTexture(GL_TEXTURE_2D, textures[bitmap->_numTex * pic + i]);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, smooth ? GL_LINEAR : GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, smooth ? GL_LINEAR : GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexImage2D(GL_TEXTURE_2D, 0, format, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, format, type, nullptr);
@@ -1147,6 +1148,8 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
 #endif
 	}
 
+	float upper = (bitmap->_data->_smoothInterpolation && (_scaleW != 1 || _scaleH != 1)) ? 0.99f : 1.0f;
+	
 	glEnable(GL_SCISSOR_TEST);
 	glScissor((int)(dx * _scaleW), _screenHeight - (int)(((dy + bitmap->getHeight())) * _scaleH), (int)(bitmap->getWidth() * _scaleW), (int)(bitmap->getHeight() * _scaleH));
 	int cur_tex_idx = bitmap->getNumTex() * (bitmap->getActiveImage() - 1);
@@ -1157,11 +1160,11 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
 			glBegin(GL_QUADS);
 			glTexCoord2f(0.0f, 0.0f);
 			glVertex2f(x * _scaleW, y * _scaleH);
-			glTexCoord2f(1.0f, 0.0f);
+			glTexCoord2f(upper, 0.0f);
 			glVertex2f((x + BITMAP_TEXTURE_SIZE) * _scaleW, y * _scaleH);
-			glTexCoord2f(1.0f, 1.0f);
+			glTexCoord2f(upper,upper);
 			glVertex2f((x + BITMAP_TEXTURE_SIZE) * _scaleW, (y + BITMAP_TEXTURE_SIZE)  * _scaleH);
-			glTexCoord2f(0.0f, 1.0f);
+			glTexCoord2f(0.0f, upper);
 			glVertex2f(x * _scaleW, (y + BITMAP_TEXTURE_SIZE) * _scaleH);
 			glEnd();
 			cur_tex_idx++;

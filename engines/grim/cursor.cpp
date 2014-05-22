@@ -40,12 +40,20 @@ Cursor::Cursor(GrimEngine *vm) :
     for (int i=0; i<numCursors; i++)
         _bitmaps[i] = 0;
     loadAvailableCursors();
+    _scaleX = 1.0f/g_driver->getScaleW();
+    _scaleY = 1.0f/g_driver->getScaleH();
+}
+
+void Cursor::updatePosition(Common::Point& mouse) {
+    _position.x = mouse.x * _scaleX;
+    _position.y = mouse.y * _scaleY;
 }
 
 void Cursor::loadAvailableCursors() { 
    for(int i=0; i<numCursors; i++) {
         Common::String fn = Common::String::format("cursor%d.tga",i);
         _bitmaps[i] = Bitmap::create(fn.c_str());
+        _bitmaps[i]->_data->_smoothInterpolation = true;
         _bitmaps[i]->_data->load();
         _bitmaps[i]->_data->_hasTransparency = true;
     }

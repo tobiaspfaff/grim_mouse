@@ -218,7 +218,7 @@ private:
 	Graphics::Shader* _actorProgram;
 	Graphics::Shader* _spriteProgram;
 	Graphics::Shader* _smushProgram;
-	GLuint _smushVBO, _quadEBO;
+	GLuint _smushVBO, _quadEBO, _quadEBO99;
 	Graphics::Shader* _textProgram;
 	Graphics::Shader* _primitiveProgram;
 	Graphics::Shader* _irisProgram;

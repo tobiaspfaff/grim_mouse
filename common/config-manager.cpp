@@ -96,6 +96,7 @@ void ConfigManager::loadDefaultConfigFile() {
 }
 
 void ConfigManager::loadConfigFile(const String &filename) {
+	warning(filename.c_str());
 	_filename = filename;
 
 	FSNode node(filename);

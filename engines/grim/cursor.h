@@ -36,13 +36,14 @@ public:
 	virtual ~Cursor();
 
 	Common::Point getPosition() { return _position; }
-	void updatePosition(Common::Point &mouse) { _position = mouse; }
+	void updatePosition(Common::Point &mouse);
 	void setCursor(int id) { _curCursor = id; }
 	void reload();
 
 	void draw();
 private:
 
+	float _scaleX, _scaleY;
     int32 _hotspotx, _hotspoty;
     int32 _curCursor;
 	
