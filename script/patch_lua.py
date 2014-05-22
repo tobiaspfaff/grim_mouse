@@ -2,6 +2,7 @@
 
 import glob,filecmp,shutil,os,subprocess
 
+toolpath = '/Users/tpfaff/code/residualvm-tools'
 modpath = '/Users/tpfaff/grimex'
 origpath = '/Users/tpfaff/grimex_orig'
 patchpath = '/tmp/grim_pnc'
@@ -14,6 +15,6 @@ for new_file in glob.glob(modpath+'/*.lua'):
 		patch_file = patchpath + '/' + os.path.basename(new_file) + '.patchr'
 		if not filecmp.cmp(old_file,new_file,False):
 			neq += 1
-			subprocess.call(['./diffr','-n','-m',old_file,new_file,patch_file],shell=False)
+			subprocess.call([toolpath+'/diffr','-n','-m',old_file,new_file,patch_file],shell=False)
 		tot += 1
 print ('%d/%d files copied' % (neq,tot))

@@ -146,10 +146,7 @@ TAGS
 residualvm.kdev4
 hs/.kdev4/
 
-patchr
-diffr
 lua.tgz
-mklab
 run
 mouse.lab
 dists/engine-data/patches/grim_pnc

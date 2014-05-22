@@ -1,5 +1,8 @@
 #!/usr/bin/python
-import glob,struct,sys
+import glob,struct,sys,os
+
+srcpath = '/Users/tpfaff/code/residualvm'
+patchpath = '/tmp/grim_pnc'
 
 class Dataset:
 	pass
@@ -11,8 +14,8 @@ def writestring(fp,str):
 
 dset = []
 sname = []
-for file in glob.glob('hs/*.set.hot'):
-	set = file.replace('.hot','').replace('hs/','')
+for file in glob.glob(srcpath+'/hs/*.set.hot'):
+	set = os.path.basename(file).replace('.hot','')
 	with open(file,'r') as fin:
 		data = []
 		for line in fin:
@@ -39,7 +42,10 @@ for file in glob.glob('hs/*.set.hot'):
 		dset.append(data)
 		sname.append(set)
 
-with open('/tmp/grim_pnc/set.bin','wb') as fout:
+if not os.path.exists(patchpath):
+    os.makedirs(patchpath)
+
+with open(patchpath+'/set.bin','wb') as fout:
 	fout.write(struct.pack('i',len(dset)))
 	for i in range(len(dset)):
 		writestring(fout,sname[i])
