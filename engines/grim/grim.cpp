@@ -796,6 +796,8 @@ void GrimEngine::mainLoop() {
                         _hotspotManager->initialize();
                     } else if (_devMode && event.kbd.keycode == Common::KEYCODE_F6) {
                         _hotspotManager->debug(1);
+                    } else if (_devMode && event.kbd.keycode == Common::KEYCODE_F7) {
+                        _hotspotManager->debug(2);
                     } else if (_devMode && _opMode > 0 && event.kbd.keycode == Common::KEYCODE_ESCAPE) {
                         _hotspotManager->cancel();
                         break;

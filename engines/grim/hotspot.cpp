@@ -77,6 +77,14 @@ void Polygon::move(const Common::Point& center) {
         _pnts[i] += offset;
 }
 
+inline Actor* getManny() {
+    foreach (Actor *a, g_grim->getActiveActors()) {
+        if (a->getName() == "Manny")
+            return a;
+    }
+    return 0;
+}
+
 HotspotMan::HotspotMan() : 
     _selectMode (0), _initialized(false), _lastClick(0), _ctrlMode(0),_cutScene(0),
     _flashHS(false) {
@@ -296,6 +304,7 @@ void HotspotMan::debug(int num) {
         char c = (hotspots[i]._objId>=0 && _hotobject[hotspots[i]._objId]._active) ? 'A' : 'D';
         warning("hspt %c %s",c,(hotspots[i]._id + "/" + hotspots[i]._desc).c_str());
     }   
+    warning("manny at %g,%g,%g",getManny()->getPos().x(), getManny()->getPos().y(), getManny()->getPos().z());
 }
 
 /*
@@ -385,14 +394,6 @@ void HotspotMan::append_hotspot(const Common::String& id, const Common::String& 
         fprintf(fp," %d %d",_selectPoly._pnts[i].x, _selectPoly._pnts[i].y);
     fprintf(fp,"\n");
     fclose(fp);                
-}
-
-inline Actor* getManny() {
-    foreach (Actor *a, g_grim->getActiveActors()) {
-        if (a->getName() == "Manny")
-            return a;
-    }
-    return 0;
 }
 
 void HotspotMan::okKey(bool shift) {
