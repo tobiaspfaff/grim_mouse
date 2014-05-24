@@ -26,7 +26,6 @@
 #include "engines/grim/bitmap.h"
 #include "graphics/surface.h"
 #include "graphics/cursorman.h"
-#include "image/bmp.h"
 
 const static int numCursors = 8;
 

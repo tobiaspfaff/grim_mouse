@@ -968,7 +968,7 @@ struct luaL_reg grimPrimitivesOpcodes[] = {
 	{ "DrawRectangle", LUA_OPCODE(Lua_V1, DrawRectangle) },
 	{ "ChangePrimitive", LUA_OPCODE(Lua_V1, ChangePrimitive) },
 	{ "KillPrimitive", LUA_OPCODE(Lua_V1, KillPrimitive) },
-	{ "PurgePrimitiveQueue", LUA_OPCODE(Lua_V1, PurgePrimitiveQueue) }
+	{ "PurgePrimitiveQueue", LUA_OPCODE(Lua_V1, PurgePrimitiveQueue) },
 };
 
 struct luaL_reg grimHardwareOpcodes[] = {

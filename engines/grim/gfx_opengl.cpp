@@ -1148,10 +1148,12 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
 #endif
 	}
 
-	float upper = (bitmap->_data->_smoothInterpolation && (_scaleW != 1 || _scaleH != 1)) ? 0.99f : 1.0f;
-	
+	bool smooth = bitmap->_data->_smoothInterpolation && (_scaleW != 1 || _scaleH != 1);
+	int scaledWidth = (int)((bitmap->getWidth()) * _scaleW);
+	int scaledHeight = (int)((bitmap->getHeight()) * _scaleH);
+	float upper = smooth ? 0.999f: 1.0f;
 	glEnable(GL_SCISSOR_TEST);
-	glScissor((int)(dx * _scaleW), _screenHeight - (int)(((dy + bitmap->getHeight())) * _scaleH), (int)(bitmap->getWidth() * _scaleW), (int)(bitmap->getHeight() * _scaleH));
+	glScissor((int)(dx * _scaleW), _screenHeight - (int)(((dy + bitmap->getHeight())) * _scaleH), scaledWidth, scaledHeight);
 	int cur_tex_idx = bitmap->getNumTex() * (bitmap->getActiveImage() - 1);
 	for (int y = dy; y < (dy + bitmap->getHeight()); y += BITMAP_TEXTURE_SIZE) {
 		for (int x = dx; x < (dx + bitmap->getWidth()); x += BITMAP_TEXTURE_SIZE) {
