@@ -1,11 +1,11 @@
 Grim Mouse
 A point-and-click interface for Grim Fandango 
-Version 0.4
+Version 0.5
 
 
 Executables are available at
-http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_4.zip (Windows)
-http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_4.dmg (Mac)
+http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_5.zip (Windows)
+http://graphics.berkeley.edu/~tpfaff/data/grim_mouse_0_5.dmg (Mac)
 
 Source code is available at:
 https://github.com/tobiaspfaff/grim_mouse/tree/mouse
@@ -28,8 +28,8 @@ mod. See below for information on how to report bugs.
 -------------
 Current state
 -------------
-This mod is alpha, and has not been well tested yet. You may
-run into bugs, which may prevent you from finishing the game --
+This mod is alpha. 
+You may run into bugs, which may prevent you from finishing the game --
 so save often and play at your own risk.
 
 ---------------------
