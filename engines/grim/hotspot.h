@@ -72,7 +72,7 @@ public:
     HotspotMan();
     virtual ~HotspotMan();
 
-    enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5 };
+    enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5, Options=6 };
     
     int addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene);    
     void disableAll();
@@ -101,11 +101,14 @@ public:
     void cutSceneMode(int mode);
     void flashHotspots();
     void renameHotspot(int id, const Common::String& name);
+    void setOptionMode(const Common::String& name) { _curOption = name; }
+    Common::String& getOptionMode() { return _curOption; }
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type);
     int inBox(const Common::Point& p);
     void freeClick(const Common::Point& cursor, int button, bool doubleClick, bool climbing);
     void loadFlashBitmaps();
+    Common::String active_set();
 
     // dialog support
     int _ctrlMode, _rows, _cols;
@@ -123,7 +126,7 @@ protected:
     bool _initialized;
     typedef Common::HashMap<Common::String,Common::Array<Hotspot> > HotDict;
     HotDict _hotspots;
-    Common::String _curScene;
+    Common::String _curScene, _curOption;
     Common::Array<HotObject> _hotobject;
     Common::Point _lastCursor;
     int _cutScene;

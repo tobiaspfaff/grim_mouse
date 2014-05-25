@@ -297,6 +297,8 @@ protected:
     DECLARE_LUA_OPCODE(MouseDown);
     DECLARE_LUA_OPCODE(InteractMode);
     DECLARE_LUA_OPCODE(RenameHotspot);
+    DECLARE_LUA_OPCODE(GetControlMode);
+    DECLARE_LUA_OPCODE(SetOptionMode);
 };
 
 }

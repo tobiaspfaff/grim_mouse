@@ -113,6 +113,7 @@ MODULE_OBJS := \
 	lua_v1_set.o \
 	lua_v1_sound.o \
 	lua_v1_text.o \
+	lua_v1_mouse.o \
 	material.o \
 	model.o \
 	objectstate.o \
