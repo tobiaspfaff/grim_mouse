@@ -1120,7 +1120,7 @@ for ac_option in $@; do
 	--with-zlib-prefix=*)
 		arg=`echo $ac_option | cut -d '=' -f 2`
 		ZLIB_CFLAGS="-I$arg/include"
-		ZLIB_LIBS="-L$arg/lib"
+		ZLIB_LIBS=""
 		;;
 	--with-sparkle-prefix=*)
 		arg=`echo $ac_option | cut -d '=' -f 2`

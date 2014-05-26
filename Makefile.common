@@ -24,6 +24,7 @@ MODULES += \
 	gui \
 	backends \
 	engines \
+	zlib \
 	video \
 	graphics \
 	image \

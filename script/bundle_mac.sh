@@ -1,7 +1,5 @@
 #!/bin/bash
-cp -f /usr/local/opt/zlib/lib/libz.a /usr/local/lib/
 make bundle
-rm /usr/local/lib/libz.a
 cp dists/engine-data/mouse.lab ResidualVM.app/Contents/Resources/
 rm -rf /tmp/pkg
 mkdir -p /tmp/pkg
