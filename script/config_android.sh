@@ -1,0 +1,1 @@
+ANDROID_SDK="/Users/tpfaff/code/android_sdk" ANDROID_NDK="/Users/tpfaff/code/android_ndk" ./configure --disable-engine=myst3 --disable-engine=monkey4 --disable-vorbis --disable-mpeg2 --disable-jpeg --disable-png --disable-freetype2 --host=android-arm --backend=android --enable-opengl-shaders

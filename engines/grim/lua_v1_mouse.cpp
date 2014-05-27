@@ -65,8 +65,8 @@ void Lua_V1::UpdateHotspot() {
 void Lua_V1::SwitchControlMode() { 
     int mode = lua_getnumber(lua_getparam(1));    
     g_grim->getHotspotMan()->switchMode(mode);
-    if (!lua_isnumber(lua_getparam(2))) return;
     if (mode == 1 || mode == 5) {
+        if (!lua_isnumber(lua_getparam(2))) return;
         int lines = lua_getnumber(lua_getparam(2));    
         int x0 = lua_getnumber(lua_getparam(3));
         int y0 = lua_getnumber(lua_getparam(4));
@@ -74,7 +74,8 @@ void Lua_V1::SwitchControlMode() {
         int height = lua_getnumber(lua_getparam(6));
         g_grim->getHotspotMan()->setupDialog(x0,y0,width,height,lines,1);
     } else if (mode == 3) {
-    	Math::Vector3d axis(lua_getnumber(lua_getparam(2)),
+    	if (!lua_isnumber(lua_getparam(2))) return;
+        Math::Vector3d axis(lua_getnumber(lua_getparam(2)),
 				    		lua_getnumber(lua_getparam(3)),
 				    		lua_getnumber(lua_getparam(4)));
     	g_grim->getHotspotMan()->setAxis(axis, lua_getnumber(lua_getparam(5)));

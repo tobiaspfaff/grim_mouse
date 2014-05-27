@@ -168,7 +168,7 @@ void HotspotMan::flashHotspots() {
     update();
 }
 
-void HotspotMan::drawActive(int debug) {
+void HotspotMan::drawActive(int debug) { 
     if (_flashHS) {
         unsigned int curTime = g_system->getMillis();
         unsigned int delta = curTime - _flashStart;

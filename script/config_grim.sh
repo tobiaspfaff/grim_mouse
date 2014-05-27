@@ -1,1 +1,1 @@
-./configure --disable-engine=myst3 --disable-engine=monkey4 --disable-vorbis --disable-mpeg2 --disable-jpeg --disable-png --disable-freetype2 CFLAGS="-O3 -mmacosx-version-min=10.6" CXXFLAGS="-O3 -mmacosx-version-min=10.6"
+CFLAGS="-O3 -mmacosx-version-min=10.6" CXXFLAGS="-O3 -mmacosx-version-min=10.6" ./configure --disable-engine=myst3 --disable-engine=monkey4 --disable-vorbis --disable-mpeg2 --disable-jpeg --disable-png --disable-freetype2

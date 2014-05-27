@@ -604,6 +604,11 @@ void GrimEngine::drawNormalMode() {
 	// the closed door will be overdrawn by a movie used as background image.
 	_currSet->drawBitmaps(ObjectState::OBJSTATE_UNDERLAY);
 
+	// Draw Primitives
+	foreach (PrimitiveObject *p, PrimitiveObject::getPool()) {
+		p->draw();
+	}
+
 	_currSet->setupCamera();
 
 	g_driver->set3DMode();
@@ -626,11 +631,6 @@ void GrimEngine::drawNormalMode() {
 	// The overlay objects should be drawn on top of everything else,
 	// including 3D objects such as Manny and the message tube
 	_currSet->drawBitmaps(ObjectState::OBJSTATE_OVERLAY);
-
-	// Draw Primitives
-	foreach (PrimitiveObject *p, PrimitiveObject::getPool()) {
-		p->draw();
-	}
 
 	drawCursor();    
 }
