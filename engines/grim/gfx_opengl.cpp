@@ -1847,10 +1847,10 @@ void GfxOpenGL::blackbox(int x0, int y0, int x1, int y1, float opacity) {
 	glColor4f(0,0,0, opacity);
 
 	glBegin(GL_QUADS);
-    glVertex2f(x0,y0);
-    glVertex2f(x1,y0);
-    glVertex2f(x1,y1);
-    glVertex2f(x0,y1);
+    glVertex2f(x0 * _scaleW,y0 * _scaleH);
+    glVertex2f(x1 * _scaleW,y0 * _scaleH);
+    glVertex2f(x1 * _scaleW,y1 * _scaleH);
+    glVertex2f(x0 * _scaleW,y1 * _scaleH);
     glEnd();
 
     glColor4f(1,1,1,1);
