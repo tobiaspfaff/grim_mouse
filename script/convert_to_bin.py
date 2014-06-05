@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import glob,struct,sys,os
 
-srcpath = '/Users/tpfaff/code/residualvm'
+srcpath = '.'
 patchpath = '/tmp/grim_pnc'
 
 class Dataset:

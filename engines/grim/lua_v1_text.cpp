@@ -105,14 +105,14 @@ void Lua_V1::MakeTextObject() {
 
 	TextObject *textObject = new TextObject();
 	const char *line = lua_getstring(textObj);
-    
+
 	textObject->setDefaults(&g_grim->_blastTextDefaults);
 	lua_Object tableObj = lua_getparam(2);
 	if (lua_istable(tableObj))
 		setTextObjectParams(textObject, tableObj);
 
 	textObject->setText(line);
-
+    
 	lua_pushusertag(textObject->getId(), MKTAG('T', 'E', 'X', 'T'));
 	if (!(g_grim->getGameFlags() & ADGF_DEMO)) {
 		lua_pushnumber(textObject->getBitmapWidth());
