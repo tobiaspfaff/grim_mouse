@@ -24,7 +24,6 @@ MODULES += \
 	gui \
 	backends \
 	engines \
-	zlib \
 	video \
 	graphics \
 	image \
@@ -35,6 +34,10 @@ MODULES += \
 
 ifdef USE_MT32EMU
 MODULES += audio/softsynth/mt32
+endif
+
+ifneq ($(BACKEND),android)
+MODULES += zlib
 endif
 
 ######################################################################

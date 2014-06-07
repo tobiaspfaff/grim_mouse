@@ -489,7 +489,7 @@ double line_line_dist(const Math::Vector3d& x0, const Math::Vector3d& x1,
     return (c*d-b*e)/(c*a-b*b);
 }
 
-void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debug) {
+void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debugMode) {
     bool climbing = LuaBase::instance()->queryVariable("system.currentActor.is_climbing", false) != 0;
     _lastCursor = cursor;
 
@@ -520,7 +520,7 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
     } else if (_ctrlMode == Inventory && button > 0) {
          for (int j=0,idx=0; j<_rows; j++) {
             for (int i=0; i<_cols; i++,idx++) {
-                if (idx >= _inventory.size()) break;
+                if (idx >= (int)_inventory.size()) break;
                 if (cursor.x >= _x0+i*_w && cursor.x <_x0+(i+1)*_w &&
                     cursor.y >= _y0+j*_h && cursor.y <_y0+(j+1)*_h) {
                     LuaObjects objects;
@@ -538,7 +538,7 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
         return;
     }
 
-    if (debug > 0 && button == 1 && _selectMode >=0) {
+    if (debugMode > 0 && button == 1 && _selectMode >=0) {
         Common::Point pnt(cursor.x, cursor.y);
         if (_selectMode == 0)
             _selectPoly._pnts.push_back(pnt);
@@ -548,7 +548,7 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
         _selectMode++;
     }
 
-    if (debug==0) {
+    if (debugMode==0) {
         // ------- click on hot spots ------------
         Common::Array<Hotspot>& hotspots = _hotspots[active_set()];
         int setup = g_grim->getCurrSet()->getSetup();
@@ -602,7 +602,7 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
                         LuaObjects objects;
                         objects.add(button);
                         objects.add(doubleClick ? 1 : 0);
-                        for (int k=0; k<hs._path.size(); k++) {
+                        for (int k=0; k<(int)hs._path.size(); k++) {
                             buf[3*k] = hs._path[k].x();
                             buf[3*k+1] = hs._path[k].y();
                             buf[3*k+2] = hs._path[k].z();
@@ -705,7 +705,7 @@ void HotspotMan::hover(const Common::Point& pos) {
     } else if (_ctrlMode == Inventory) {
          for (int j=0,idx=0; j<_rows; j++) {
             for (int i=0; i<_cols; i++,idx++) {
-                if (idx >= _inventory.size()) break;
+                if (idx >= (int)_inventory.size()) break;
                 if (pos.x >= _x0+i*_w && pos.x <_x0+(i+1)*_w &&
                     pos.y >= _y0+j*_h && pos.y <_y0+(j+1)*_h) {
                     cursor->setCursor(1);

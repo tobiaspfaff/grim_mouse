@@ -14,11 +14,11 @@ import android.view.ViewConfiguration;
 import android.view.GestureDetector;
 import android.view.inputmethod.InputMethodManager;
 
-import tv.ouya.console.api.OuyaController;
+//import tv.ouya.console.api.OuyaController;
 
 public class ResidualVMEvents implements
 		android.view.View.OnKeyListener,
-		android.view.View.OnGenericMotionListener,
+		//android.view.View.OnGenericMotionListener,
 		android.view.GestureDetector.OnGestureListener,
 		android.view.GestureDetector.OnDoubleTapListener {
 
@@ -35,7 +35,7 @@ public class ResidualVMEvents implements
 	public static final int JE_LONG = 10;
 	public static final int JE_FLING = 11;
 	public static final int JE_QUIT = 0x1000;
-	
+
 	private final int REL_SWIPE_MIN_DISTANCE;
 	private final int REL_SWIPE_THRESHOLD_VELOCITY;
 
@@ -54,7 +54,7 @@ public class ResidualVMEvents implements
 		//_gd.setIsLongpressEnabled(false);
 
 		_longPress = ViewConfiguration.getLongPressTimeout();
-		
+
 		DisplayMetrics dm = context.getResources().getDisplayMetrics();
 		REL_SWIPE_MIN_DISTANCE       = (int)(120 * dm.densityDpi / 160.0f);
 		REL_SWIPE_THRESHOLD_VELOCITY = (int)(100 * dm.densityDpi / 160.0f);
@@ -177,32 +177,32 @@ public class ResidualVMEvents implements
 	}
 
 	final public boolean onTouchEvent(MotionEvent e) {
-		
+
 		_gd.onTouchEvent(e);
-		
+
 		final int action = e.getActionMasked();
 
 		// ACTION_MOVE always returns the first pointer as the "active" one.
 		if (action == MotionEvent.ACTION_MOVE) {
 			for (int idx = 0; idx < e.getPointerCount(); ++idx) {
 				final int pointer = e.getPointerId(idx);
-				
+
 				final int x = (int)e.getX(idx);
 				final int y = (int)e.getY(idx);
-				
-				_residualvm.pushEvent(JE_TOUCH, pointer, action, x, y, 0, 0);	
+
+				_residualvm.pushEvent(JE_TOUCH, pointer, action, x, y, 0, 0);
 			}
 		} else {
 			final int idx = e.getActionIndex();
 			final int pointer = e.getPointerId(idx);
-			
+
 			final int x = (int)e.getX(idx);
 			final int y = (int)e.getY(idx);
-			
-			_residualvm.pushEvent(JE_TOUCH, pointer, action, x, y, 0, 0);	
+
+			_residualvm.pushEvent(JE_TOUCH, pointer, action, x, y, 0, 0);
 		}
-		
-		
+
+
 		return true;
 	}
 
@@ -221,7 +221,7 @@ public class ResidualVMEvents implements
 //		    || Math.abs(e1.getY() - e2.getY()) < REL_SWIPE_MIN_DISTANCE
 //			|| velocityY < REL_SWIPE_THRESHOLD_VELOCITY)
 //		  return false;
-//		
+//
 //		_residualvm.pushEvent(JE_FLING, (int)e1.getX(), (int)e1.getY(),
 //							(int)e2.getX(), (int)e2.getY(), 0, 0);
 	}
@@ -266,6 +266,7 @@ public class ResidualVMEvents implements
 	private static boolean rightJoystickHeld = false;
 	private static int rightJoystickKeyCode = -1;
 
+	/*
 	public boolean onGenericMotion(View v, final MotionEvent event) {
 		if ((event.getSource() & InputDevice.SOURCE_CLASS_JOYSTICK) != 0) {
 			float RS_Y = event.getAxisValue(OuyaController.AXIS_RS_Y);
@@ -285,4 +286,5 @@ public class ResidualVMEvents implements
 		}
 		return false;
 	}
+	*/
 }

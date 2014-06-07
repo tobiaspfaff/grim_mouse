@@ -2000,6 +2000,7 @@ define_in_config_h_if_yes $_need_memalign 'SCUMM_NEED_ALIGNMENT'
 # Check the CPU architecture
 #
 echo_n "Checking host CPU architecture... "
+
 case $_host_cpu in
 	arm*)
 		echo "ARM"
@@ -3308,6 +3309,9 @@ define_in_config_if_yes "$_build_hq_scalers" 'USE_HQ_SCALERS'
 # Enforce ZLIB use
 #
 DEFINES="$DEFINES -DUSE_ZLIB"
+if [ "$_host_os" = "android" ]; then
+	LIBS="$LIBS -lz"
+fi
 
 #
 # Check for math lib

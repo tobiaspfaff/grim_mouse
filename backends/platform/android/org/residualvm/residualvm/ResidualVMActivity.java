@@ -22,7 +22,7 @@ import android.widget.Button;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 
-import tv.ouya.console.api.OuyaController;
+//import tv.ouya.console.api.OuyaController;
 
 import java.io.File;
 
@@ -49,10 +49,11 @@ public View.OnClickListener optionsBtnOnClickListener = new View.OnClickListener
 		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
     }
 
+private static final int KEYCODE_F1 = 133;
 public View.OnClickListener menuBtnOnClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_F1);
+        	emulateKeyPress(KEYCODE_F1);
         }
     };
 
@@ -163,7 +164,7 @@ public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener(
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		setContentView(R.layout.main);
-		OuyaController.init(this);
+		//OuyaController.init(this);
 		takeKeyEvents(true);
 
 		// This is a common enough error that we should warn about it
@@ -223,18 +224,18 @@ public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener(
 		((Button)findViewById(R.id.look_at_btn)).setOnClickListener(lookAtBtnOnClickListener);
 
 		main_surface.setOnKeyListener(_events);
-		main_surface.setOnGenericMotionListener(_events);
+		//main_surface.setOnGenericMotionListener(_events);
 
 		_residualvm_thread = new Thread(_residualvm, "ResidualVM");
 		_residualvm_thread.start();
 	}
-	
+
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.game_menu, menu);
 		return true;
 	}
-	
+
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
