@@ -118,7 +118,6 @@ _alsa=auto
 _seq_midi=no
 _sndio=no
 _timidity=no
-_zlib=auto
 _mpeg2=auto
 _sparkle=auto
 _jpeg=auto
@@ -202,7 +201,6 @@ add_feature jpeg "JPEG" "_jpeg"
 add_feature png "PNG" "_png"
 add_feature theoradec "libtheoradec" "_theoradec"
 add_feature vorbis "Vorbis file support" "_vorbis _tremor"
-add_feature zlib "zlib" "_zlib"
 
 
 
@@ -589,7 +587,7 @@ engine_enable() {
 		parent=`get_subengine_parent ${engine}`
 		if test `get_engine_build ${parent}` = "no" ; then
 			set_var _engine_${parent}_build "yes"
-		fi		
+		fi
 	fi
 
 	if test "$opt" = "static" -o "$opt" = "dynamic" -o "$opt" = "yes" ; then
@@ -867,7 +865,7 @@ Game engines:
   --disable-all-engines    disable all engines
   --enable-engine=<engine name>[,<engine name>...] enable engine(s) listed
   --disable-engine=<engine name>[,<engine name>...] disable engine(s) listed
-  --enable-engine-static=<engine name>[,<engine name>...] 
+  --enable-engine-static=<engine name>[,<engine name>...]
       enable engine(s) listed as static builtin (when plugins are enabled)
   --enable-engine-dynamic=<engine name>[,<engine name>...]
       enable engine(s) listed as dynamic plugin (when plugins are enabled)
@@ -913,9 +911,6 @@ Optional Libraries:
 
   --with-flac-prefix=DIR   Prefix where libFLAC is installed (optional)
   --disable-flac           disable FLAC support [autodetect]
-
-  --with-zlib-prefix=DIR   Prefix where zlib is installed (optional)
-  --disable-zlib           disable zlib (compression) support [autodetect]
 
   --with-mpeg2-prefix=DIR  Prefix where libmpeg2 is installed (optional)
   --enable-mpeg2           enable mpeg2 codec for cutscenes [autodetect]
@@ -1000,8 +995,6 @@ for ac_option in $@; do
 	--disable-flac)           _flac=no        ;;
 	--enable-mad)             _mad=yes        ;;
 	--disable-mad)            _mad=no         ;;
-	--enable-zlib)            _zlib=yes       ;;
-	--disable-zlib)           _zlib=no        ;;
 	--enable-sparkle)         _sparkle=yes    ;;
 	--disable-sparkle)        _sparkle=no     ;;
 	--enable-nasm)            _nasm=yes       ;;
@@ -1116,11 +1109,6 @@ for ac_option in $@; do
 		arg=`echo $ac_option | cut -d '=' -f 2`
 		FAAD_CFLAGS="-I$arg/include"
 		FAAD_LIBS="-L$arg/lib"
-		;;
-	--with-zlib-prefix=*)
-		arg=`echo $ac_option | cut -d '=' -f 2`
-		ZLIB_CFLAGS="-I$arg/include"
-		ZLIB_LIBS=""
 		;;
 	--with-sparkle-prefix=*)
 		arg=`echo $ac_option | cut -d '=' -f 2`
@@ -2185,7 +2173,7 @@ case $_host_os in
 
 			LDFLAGS="-L${macport_prefix}/lib $LDFLAGS"
 			CXXFLAGS="-I${macport_prefix}/include $CXXFLAGS"
-			
+
 			if test -z "$_staticlibpath"; then
 				_staticlibpath=${macport_prefix}
 				echo "Set staticlib-prefix to ${_staticlibpath}"
@@ -2464,7 +2452,7 @@ if test -n "$_host"; then
 			_mt32emu=no
 			_optimization_level=-O3
 			# Disable alsa midi to get the port build on OpenDingux toolchain
-			_alsa=no 
+			_alsa=no
 			_vkeybd=yes
 			_build_hq_scalers=no
 			_keymapper=no
@@ -2492,7 +2480,6 @@ if test -n "$_host"; then
 			_backend="dc"
 			_build_scalers=no
 			_mad=yes
-			_zlib=yes
 			add_line_to_config_mk 'ronindir = /usr/local/ronin'
 			_port_mk="backends/platform/dc/dreamcast.mk"
 			;;
@@ -2576,7 +2563,7 @@ if test -n "$_host"; then
 			INCLUDES="$INCLUDES -I/usr/X11R6/include"
 			LIBS="$LIBS -lX11"
 			LIBS="$LIBS -L/usr/lib"
-			
+
 			_backend="maemo"
 			_vkeybd=yes
 			_keymapper=yes
@@ -2585,7 +2572,6 @@ if test -n "$_host"; then
 			_alsa=no
 			_mad=yes
 			_tremor=yes
-			_zlib=yes
 			;;
 		*mingw32*)
 			_sdlconfig=$_host-sdl-config
@@ -2645,7 +2631,6 @@ if test -n "$_host"; then
 			# Force use of libmad, libtremor and zlib
 			_mad=no
 			_tremor=yes
-			_zlib=yes
 			_port_mk="backends/platform/n64/n64.mk"
 			;;
 		neuros)
@@ -2712,7 +2697,6 @@ if test -n "$_host"; then
 				_tremor=yes
 			fi
 			_mad=yes
-			_zlib=yes
 			# HACK to fix compilation of C source files for now.
 			add_line_to_config_mk 'CC := ee-gcc'
 			add_line_to_config_mk 'CFLAGS := -std=c99 -W -Wno-unused-parameter -Wconversion -pedantic -G2 -s -O2 -Wuninitialized'
@@ -3321,6 +3305,11 @@ define_in_config_if_yes "$_build_scalers" 'USE_SCALERS'
 define_in_config_if_yes "$_build_hq_scalers" 'USE_HQ_SCALERS'
 
 #
+# Enforce ZLIB use
+#
+DEFINES="$DEFINES -DUSE_ZLIB"
+
+#
 # Check for math lib
 #
 cat > $TMPC << EOF
@@ -3593,26 +3582,6 @@ if test "$_timidity" = auto ; then
 fi
 define_in_config_h_if_yes "$_timidity" 'USE_TIMIDITY'
 echo "$_timidity"
-
-#
-# Check for ZLib
-#
-echocheck "zlib"
-if test "$_zlib" = auto ; then
-	_zlib=no
-	cat > $TMPC << EOF
-#include <string.h>
-#include <zlib.h>
-int main(void) { return strcmp(ZLIB_VERSION, zlibVersion()); }
-EOF
-	cc_check $ZLIB_CFLAGS $ZLIB_LIBS -lz && _zlib=yes
-fi
-if test "$_zlib" = yes ; then
-	LIBS="$LIBS $ZLIB_LIBS -lz"
-	INCLUDES="$INCLUDES $ZLIB_CFLAGS"
-fi
-define_in_config_if_yes "$_zlib" 'USE_ZLIB'
-echo "$_zlib"
 
 #
 # Check for LibMPEG2

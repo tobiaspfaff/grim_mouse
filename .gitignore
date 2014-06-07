@@ -5,6 +5,9 @@
 *.o
 lib*.a
 .deps
+*.so
+*.apk
+/build
 
 /config.log
 /residualvm
