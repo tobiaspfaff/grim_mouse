@@ -114,7 +114,7 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 
     _cursor = nullptr;
     _hotspotManager = nullptr;
-//     
+//
 	_currSet = nullptr;
 	_selectedActor = nullptr;
 	_controlsEnabled = new bool[KEYCODE_EXTRA_LAST];
@@ -200,7 +200,7 @@ GrimEngine::~GrimEngine() {
 	delete _debugger;
     delete _hotspotManager;
     delete _cursor;
-    
+
 	ConfMan.flushToDisk();
 	DebugMan.clearAllDebugChannels();
 
@@ -305,11 +305,11 @@ Common::Error GrimEngine::run() {
 		// TODO: Play EMI Mac Aspyr logo
 		warning("TODO: Play Aspyr logo");
 	}
-	
+
 	_cursor = new Cursor(this);
     _hotspotManager = new HotspotMan;
     _hotspotManager->initialize();
-        
+
 	Bitmap *splash_bm = nullptr;
 	if (!(_gameFlags & ADGF_DEMO) && getGameType() == GType_GRIM)
 		splash_bm = Bitmap::create("splash.bm");
@@ -632,7 +632,7 @@ void GrimEngine::drawNormalMode() {
 	// including 3D objects such as Manny and the message tube
 	_currSet->drawBitmaps(ObjectState::OBJSTATE_OVERLAY);
 
-	drawCursor();    
+	drawCursor();
 }
 
 void GrimEngine::drawCursor() {
@@ -664,6 +664,7 @@ void GrimEngine::doFlip() {
 }
 
 void GrimEngine::mainLoop() {
+	static unsigned int _lastClick=0;
 	_movieTime = 0;
 	_frameTime = 0;
 	_frameStart = g_system->getMillis();
@@ -742,18 +743,35 @@ void GrimEngine::mainLoop() {
 		while (g_system->getEventManager()->pollEvent(event)) {
 			// Handle any buttons, keys and joystick operations
 			Common::EventType type = event.type;
+
+			// parse double clicks
+			bool doubleClick = (type == Common::EVENT_DOUBLETAP);
+#ifdef ANDROID
+			warning("event %d %d %d",type,event.kbd.keycode, doubleClick);
+			if (doubleClick && _mode == SmushMode) {
+				type = Common::EVENT_KEYDOWN;
+				event.kbd.keycode = Common::KEYCODE_ESCAPE;
+			}
+#else
+			if (type == Common::EVENT_LBUTTONDOWN) {
+				unsigned int currentTime = g_system->getMillis();
+				doubleClick = (currentTime - _lastClick) < 500;
+				_lastClick = currentTime;
+			}
+#endif
+			
 			if (type == Common::EVENT_MOUSEMOVE) {
                 _cursor->updatePosition(event.mouse);
                 _hotspotManager->hover(_cursor->getPosition());
-            } else if (type == Common::EVENT_MBUTTONDOWN || 
+            } else if (type == Common::EVENT_MBUTTONDOWN ||
             		  (type == Common::EVENT_LBUTTONDOWN && event.kbd.hasFlags(Common::KBD_CTRL))) {
             	Common::KeyState kbd(Common::KEYCODE_i);
             	handleChars(Common::EVENT_KEYDOWN, kbd);
             	handleControls(Common::EVENT_KEYDOWN, kbd);
-            } else if (type == Common::EVENT_LBUTTONDOWN || 
+            } else if (type == Common::EVENT_LBUTTONDOWN ||
                        type == Common::EVENT_RBUTTONDOWN) {
                        //type == Common::EVENT_LBUTTONUP) {
-                _hotspotManager->event(_cursor->getPosition(), event, _opMode);
+			_hotspotManager->event(_cursor->getPosition(), event, _opMode, doubleClick);
             } else if (type == Common::EVENT_KEYDOWN || type == Common::EVENT_KEYUP) {
 				if (type == Common::EVENT_KEYDOWN) {
 					bool nmode = _mode != DrawMode && _hotspotManager->getCtrlMode()==0;
@@ -806,7 +824,7 @@ void GrimEngine::mainLoop() {
                     } else {
 						handleChars(type, event.kbd);
 					}
-				}				
+				}
 
 				handleControls(type, event.kbd);
 

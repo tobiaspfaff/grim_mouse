@@ -352,10 +352,6 @@ void OSystem_Android::initBackend() {
 	ConfMan.setBool("FM_high_quality", false);
 	ConfMan.setBool("FM_medium_quality", true);
 
-	// TODO hackity hack
-	if (ConfMan.hasKey("multi_midi"))
-		_touchpad_mode = !ConfMan.getBool("multi_midi");
-
 	// if no game target is present, construct a default one for Grim
 	const Common::ConfigManager::Domain *dom = ConfMan.getDomain("grim-win");
 	if (!dom) {

@@ -145,6 +145,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 	switch (type) {
 	case JE_SYS_KEY:
+		warning("syskey");
 		switch (arg1) {
 		case JACTION_DOWN:
 			e.type = Common::EVENT_KEYDOWN;
@@ -195,6 +196,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		break;
 
 	case JE_KEY:
+		warning("key");
+
 		switch (arg1) {
 		case JACTION_DOWN:
 			e.type = Common::EVENT_KEYDOWN;
@@ -296,6 +299,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		return;
 
 	case JE_DPAD:
+		warning("dpad");
+
 		switch (arg2) {
 		case JKEYCODE_DPAD_UP:
 		case JKEYCODE_DPAD_DOWN:
@@ -389,12 +394,16 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		}
 
 	case JE_DOWN:
+		//warning("down");
+
 		_touch_pt_down = getEventManager()->getMousePos();
 		_touch_pt_scroll.x = -1;
 		_touch_pt_scroll.y = -1;
 		break;
 
 	case JE_SCROLL:
+		warning("scroll");
+
 		if (_show_mouse) {
 			e.type = Common::EVENT_MOUSEMOVE;
 
@@ -425,6 +434,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			return;
 		}
 
+		warning("single");
 		if (!_virtcontrols_on) {
 			e.type = Common::EVENT_MOUSEMOVE;
 
@@ -488,29 +498,20 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		return;
 
 	case JE_DOUBLE_TAP:
-		if (_show_mouse) {
-
-			if (_touchpad_mode) {
-				e.mouse = getEventManager()->getMousePos();
-			} else {
-				scaleMouse(e.mouse, arg1, arg2);
-				clipMouse(e.mouse);
-			}
+		if (_touchpad_mode) {
+			e.mouse = getEventManager()->getMousePos();
 
 			{
 				e.type = Common::EVENT_INVALID;
-				Common::EventType dptype = Common::EVENT_INVALID;
 
 				switch (arg3) {
+				case JACTION_UP:
+					return;
 				case JACTION_DOWN:
-					e.type = Common::EVENT_LBUTTONDOWN;
-					dptype = Common::EVENT_LBUTTONUP;
+					e.type = Common::EVENT_DOUBLETAP;
 					_touch_pt_dt.x = -1;
 					_touch_pt_dt.y = -1;
-					break;
-				case JACTION_UP:
-					e.type = Common::EVENT_LBUTTONDOWN;
-					dptype = Common::EVENT_LBUTTONUP;
+					warning("dtap");
 					break;
 				// held and moved
 				case JACTION_MOVE:
@@ -520,15 +521,12 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 						_touch_pt_dt.y = arg2;
 						return;
 					}
+					scaleMouse(e.mouse, arg1 - _touch_pt_dt.x,
+								arg2 - _touch_pt_dt.y, false);
+					e.mouse += _touch_pt_down;
 
-
-					if (_touchpad_mode) {
-						scaleMouse(e.mouse, arg1 - _touch_pt_dt.x,
-									arg2 - _touch_pt_dt.y, false);
-						e.mouse += _touch_pt_down;
-
-						clipMouse(e.mouse);
-					}
+					clipMouse(e.mouse);
+					warning("dmove");
 
 					break;
 				default:
@@ -538,15 +536,13 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 				lockMutex(_event_queue_lock);
 				if (e.type != Common::EVENT_INVALID) {
-				_event_queue.push(e);
-				}
-				if (dptype != Common::EVENT_INVALID) {
-				e.type = dptype;
-				_event_queue.push(e);
+					_event_queue.push(e);
 				}
 				unlockMutex(_event_queue_lock);
 			}
 		} else {
+			warning("dtap legacy");
+
 			keyPress(Common::KEYCODE_u, KeyReceiver::PRESS);
 		}
 
@@ -556,7 +552,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 	case JE_TOUCH:
 	case JE_MULTI:
 	{
-		if (!_show_mouse) {
+		if (!_touchpad_mode) {
 			_touchControls.update(arg1, arg2, arg3, arg4);
 			return;
 		}
@@ -581,10 +577,12 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 				case 1:
 					e.type = Common::EVENT_RBUTTONDOWN;
 					up = Common::EVENT_RBUTTONUP;
+					warning("multi 1");
 					break;
 				case 2:
 					e.type = Common::EVENT_MBUTTONDOWN;
 					up = Common::EVENT_MBUTTONUP;
+					warning("multi 2");
 					break;
 				default:
 					LOGD("unmapped multi tap: %d", _fingersDown);
@@ -614,6 +612,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 	}
 
 	case JE_BALL:
+		warning("ball");
+
 		e.mouse = getEventManager()->getMousePos();
 
 		switch (arg1) {
@@ -643,6 +643,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		return;
 
 	case JE_QUIT:
+		warning("quit");
+
 		e.type = Common::EVENT_QUIT;
 
 		pushEvent(e);
@@ -650,6 +652,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		return;
 
 	case JE_SPECIAL:
+		warning("special");
+
 		switch (arg1) {
 		case 1:
 			if (arg2 == 0 || arg2 == 1) {

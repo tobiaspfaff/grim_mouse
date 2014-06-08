@@ -89,7 +89,7 @@ inline Actor* getManny() {
 }
 
 HotspotMan::HotspotMan() :
-    _selectMode (0), _initialized(false), _lastClick(0), _ctrlMode(0),_cutScene(0),
+    _selectMode (0), _initialized(false), _ctrlMode(0),_cutScene(0),
     _flashHS(false) {
 }
 
@@ -489,7 +489,7 @@ double line_line_dist(const Math::Vector3d& x0, const Math::Vector3d& x1,
     return (c*d-b*e)/(c*a-b*b);
 }
 
-void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debugMode) {
+void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debugMode, bool doubleClick) {
     bool climbing = LuaBase::instance()->queryVariable("system.currentActor.is_climbing", false) != 0;
     _lastCursor = cursor;
 
@@ -505,9 +505,6 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
     if (ev.kbd.hasFlags(Common::KBD_CTRL))
         button = 3;
     update();
-    unsigned int currentTime = g_system->getMillis();
-    bool doubleClick = (currentTime - _lastClick) < 500;
-    _lastClick = currentTime;
 
     if (_ctrlMode == Dialog && button > 0) {
         // dialog mode

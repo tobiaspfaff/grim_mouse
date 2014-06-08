@@ -87,6 +87,9 @@ enum EventType {
 	,
 	EVENT_VIRTUAL_KEYBOARD = 20
 #endif
+	,
+	// special events for touch interaction
+	EVENT_DOUBLETAP = 100
 };
 
 typedef uint32 CustomEventType;

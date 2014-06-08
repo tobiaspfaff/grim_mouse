@@ -1462,7 +1462,7 @@ void GfxOpenGLS::dimRegion(int x, int y, int w, int h, float level) {
 
 void GfxOpenGLS::irisAroundRegion(int x1, int y1, int x2, int y2) {
 	_irisProgram->use();
-	_irisProgram->setUniform("color", Math::Vector3d(0.0f, 0.0f, 0.0f));
+	_irisProgram->setUniform("color", Math::Vector4d(0.0f, 0.0f, 0.0f, 1.0f));
 	_irisProgram->setUniform("scaleWH", Math::Vector2d(1.f / _gameWidth, 1.f / _gameHeight));
 
 	float fx1 = x1;
@@ -1554,8 +1554,8 @@ void GfxOpenGLS::loadEmergFont() {
 
 void GfxOpenGLS::drawGenericPrimitive(const float *vertices, uint32 numVertices, const PrimitiveObject *primitive) {
 	const Color color(primitive->getColor());
-	const Math::Vector3d colorV =
-	  Math::Vector3d(color.getRed(), color.getGreen(), color.getBlue()) / 255.f;
+	const Math::Vector4d colorV =
+	  Math::Vector4d(color.getRed(), color.getGreen(), color.getBlue(), 255.f) / 255.f;
 
 	GLuint prim = nextPrimitive();
 	glBindBuffer(GL_ARRAY_BUFFER, prim);
@@ -1813,35 +1813,26 @@ void GfxOpenGLS::createModel(Mesh *mesh) {
 }
 
 void GfxOpenGLS::blackbox(int x0, int y0, int x1, int y1, float opacity) {
-#if 0
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	float px1 = x0 * _scaleW, py1 = y0 * _scaleH;
+	float px2 = x1 * _scaleW, py2 = y1 * _scaleH;
+	float data[] = { px1, py1, px1, py2, px2, py1, px2, py2 };
 
-	glDisable(GL_LIGHTING);
-	glDisable(GL_DEPTH_TEST);
-	glDepthMask(GL_FALSE);
+	GLuint prim = nextPrimitive();
+	glBindBuffer(GL_ARRAY_BUFFER, prim);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 8 * sizeof(float), data);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
 
-	glColor4f(0,0,0, opacity);
+	_primitiveProgram->enableVertexAttribute("position", prim, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), 0);
+	_primitiveProgram->use(true);
+	_primitiveProgram->setUniform("color", Math::Vector4d(0,0,0,opacity));
+	_primitiveProgram->setUniform("scaleWH", Math::Vector2d(1.f / _gameWidth, 1.f / _gameHeight));
 
-	glBegin(GL_QUADS);
-    glVertex2f(x0,y0);
-    glVertex2f(x1,y0);
-    glVertex2f(x1,y1);
-    glVertex2f(x0,y1);
-    glEnd();
-
-    glColor4f(1,1,1,1);
-	glDepthMask(GL_TRUE);
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_LIGHTING);
-	glDisable(GL_BLEND);
-#endif
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 bool GfxOpenGLS::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {

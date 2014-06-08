@@ -39,7 +39,7 @@ class SaveGame;
 
 struct Polygon {
     Common::Array<Common::Point> _pnts;
-    
+
     void draw(const Color &col);
     bool contains(const Common::Point& pos);
     void move(const Common::Point& center);
@@ -49,7 +49,7 @@ struct Polygon {
 struct HotObject {
     Common::String _id, _desc;
     Math::Vector3d _pos;
-    Common::Rect _rect;    
+    Common::Rect _rect;
     bool _active;
 };
 
@@ -73,19 +73,19 @@ public:
     virtual ~HotspotMan();
 
     enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5, Options=6 };
-    
-    int addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene);    
+
+    int addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene);
     void disableAll();
     HotObject& getObject(int idx) { return _hotobject[idx]; }
-    
+
     void initialize();
     void okKey(bool shift);
     void cancel();
-    void event(const Common::Point& cursor, const Common::Event& ev, int debug);
+    void event(const Common::Point& cursor, const Common::Event& ev, int debug, bool doubleClick);
     void getName(const Common::Point& cursor);
     void hover(const Common::Point& cursor);
     void updatePerspective();
-    void drawActive(int debug);    
+    void drawActive(int debug);
     bool restoreState(SaveGame *savedState);
     void saveState(SaveGame* savedState);
     void switchMode(int ctrlMode) { _ctrlMode = ctrlMode; }
@@ -122,7 +122,6 @@ protected:
     Math::Vector3d _axis;
     float _offset;
 
-    unsigned int _lastClick;
     bool _initialized;
     typedef Common::HashMap<Common::String,Common::Array<Hotspot> > HotDict;
     HotDict _hotspots;
@@ -130,7 +129,7 @@ protected:
     Common::Array<HotObject> _hotobject;
     Common::Point _lastCursor;
     int _cutScene;
-    
+
     // hotspot display
     bool _flashHS;
     unsigned int _flashStart;
@@ -139,8 +138,8 @@ protected:
     // hotspot editing
     int _selectMode, _lastSetup;
     Polygon _selectPoly;
-    Common::String _lastName;  
-    Common::Array<Math::Vector3d> _selectPath;      
+    Common::String _lastName;
+    Common::Array<Math::Vector3d> _selectPath;
 };
 
 } /* namespace  */

@@ -30,7 +30,7 @@ public class ResidualVMActivity extends Activity {
 
     private static final int MOUSE_ACTION_CNT = 3;
     private int mouseAction = 0;
-    
+
     private static final int MOUSE_MODE_CNT = 3;
     private int mouseMode = 0;
 
@@ -63,14 +63,14 @@ public class ResidualVMActivity extends Activity {
                 break;
             case R.id.btnTouchmode:
                 mouseMode = (mouseMode + 1) % MOUSE_MODE_CNT;
-                final int[] modeIcons = 
+                final int[] modeIcons =
                     {R.drawable.ic_touchmode, R.drawable.ic_touchmode2, R.drawable.ic_action};
                 ((ImageView)v).setImageResource(modeIcons[mouseMode]);
                 _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 1, mouseMode, 0, 0, 0, 0);
                 break;
             case R.id.btnAction:
                 mouseAction = (mouseAction + 1) % MOUSE_ACTION_CNT;
-                final int[] actIcons = 
+                final int[] actIcons =
                     {R.drawable.ic_use, R.drawable.ic_look_at, R.drawable.ic_pickup};
                 ((ImageView)v).setImageResource(actIcons[mouseAction]);
                 _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 2, mouseAction, 0, 0, 0, 0);
@@ -248,13 +248,13 @@ public class ResidualVMActivity extends Activity {
 		_residualvm_thread = new Thread(_residualvm, "ResidualVM");
 		_residualvm_thread.start();
 	}
-	
+
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.game_menu, menu);
 		return true;
 	}
-	
+
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
