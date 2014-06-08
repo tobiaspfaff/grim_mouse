@@ -2098,6 +2098,8 @@ case $_host_os in
 				;;
 		esac
 
+		CXXFLAGS="$CXXFLAGS -DANDROID"
+
 		# Setup platform version and arch
 		CXXFLAGS="$CXXFLAGS --sysroot=$ANDROID_NDK/platforms/android-$ANDROID_PLATFORM/arch-$ANDROID_PLATFORM_ARCH"
 		LDFLAGS="$LDFLAGS --sysroot=$ANDROID_NDK/platforms/android-$ANDROID_PLATFORM/arch-$ANDROID_PLATFORM_ARCH"

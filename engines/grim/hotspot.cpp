@@ -22,7 +22,7 @@
 
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
 
-#ifndef ARM_TARGET
+#ifndef ANDROID
 #include "engines/grim/gfx_opengl.h"
 #endif
 
@@ -270,7 +270,7 @@ void HotspotMan::drawActive(int debugMode) {
                 pa.push_back(p);
             }
         }
-#ifndef ARM_TARGET
+#ifndef ANDROID
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         glOrtho(0, 640,480, 0, 0, 1);

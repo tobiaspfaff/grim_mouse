@@ -441,6 +441,14 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 	// Now as the event manager is created, setup the keymapper
 	setupKeymapper(system);
 
+	// Android: auto-lauch grim
+	#ifdef ANDROID
+	if (ConfMan.hasGameDomain("grim-win")) {
+		ConfMan.getDomain(Common::ConfigManager::kTransientDomain)->clear();
+		ConfMan.setActiveDomain("grim-win");
+	}
+	#endif
+
 	// Unless a game was specified, show the launcher dialog
 	if (0 == ConfMan.getActiveDomain())
 		launcherDialog();

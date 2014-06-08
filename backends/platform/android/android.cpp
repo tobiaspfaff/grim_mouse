@@ -60,6 +60,9 @@
 #include "backends/platform/android/jni.h"
 #include "backends/platform/android/android.h"
 
+#include "engines/game.h"
+#include "engines/metaengine.h"
+
 const char *android_log_tag = "ResidualVM";
 
 // This replaces the bionic libc assert functions with something that
@@ -352,6 +355,30 @@ void OSystem_Android::initBackend() {
 	// TODO hackity hack
 	if (ConfMan.hasKey("multi_midi"))
 		_touchpad_mode = !ConfMan.getBool("multi_midi");
+
+	// if no game target is present, construct a default one for Grim
+	const Common::ConfigManager::Domain *dom = ConfMan.getDomain("grim-win");
+	if (!dom) {
+		Common::FSNode dir("/sdcard/grim");
+		Common::FSList files;
+		if (dir.getChildren(files, Common::FSNode::kListAll)) {
+			GameList candidates(EngineMan.detectGames(files));
+			if (candidates.size() == 1) {
+				GameDescriptor result = candidates[0];
+				result["path"] = dir.getPath();
+
+				Common::String domain = result.preferredtarget();
+				ConfMan.addGameDomain(domain);
+
+				for (GameDescriptor::const_iterator iter = result.begin(); iter != result.end(); ++iter) {
+					if (!iter->_value.empty() && iter->_key != "preferredtarget") {
+						ConfMan.set(iter->_key, iter->_value, domain);
+					}
+				}
+				ConfMan.flushToDisk();
+			}
+		}
+	}
 
 	// must happen before creating TimerManager to avoid race in
 	// creating EventManager
