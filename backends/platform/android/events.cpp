@@ -123,7 +123,6 @@ void OSystem_Android::scaleMouse(Common::Point &p, int x, int y,
 		y -= r.top;
 	}
 
-	warning("%d %d - %d %d - %d %d- %d %d",x,y,tex->width(),tex->height(),r.width(),r.height(),r.left,r.top);
 	p.x = scalef(x, tex->width(), r.width());
 	p.y = scalef(y, tex->height(), r.height());
 }
@@ -415,8 +414,6 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			}
 
 			scaleMouse(e.mouse, arg3, arg4, true);
-			//e.mouse += _touch_pt_down;
-			warning("%d %d %d -> %d %d",arg3,arg4,_touchpad_scale,e.mouse.x,e.mouse.y);
 			clipMouse(e.mouse);
 
 			pushEvent(e);
@@ -430,40 +427,30 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			return;
 		}
 
-		warning("single");
-		if (!_virtcontrols_on) {
+		if (_touchpad_mode) {
 			e.type = Common::EVENT_MOUSEMOVE;
-
-			if (_touchpad_mode) {
-				e.mouse = getEventManager()->getMousePos();
-			} else {
-				scaleMouse(e.mouse, arg1, arg2);
-				clipMouse(e.mouse);
-			}
-
-			Common::EventType down, up;
+			e.mouse = getEventManager()->getMousePos();
+			scaleMouse(e.mouse, arg1, arg2, true);
+			clipMouse(e.mouse);
+			pushEvent(e);
 
 			if (_mouse_action == 0) {
 				// TODO put these values in some option dlg?
-				if (arg3 > 1000) {
-					down = Common::EVENT_MBUTTONDOWN;
-					up = Common::EVENT_MBUTTONUP;
-				} else if (arg3 > 500) {
-					down = Common::EVENT_RBUTTONDOWN;
-					up = Common::EVENT_RBUTTONUP;
-				} else {
-					down = Common::EVENT_LBUTTONDOWN;
-					up = Common::EVENT_LBUTTONUP;
-				}
+				if (arg3 > 1000)
+					e.type = Common::EVENT_MBUTTONDOWN;
+				else if (arg3 > 500)
+					e.type = Common::EVENT_RBUTTONDOWN;
+				else
+					e.type = Common::EVENT_LBUTTONDOWN;
 			} else if (_mouse_action == 1) {
-				down = Common::EVENT_RBUTTONDOWN;
-				up = Common::EVENT_RBUTTONUP;
+				e.type = Common::EVENT_RBUTTONDOWN;
 			} else if (_mouse_action == 2) {
-				down = Common::EVENT_RBUTTONDOWN;
-				up = Common::EVENT_RBUTTONUP;
+				e.type = Common::EVENT_RBUTTONDOWN;
 			} else return;
 
-			lockMutex(_event_queue_lock);
+			pushEvent(e);
+
+			/*lockMutex(_event_queue_lock);
 
 			if (_queuedEventTime)
 				_event_queue.push(_queuedEvent);
@@ -486,7 +473,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 				_event_queue.push(e);
 			}
 
-			unlockMutex(_event_queue_lock);
+			unlockMutex(_event_queue_lock);*/
 		} else {
 			keyPress(Common::KEYCODE_RETURN, KeyReceiver::PRESS);
 		}
@@ -511,20 +498,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 					return;
 				// held and moved
 				case JACTION_MOVE:
-					e.type = Common::EVENT_MOUSEMOVE;
-					if (_touch_pt_dt.x == -1 && _touch_pt_dt.y == -1) {
-						_touch_pt_dt.x = arg1;
-						_touch_pt_dt.y = arg2;
-						return;
-					}
-					scaleMouse(e.mouse, arg1 - _touch_pt_dt.x,
-								arg2 - _touch_pt_dt.y, false);
-					e.mouse += _touch_pt_down;
-
-					clipMouse(e.mouse);
-					warning("dmove");
-
-					break;
+					return;
 				default:
 					LOGE("unhandled jaction on double tap: %d", arg3);
 					return;

@@ -39,15 +39,17 @@ public:
 	void updatePosition(Common::Point &mouse);
 	void setCursor(int id) { _curCursor = id; }
 	void reload();
+	void setPersistent(int id, int x=-1, int y=-1);
 
 	void draw();
 private:
 
 	float _scaleX, _scaleY;
     int32 _hotspotx, _hotspoty;
-    int32 _curCursor;
-	
+    int32 _curCursor, _persistentCursor;
+
 	Common::Point _position;
+	Common::Point _persistentPosition;
 
 	void loadAvailableCursors();
     Bitmap** _bitmaps;

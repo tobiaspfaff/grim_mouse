@@ -658,13 +658,18 @@ void HotspotMan::hover(const Common::Point& pos) {
     update();
     _lastCursor = pos;
     Cursor* cursor = g_grim->getCursor();
+    cursor->setPersistent(-1);
+    cursor->setCursor(0);
 
     if (_cutScene > 0 && _ctrlMode != Dialog && _ctrlMode != Options) {
+    #ifdef ANDROID
+        cursor->setPersistent(7, 320, 240);
+    #else
         cursor->setCursor(7);
+    #endif
         return;
     }
 
-    cursor->setCursor(0);
     int setup = g_grim->getCurrSet()->getSetup();
     Common::Array<Hotspot>& hotspots = _hotspots[active_set()];
 

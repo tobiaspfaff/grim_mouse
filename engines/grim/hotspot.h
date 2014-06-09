@@ -97,6 +97,7 @@ public:
     void addInventory(const Common::String& id, const Common::String& pic);
     void updateHotspot(const Common::String& id, const Math::Vector3d& pos, int vis);
     int getCtrlMode() { return _ctrlMode; }
+    bool isDialog() { return _cutScene > 0 || _ctrlMode == Dialog; }
     void setAxis(const Math::Vector3d& a, float offset) { _axis = a; _offset=offset; }
     void cutSceneMode(int mode);
     void flashHotspots();

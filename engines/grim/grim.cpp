@@ -744,13 +744,20 @@ void GrimEngine::mainLoop() {
 			// Handle any buttons, keys and joystick operations
 			Common::EventType type = event.type;
 
-			// parse double clicks
-			bool doubleClick = (type == Common::EVENT_DOUBLETAP);
+			bool doubleClick = false;
+			if (type == Common::EVENT_DOUBLETAP) {
+				doubleClick = true;
+				type = Common::EVENT_LBUTTONDOWN;
+			}
+
 #ifdef ANDROID
-			warning("event %d %d %d",type,event.kbd.keycode, doubleClick);
 			if (doubleClick && _mode == SmushMode) {
 				type = Common::EVENT_KEYDOWN;
 				event.kbd.keycode = Common::KEYCODE_ESCAPE;
+			}
+			if (type == Common::EVENT_LBUTTONDOWN && _hotspotManager->isDialog()) {
+				type = Common::EVENT_KEYDOWN;
+				event.kbd.keycode = Common::KEYCODE_PERIOD;
 			}
 #else
 			if (type == Common::EVENT_LBUTTONDOWN) {

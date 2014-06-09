@@ -23,6 +23,7 @@
 #include "engines/grim/cursor.h"
 #include "engines/grim/gfx_base.h"
 #include "common/config-manager.h"
+#include "common/file.h"
 #include "engines/grim/bitmap.h"
 #include "graphics/surface.h"
 #include "graphics/cursorman.h"
@@ -33,7 +34,7 @@ namespace Grim {
 
 Cursor::Cursor(GrimEngine *vm) :
 	_position(320, 210),
-	_curCursor(0)
+	_curCursor(0), _persistentCursor(-1)
 {
     _bitmaps = new Bitmap*[numCursors];
     for (int i=0; i<numCursors; i++)
@@ -48,14 +49,21 @@ void Cursor::updatePosition(Common::Point& mouse) {
     _position.y = mouse.y * _scaleY;
 }
 
-void Cursor::loadAvailableCursors() { 
+void Cursor::loadAvailableCursors() {
    for(int i=0; i<numCursors; i++) {
-        Common::String fn = Common::String::format("cursor%d.tga",i);
-        _bitmaps[i] = Bitmap::create(fn.c_str());
-        _bitmaps[i]->_data->_smoothInterpolation = true;
-        _bitmaps[i]->_data->load();
-        _bitmaps[i]->_data->_hasTransparency = true;
-    }
+#ifdef ANDROID
+		Common::String fn = Common::String::format("touch%d.tga",i);
+#else
+		Common::String fn = Common::String::format("cursor%d.tga",i);
+#endif
+		_bitmaps[i] = nullptr;
+		if (SearchMan.hasFile(fn)) {
+        	_bitmaps[i] = Bitmap::create(fn.c_str());
+	        _bitmaps[i]->_data->_smoothInterpolation = true;
+	        _bitmaps[i]->_data->load();
+	        _bitmaps[i]->_data->_hasTransparency = true;
+    	}
+	}
     _hotspotx = _hotspoty = 15;
     CursorMan.showMouse(false);
 }
@@ -74,8 +82,18 @@ Cursor::~Cursor() {
     }*/
 }
 
+void Cursor::setPersistent(int id, int x, int y) {
+	_persistentCursor = id;
+	_persistentPosition.x = x;
+	_persistentPosition.y = y;
+}
+
 void Cursor::draw() {
-    _bitmaps[_curCursor]->draw(_position.x - _hotspotx, _position.y - _hotspoty);
+	if (_curCursor >= 0 && _bitmaps[_curCursor] != nullptr)
+    	_bitmaps[_curCursor]->draw(_position.x - _hotspotx, _position.y - _hotspoty);
+	if (_persistentCursor >=0 && _bitmaps[_persistentCursor] != nullptr)
+		_bitmaps[_persistentCursor]->draw(_persistentPosition.x - _hotspotx,
+										  _persistentPosition.y - _hotspoty);
 }
 
 } /* namespace Grim */
