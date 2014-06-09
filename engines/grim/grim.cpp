@@ -750,6 +750,7 @@ void GrimEngine::mainLoop() {
 				type = Common::EVENT_LBUTTONDOWN;
 			}
 
+// parse special gestures
 #ifdef ANDROID
 			if (doubleClick && _mode == SmushMode) {
 				type = Common::EVENT_KEYDOWN;
@@ -758,6 +759,22 @@ void GrimEngine::mainLoop() {
 			if (type == Common::EVENT_LBUTTONDOWN && _hotspotManager->isDialog()) {
 				type = Common::EVENT_KEYDOWN;
 				event.kbd.keycode = Common::KEYCODE_PERIOD;
+			}
+			else if (type == Common::EVENT_SCROLL_DOWN) {
+				if (_hotspotManager->getCtrlMode() == HotspotMan::Normal) {
+					type = Common::EVENT_KEYDOWN;
+					event.kbd.keycode = Common::KEYCODE_i;
+				} else {
+					type = Common::EVENT_SCROLL;
+				}
+			}
+			else if (type == Common::EVENT_SCROLL_UP) {
+				if (_hotspotManager->getCtrlMode() == HotspotMan::Inventory) {
+					type = Common::EVENT_KEYDOWN;
+					event.kbd.keycode = Common::KEYCODE_i;
+				} else {
+					type = Common::EVENT_SCROLL;
+				}
 			}
 #else
 			if (type == Common::EVENT_LBUTTONDOWN) {

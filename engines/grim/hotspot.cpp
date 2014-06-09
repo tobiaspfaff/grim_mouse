@@ -209,8 +209,8 @@ void HotspotMan::drawActive(int debugMode) {
         const int dx = 5;//, dx2 = 6;
         int num_rows = (_inventory.size()-1)/_cols+1;
         int x1 = _x0+_w*_cols, y1 =_y0+_h*num_rows;
-        g_driver->blackbox(0,0,640,480,0.3);
-        g_driver->blackbox(_x0-dx,_y0-dx,x1+dx,y1+dx,0.7);
+        g_driver->blackbox(0,0,640,480,0.4);
+        g_driver->blackbox(_x0-dx,_y0-dx,x1+dx,y1+dx,0.9);
         PrimitiveObject rect;
         Color col(195,195,100);
         rect.createRectangle(Common::Point(_x0-dx,_y0-dx),Common::Point(x1+dx,y1+dx), col, false);
@@ -291,7 +291,7 @@ void HotspotMan::updatePerspective() {
         g_driver->worldToScreen(_hotobject[i]._pos,x,y);
         _hotobject[i]._rect = Common::Rect(x-10,y-10,x+10,y+10);
     }
-    hover(_lastCursor);
+    restoreCursor();
 }
 
 void HotspotMan::notifyWalkOut() {
@@ -492,6 +492,9 @@ double line_line_dist(const Math::Vector3d& x0, const Math::Vector3d& x1,
 void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debugMode, bool doubleClick) {
     bool climbing = LuaBase::instance()->queryVariable("system.currentActor.is_climbing", false) != 0;
     _lastCursor = cursor;
+#ifdef ANDROID
+    restoreCursor();
+#endif
 
     int button = 0;
     if (ev.type == Common::EVENT_LBUTTONDOWN)
@@ -922,7 +925,7 @@ void HotspotMan::updateHotspot(const Common::String& id, const Math::Vector3d& p
             hotspots[i]._region.move(p);
         }
     }
-    hover(_lastCursor);
+    restoreCursor();
 }
 
 void HotspotMan::resetInventory() {
@@ -930,8 +933,22 @@ void HotspotMan::resetInventory() {
 }
 
 void HotspotMan::cutSceneMode(int mode) {
-    _cutScene = mode;
+    if (_cutScene != mode) {
+        _cutScene = mode;
+        restoreCursor();
+    }
+}
+
+void HotspotMan::restoreCursor() {
+#ifdef ANDROID
+    g_grim->getCursor()->setCursor(-1);
+    if (_cutScene > 0 && _ctrlMode != Dialog && _ctrlMode != Options)
+        g_grim->getCursor()->setPersistent(7, 320, 240);
+    else
+        g_grim->getCursor()->setPersistent(-1);
+#else
     hover(_lastCursor);
+#endif
 }
 
 void HotspotMan::renameHotspot(int num, const Common::String& name) {

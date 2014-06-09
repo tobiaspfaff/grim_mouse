@@ -199,7 +199,6 @@ void TouchControls::update(int ptr, int action, int x, int y) {
 
 		case kTouchAreaCenter:
 			_centerPressing = determineKey(dX, dY, Common::KEYCODE_RETURN);
-			warning("touch click");
 			return;
 
 		case kTouchAreaRight:

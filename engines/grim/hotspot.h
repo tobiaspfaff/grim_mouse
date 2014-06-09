@@ -109,6 +109,7 @@ protected:
     int inBox(const Common::Point& p);
     void freeClick(const Common::Point& cursor, int button, bool doubleClick, bool climbing);
     void loadFlashBitmaps();
+    void restoreCursor();
     Common::String active_set();
 
     // dialog support
