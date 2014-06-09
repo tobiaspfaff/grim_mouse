@@ -133,7 +133,6 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	_graphicsMode(0),
 	_fullscreen(true),
 	_ar_correction(true),
-	_show_mouse(false),
 	_show_overlay(false),
 	_virtcontrols_on(false),
 	_enable_zoning(false),
@@ -147,6 +146,7 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	_eventScaleY(100),
 	// TODO put these values in some option dlg?
 	_touchpad_mode(true),
+	_isScrolling(false),
 	_touchpad_scale(66),
 	_dpad_scale(4),
 	_fingersDown(0),

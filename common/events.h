@@ -89,7 +89,8 @@ enum EventType {
 #endif
 	,
 	// special events for touch interaction
-	EVENT_DOUBLETAP = 100
+	EVENT_DOUBLETAP = 100,
+	EVENT_SCROLL = 101
 };
 
 typedef uint32 CustomEventType;

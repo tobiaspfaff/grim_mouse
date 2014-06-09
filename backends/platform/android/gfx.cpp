@@ -60,7 +60,7 @@ void OSystem_Android::launcherInitSize(uint w, uint h) {
 
 // ResidualVM specific method
 bool OSystem_Android::lockMouse(bool lock) {
-	_show_mouse = lock;
+	//_show_mouse = lock;
 	return true;
 }
 
@@ -327,8 +327,8 @@ void OSystem_Android::initSize(uint width, uint height,
 void OSystem_Android::clearScreen(FixupType type, byte count) {
 	assert(count > 0);
 
-	bool sm = _show_mouse;
-	_show_mouse = false;
+	//bool sm = _show_mouse;
+	//_show_mouse = false;
 
 	GLCALL(glDisable(GL_SCISSOR_TEST));
 
@@ -359,7 +359,7 @@ void OSystem_Android::clearScreen(FixupType type, byte count) {
 	if (!_show_overlay)
 		GLCALL(glEnable(GL_SCISSOR_TEST));
 
-	_show_mouse = sm;
+	//_show_mouse = sm;
 	_force_redraw = true;
 }
 
@@ -490,92 +490,93 @@ void OSystem_Android::updateScreen() {
 	if (!JNI::haveSurface())
 		return;
 
-		if (_game_pbuf) {
-			int pitch = _game_texture->width() * _game_texture->getPixelFormat().bytesPerPixel;
-			_game_texture->updateBuffer(0, 0, _game_texture->width(), _game_texture->height(),
-					_game_pbuf.getRawBuffer(), pitch);
-		}
+	if (_game_pbuf) {
+		int pitch = _game_texture->width() * _game_texture->getPixelFormat().bytesPerPixel;
+		_game_texture->updateBuffer(0, 0, _game_texture->width(), _game_texture->height(),
+				_game_pbuf.getRawBuffer(), pitch);
+	}
 
-		if (!_force_redraw &&
-				!_game_texture->dirty() &&
-				!_overlay_texture->dirty() &&
-				!_mouse_texture->dirty())
-			return;
+	if (!_force_redraw &&
+			!_game_texture->dirty() &&
+			!_overlay_texture->dirty() &&
+			!_mouse_texture->dirty())
+		return;
 
-		_force_redraw = false;
+	_force_redraw = false;
 
-		if (_frame_buffer) {
-			_frame_buffer->detach();
-			glViewport(0,0, _egl_surface_width, _egl_surface_height);
-		}
+	if (_frame_buffer) {
+		_frame_buffer->detach();
+		glViewport(0,0, _egl_surface_width, _egl_surface_height);
+	}
 
-		// clear pointer leftovers in dead areas
-		clearScreen(kClear);
+	// clear pointer leftovers in dead areas
+	clearScreen(kClear);
 
-	// TODO this doesnt work on those sucky drivers, do it differently
-	//	if (_show_overlay)
-	//		GLCALL(glColor4ub(0x9f, 0x9f, 0x9f, 0x9f));
+// TODO this doesnt work on those sucky drivers, do it differently
+//	if (_show_overlay)
+//		GLCALL(glColor4ub(0x9f, 0x9f, 0x9f, 0x9f));
 
-		if (true || _focus_rect.isEmpty()) {
-			_game_texture->drawTextureRect();
-			drawVirtControls();
-		} else {
+	if (true || _focus_rect.isEmpty()) {
+		_game_texture->drawTextureRect();
+		drawVirtControls();
+	} else {
 // TODO what is this and do we have engines using it?
 #if 0
-			GLCALL(glPushMatrix());
+		GLCALL(glPushMatrix());
 
-			GLCALL(glScalex(xdiv(_egl_surface_width, _focus_rect.width()),
-							xdiv(_egl_surface_height, _focus_rect.height()),
-							1 << 16));
-			GLCALL(glTranslatex(-_focus_rect.left << 16,
-								-_focus_rect.top << 16, 0));
-			GLCALL(glScalex(xdiv(_game_texture->width(), _egl_surface_width),
-							xdiv(_game_texture->height(), _egl_surface_height),
-							1 << 16));
+		GLCALL(glScalex(xdiv(_egl_surface_width, _focus_rect.width()),
+						xdiv(_egl_surface_height, _focus_rect.height()),
+						1 << 16));
+		GLCALL(glTranslatex(-_focus_rect.left << 16,
+							-_focus_rect.top << 16, 0));
+		GLCALL(glScalex(xdiv(_game_texture->width(), _egl_surface_width),
+						xdiv(_game_texture->height(), _egl_surface_height),
+						1 << 16));
 
-			_game_texture->drawTextureRect();
+		_game_texture->drawTextureRect();
 
-			GLCALL(glPopMatrix());
+		GLCALL(glPopMatrix());
 #endif
-		}
+	}
 
-		int cs = _mouse_targetscale;
+	int cs = _mouse_targetscale;
 
+	if (_show_overlay) {
+// TODO see above
+//		GLCALL(glColor4ub(0xff, 0xff, 0xff, 0xff));
+
+		// ugly, but the modern theme sets a wacko factor, only god knows why
+		cs = 1;
+
+		GLCALL(_overlay_texture->drawTextureRect());
+	}
+
+	/*if (_show_mouse && !_mouse_texture->isEmpty()) {
+		const Common::Point &mouse = getEventManager()->getMousePos();
 		if (_show_overlay) {
-	// TODO see above
-	//		GLCALL(glColor4ub(0xff, 0xff, 0xff, 0xff));
-
-			// ugly, but the modern theme sets a wacko factor, only god knows why
-			cs = 1;
-
-			GLCALL(_overlay_texture->drawTextureRect());
+			_mouse_texture->drawTexture(mouse.x * cs, mouse.y * cs, _mouse_texture->width(), _mouse_texture->height());
 		}
-
-		if (_show_mouse && !_mouse_texture->isEmpty()) {
-			const Common::Point &mouse = getEventManager()->getMousePos();
-			if (_show_overlay) {
-				_mouse_texture->drawTexture(mouse.x * cs, mouse.y * cs, _mouse_texture->width(), _mouse_texture->height());
-			}
 // TODO: Port the non-overlay code as well?
 #if 0
-			if (_show_overlay) {
-			} else {
-				const Common::Rect &r = _game_texture->getDrawRect();
+		if (_show_overlay) {
+		} else {
+			const Common::Rect &r = _game_texture->getDrawRect();
 
-				GLCALL(glTranslatex(r.left << 16,
-									r.top << 16,
-									0));
-				GLCALL(glScalex(xdiv(r.width(), _game_texture->width()),
-								xdiv(r.height(), _game_texture->height()),
-								1 << 16));
-			}
-
-			GLCALL(glTranslatex((-_mouse_hotspot.x * cs) << 16,
-								(-_mouse_hotspot.y * cs) << 16,
+			GLCALL(glTranslatex(r.left << 16,
+								r.top << 16,
 								0));
+			GLCALL(glScalex(xdiv(r.width(), _game_texture->width()),
+							xdiv(r.height(), _game_texture->height()),
+							1 << 16));
+		}
+
+		GLCALL(glTranslatex((-_mouse_hotspot.x * cs) << 16,
+							(-_mouse_hotspot.y * cs) << 16,
+							0));
 
 #endif
 	}
+	*/
 
 	if (!JNI::swapBuffers())
 		LOGW("swapBuffers failed: 0x%x", glGetError());
@@ -720,7 +721,7 @@ Graphics::PixelFormat OSystem_Android::getOverlayFormat() const {
 bool OSystem_Android::showMouse(bool visible) {
 	ENTER("%d", visible);
 
-	_show_mouse = visible;
+	//_show_mouse = visible;
 
 	return true;
 }

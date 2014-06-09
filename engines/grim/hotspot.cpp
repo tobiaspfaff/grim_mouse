@@ -500,6 +500,8 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
         button = 2;
     else if (ev.type == Common::EVENT_MBUTTONDOWN)
         button = 3;
+    else if (ev.type == Common::EVENT_SCROLL)
+        button = 4;
     if (ev.kbd.hasFlags(Common::KBD_ALT))
         button = 2;
     if (ev.kbd.hasFlags(Common::KBD_CTRL))

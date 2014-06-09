@@ -133,7 +133,7 @@ public class ResidualVMEvents implements
 				// only send up events of the menu button to the native side
 				if (action != KeyEvent.ACTION_UP)
 					return true;
-					
+
 				((ResidualVMActivity)_context).toggleSidebar();
 				return true;
 			}

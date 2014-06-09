@@ -1,6 +1,6 @@
 #!/bin/bash
 tooldir=../residualvm-tools
-grimex=~/grimex/lua
+grimex=~/grim/ex_lua
 tmpdir=/tmp/grim_pnc
 delta=dists/engine-data/patches/grim_pnc_delta
 lab=dists/engine-data/mouse.lab

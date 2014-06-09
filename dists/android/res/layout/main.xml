@@ -52,7 +52,7 @@
                 android:layout_height="wrap_content"
                 android:adjustViewBounds="true"
                 android:contentDescription="@string/touchmode"
-                android:src="@drawable/ic_touchmode" />
+                android:src="@drawable/ic_touchmode2" />
 
             <ImageView
                 android:id="@+id/btnAction"
@@ -122,4 +122,3 @@
     </ScrollView>
 
 </RelativeLayout>
-

@@ -759,7 +759,7 @@ void GrimEngine::mainLoop() {
 				_lastClick = currentTime;
 			}
 #endif
-			
+
 			if (type == Common::EVENT_MOUSEMOVE) {
                 _cursor->updatePosition(event.mouse);
                 _hotspotManager->hover(_cursor->getPosition());
@@ -769,8 +769,8 @@ void GrimEngine::mainLoop() {
             	handleChars(Common::EVENT_KEYDOWN, kbd);
             	handleControls(Common::EVENT_KEYDOWN, kbd);
             } else if (type == Common::EVENT_LBUTTONDOWN ||
-                       type == Common::EVENT_RBUTTONDOWN) {
-                       //type == Common::EVENT_LBUTTONUP) {
+                       type == Common::EVENT_RBUTTONDOWN ||
+                       type == Common::EVENT_SCROLL) {
 			_hotspotManager->event(_cursor->getPosition(), event, _opMode, doubleClick);
             } else if (type == Common::EVENT_KEYDOWN || type == Common::EVENT_KEYUP) {
 				if (type == Common::EVENT_KEYDOWN) {

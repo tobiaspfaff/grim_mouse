@@ -1,8 +1,8 @@
 #!/bin/bash
 a=`pwd`
-cd ~/grimex/lua
+cd ~/grim/ex_lua
 if [ -f $1.lua ]; then
-	~/code/residualvm-tools/luac -o ../$1.lua -b ~/grimex_orig/$1.lua $1.lua
+	~/code/residualvm-tools/luac -o ../ex/$1.lua -b ../ex_orig/$1.lua $1.lua
 else
 	echo "$1 does not exist."
 fi

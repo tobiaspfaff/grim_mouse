@@ -28,10 +28,10 @@ import java.io.File;
 
 public class ResidualVMActivity extends Activity {
 
-    private static final int MOUSE_ACTION_CNT = 3;
+    private static final int MOUSE_ACTION_CNT = 2;
     private int mouseAction = 0;
 
-    private static final int MOUSE_MODE_CNT = 3;
+    private static final int MOUSE_MODE_CNT = 2;
     private int mouseMode = 0;
 
     private boolean sidebarShowing = false;
@@ -64,7 +64,7 @@ public class ResidualVMActivity extends Activity {
             case R.id.btnTouchmode:
                 mouseMode = (mouseMode + 1) % MOUSE_MODE_CNT;
                 final int[] modeIcons =
-                    {R.drawable.ic_touchmode, R.drawable.ic_touchmode2, R.drawable.ic_action};
+                    {R.drawable.ic_touchmode2, R.drawable.ic_action};
                 ((ImageView)v).setImageResource(modeIcons[mouseMode]);
                 _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 1, mouseMode, 0, 0, 0, 0);
                 break;

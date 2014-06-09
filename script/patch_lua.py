@@ -3,8 +3,8 @@
 import glob,filecmp,shutil,os,subprocess
 
 toolpath = '/Users/tpfaff/code/residualvm-tools'
-modpath = '/Users/tpfaff/grimex'
-origpath = '/Users/tpfaff/grimex_orig'
+modpath = '/Users/tpfaff/grim/ex'
+origpath = '/Users/tpfaff/grim/ex_orig'
 patchpath = '/tmp/grim_pnc'
 
 neq = 0

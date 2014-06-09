@@ -113,16 +113,17 @@ void OSystem_Android::scaleMouse(Common::Point &p, int x, int y,
 
 	const Common::Rect &r = tex->getDrawRect();
 
-	if (_touchpad_mode) {
+	/*if (_touchpad_mode) {
 		x = x * 100 / _touchpad_scale;
 		y = y * 100 / _touchpad_scale;
-	}
+	}*/
 
 	if (deductDrawRect) {
 		x -= r.left;
 		y -= r.top;
 	}
 
+	warning("%d %d - %d %d - %d %d- %d %d",x,y,tex->width(),tex->height(),r.width(),r.height(),r.left,r.top);
 	p.x = scalef(x, tex->width(), r.width());
 	p.y = scalef(y, tex->height(), r.height());
 }
@@ -306,7 +307,8 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		case JKEYCODE_DPAD_DOWN:
 		case JKEYCODE_DPAD_LEFT:
 		case JKEYCODE_DPAD_RIGHT:
-			if (_show_mouse) {
+			//if (_show_mouse) {
+			if(false) {
 				if (arg1 != JACTION_DOWN)
 					return;
 
@@ -402,26 +404,20 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 		break;
 
 	case JE_SCROLL:
-		warning("scroll");
+		_isScrolling = true;
 
-		if (_show_mouse) {
+		if (_touchpad_mode) {
 			e.type = Common::EVENT_MOUSEMOVE;
-
-			if (_touchpad_mode) {
-				if (_touch_pt_scroll.x == -1 && _touch_pt_scroll.y == -1) {
-					_touch_pt_scroll.x = arg3;
-					_touch_pt_scroll.y = arg4;
-					return;
-				}
-
-				scaleMouse(e.mouse, arg3 - _touch_pt_scroll.x,
-							arg4 - _touch_pt_scroll.y, false);
-				e.mouse += _touch_pt_down;
-				clipMouse(e.mouse);
-			} else {
-				scaleMouse(e.mouse, arg3, arg4);
-				clipMouse(e.mouse);
+			if (_touch_pt_scroll.x == -1 && _touch_pt_scroll.y == -1) {
+				_touch_pt_scroll.x = arg3;
+				_touch_pt_scroll.y = arg4;
+				return;
 			}
+
+			scaleMouse(e.mouse, arg3, arg4, true);
+			//e.mouse += _touch_pt_down;
+			warning("%d %d %d -> %d %d",arg3,arg4,_touchpad_scale,e.mouse.x,e.mouse.y);
+			clipMouse(e.mouse);
 
 			pushEvent(e);
 		}
@@ -465,7 +461,7 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 			} else if (_mouse_action == 2) {
 				down = Common::EVENT_RBUTTONDOWN;
 				up = Common::EVENT_RBUTTONUP;
-			}
+			} else return;
 
 			lockMutex(_event_queue_lock);
 
@@ -506,13 +502,13 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 				switch (arg3) {
 				case JACTION_UP:
-					return;
-				case JACTION_DOWN:
 					e.type = Common::EVENT_DOUBLETAP;
-					_touch_pt_dt.x = -1;
-					_touch_pt_dt.y = -1;
 					warning("dtap");
 					break;
+				case JACTION_DOWN:
+					_touch_pt_dt.x = -1;
+					_touch_pt_dt.y = -1;
+					return;
 				// held and moved
 				case JACTION_MOVE:
 					e.type = Common::EVENT_MOUSEMOVE;
@@ -568,7 +564,23 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 		case JACTION_UP:
 		case JACTION_POINTER_UP: {
-			if (_show_mouse) {
+			// catch scroll end
+			if (_isScrolling && _touchpad_mode) {
+				e.mouse = getEventManager()->getMousePos();
+
+				lockMutex(_event_queue_lock);
+
+				if (_queuedEventTime)
+					_event_queue.push(_queuedEvent);
+
+				e.type = Common::EVENT_SCROLL;
+				_event_queue.push(e);
+
+				unlockMutex(_event_queue_lock);
+			}
+			_isScrolling = false;
+
+			if (false) {
 				if (arg1 != _fingersDown)
 					return;
 				Common::EventType up;
@@ -656,13 +668,14 @@ void OSystem_Android::pushEvent(int type, int arg1, int arg2, int arg3,
 
 		switch (arg1) {
 		case 1:
-			if (arg2 == 0 || arg2 == 1) {
-				_show_mouse = true;
+			if (arg2 == 0) {
+				//_show_mouse = true;
 				g_system->setFeatureState(OSystem::kFeatureVirtControls, false);
-				_touchpad_mode = (arg2 == 0);
+				_touchpad_mode = true;
 			} else {
-				_show_mouse = false;
+				//_show_mouse = false;
 				g_system->setFeatureState(OSystem::kFeatureVirtControls, true);
+				_touchpad_mode = false;
 			}
 			break;
 		case 2:
