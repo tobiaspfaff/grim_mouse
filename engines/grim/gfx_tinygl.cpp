@@ -554,29 +554,29 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		*y2 = -1;
 		return;
 	}
-	
+
 	TGLfloat top = 1000;
 	TGLfloat right = -1000;
 	TGLfloat left = 1000;
 	TGLfloat bottom = -1000;
 	TGLfloat winX, winY, winZ;
-	
+
 	TGLfloat modelView[16], projection[16];
 	TGLint viewPort[4];
-	
+
 	tglGetFloatv(TGL_MODELVIEW_MATRIX, modelView);
 	tglGetFloatv(TGL_PROJECTION_MATRIX, projection);
 	tglGetIntegerv(TGL_VIEWPORT, viewPort);
 
 	for (uint i = 0; i < model->_numFaces; i++) {
 		int *indices = (int *)model->_faces[i]._indexes;
-		
+
 		for (uint j = 0; j < model->_faces[i]._faceLength * 3; j++) {
 			int index = indices[j];
 			Math::Vector3d v = model->_drawVertices[index];
-			
+
 			tgluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
-			
+
 			if (winX > right)
 				right = winX;
 			if (winX < left)
@@ -587,11 +587,11 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 				bottom = winY;
 		}
 	}
-	
+
 	float t = bottom;
 	bottom = _gameHeight - top;
 	top = _gameHeight - t;
-	
+
 	if (left < 0)
 		left = 0;
 	if (right >= _gameWidth)
@@ -600,7 +600,7 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		top = 0;
 	if (bottom >= _gameHeight)
 		bottom = _gameHeight - 1;
-	
+
 	if (top >= _gameHeight || left >= _gameWidth || bottom < 0 || right < 0) {
 		*x1 = -1;
 		*y1 = -1;
@@ -608,7 +608,7 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		*y2 = -1;
 		return;
 	}
-	
+
 	*x1 = (int)left;
 	*y1 = (int)(_gameHeight - bottom);
 	*x2 = (int)right;
@@ -1149,7 +1149,7 @@ void GfxTinyGL::blit(const Graphics::PixelFormat &format, BlitImage *image, byte
 	}
 }
 
-void GfxTinyGL::drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer) {
+void GfxTinyGL::drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer, float rot) {
 
 	// PS2 EMI uses a TGA for it's splash-screen, avoid using the following
 	// code for drawing that (as it has no tiles).

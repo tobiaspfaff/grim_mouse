@@ -259,6 +259,8 @@ void GfxOpenGLS::setupTexturedQuad() {
 	if (g_grim->getGameType() == GType_GRIM) {
 		_backgroundProgram->enableVertexAttribute("position", _smushVBO, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
 		_backgroundProgram->enableVertexAttribute("texcoord", _smushVBO, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 2 * sizeof(float));
+		_rotProgram->enableVertexAttribute("position", _smushVBO, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+		_rotProgram->enableVertexAttribute("texcoord", _smushVBO, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 2 * sizeof(float));
 	}
 }
 
@@ -312,6 +314,7 @@ void GfxOpenGLS::setupShaders() {
 		_irisProgram = _primitiveProgram->clone();
 
 		_shadowPlaneProgram = Graphics::Shader::fromFiles("grim_shadowplane", primAttributes);
+		_rotProgram = Graphics::Shader::fromFiles("grim_rot", commonAttributes);
 	}
 
 	setupQuadEBO();
@@ -1097,7 +1100,7 @@ void GfxOpenGLS::createBitmap(BitmapData *bitmap) {
 			delete[] texData;
 		bitmap->freeData();
 
-		Graphics::Shader *shader = _backgroundProgram->clone();
+		Graphics::Shader *shader = bitmap->_canRotate ? _rotProgram->clone() : _backgroundProgram->clone();
 		bitmap->_userData = shader;
 
 		if (g_grim->getGameType() == GType_MONKEY4) {
@@ -1113,7 +1116,7 @@ void GfxOpenGLS::createBitmap(BitmapData *bitmap) {
 }
 
 
-void GfxOpenGLS::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
+void GfxOpenGLS::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer, float rot) {
 	if (g_grim->getGameType() == GType_MONKEY4 && bitmap->_data->_numImages > 1) {
 		BitmapData *data = bitmap->_data;
 		Graphics::Shader *shader = (Graphics::Shader *)data->_userData;
@@ -1164,6 +1167,14 @@ void GfxOpenGLS::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) 
 		shader->setUniform("offsetXY", Math::Vector2d(float(dx) / _gameWidth, float(dy) / _gameHeight));
 		shader->setUniform("sizeWH", Math::Vector2d(width / _gameWidth, height / _gameHeight));
 		shader->setUniform("texcrop", Math::Vector2d(width / nextHigher2((int)width), height / nextHigher2((int)height)));
+		if (bitmap->_data->_canRotate) {
+			float c = cos(rot), s = sin(rot);
+			Math::Matrix3 M;
+			M.getRow(0) << c << -s << 0;
+			M.getRow(1) << s << c << 0;
+			M.getRow(2) << 0 << 0 << 0;
+			shader->setUniform("rot", M);
+		}
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
 
 		glDisable(GL_BLEND);

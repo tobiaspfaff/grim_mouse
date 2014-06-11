@@ -95,7 +95,7 @@ public:
 	void destroyMaterial(Texture *material) override;
 
 	void createBitmap(BitmapData *bitmap) override;
-	void drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer) override;
+	void drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer=0, float rot=0) override;
 	void destroyBitmap(BitmapData *bitmap) override;
 
 	void createFont(Font *font) override;

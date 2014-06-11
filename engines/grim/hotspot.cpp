@@ -90,7 +90,7 @@ inline Actor* getManny() {
 
 HotspotMan::HotspotMan() :
     _selectMode (0), _initialized(false), _ctrlMode(0),_cutScene(0),
-    _flashHS(false) {
+    _flashHS(false), _activeHS(nullptr) {
 }
 
 HotspotMan::~HotspotMan() {
@@ -294,9 +294,23 @@ void HotspotMan::updatePerspective() {
     restoreCursor();
 }
 
-void HotspotMan::notifyWalkOut() {
-    if (_selectMode < 0)
-        okKey(false);
+void HotspotMan::notifyWalk(int id) {
+    /*if (_selectMode < 0)
+        okKey(false);*/
+
+#ifdef ANDROID
+    Common::Array<Hotspot>& hotspots = _hotspots[active_set()];
+    int setup = g_grim->getCurrSet()->getSetup();
+    for (size_t i=0; i<hotspots.size(); i++) {
+        Hotspot& hs = hotspots[i];
+        if (hs._setup == setup && hs._objId == id) {
+            Common::Point pnt = hs._region.center();
+            g_grim->getCursor()->setPersistent(1, 1, pnt.x, pnt.y);
+            _activeHS = &hs;
+            return;
+        }
+    }
+#endif
 }
 
 void HotspotMan::debug(int num) {
@@ -491,10 +505,6 @@ double line_line_dist(const Math::Vector3d& x0, const Math::Vector3d& x1,
 
 void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int debugMode, bool doubleClick) {
     bool climbing = LuaBase::instance()->queryVariable("system.currentActor.is_climbing", false) != 0;
-    _lastCursor = cursor;
-#ifdef ANDROID
-    restoreCursor();
-#endif
 
     int button = 0;
     if (ev.type == Common::EVENT_LBUTTONDOWN)
@@ -510,6 +520,27 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
     if (ev.kbd.hasFlags(Common::KBD_CTRL))
         button = 3;
     update();
+
+    // --- first, try active hotspot
+    if (_activeHS) {
+        Common::Point delta = cursor - _activeHS->_region.center();
+        if (abs(delta.x) < 40 && abs(delta.y) < 40) {
+            LuaObjects objects;
+            objects.add(1);
+            objects.add(_activeHS->_objId);
+            objects.add(0);
+            LuaBase::instance()->callback("mouseCommand", objects);
+            _activeHS = nullptr;
+            return;
+        }
+    }
+
+    _lastCursor = cursor;
+#ifdef ANDROID
+    restoreCursor();
+    if (_cutScene == 0)
+        g_grim->getCursor()->setPersistent(0, 8, cursor.x, cursor.y);
+#endif
 
     if (_ctrlMode == Dialog && button > 0) {
         // dialog mode
@@ -551,6 +582,7 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
     }
 
     if (debugMode==0) {
+
         // ------- click on hot spots ------------
         Common::Array<Hotspot>& hotspots = _hotspots[active_set()];
         int setup = g_grim->getCurrSet()->getSetup();
@@ -661,12 +693,12 @@ void HotspotMan::hover(const Common::Point& pos) {
     update();
     _lastCursor = pos;
     Cursor* cursor = g_grim->getCursor();
-    cursor->setPersistent(-1);
+    cursor->setPersistent(0, -1);
     cursor->setCursor(0);
 
     if (_cutScene > 0 && _ctrlMode != Dialog && _ctrlMode != Options) {
     #ifdef ANDROID
-        cursor->setPersistent(7, 320, 240);
+        cursor->setPersistent(0, 7, 320, 240);
     #else
         cursor->setCursor(7);
     #endif
@@ -678,6 +710,7 @@ void HotspotMan::hover(const Common::Point& pos) {
 
     int select = 0;
     for (size_t i=0; i<hotspots.size(); i++) {
+        if (_activeHS) continue;
         if ((hotspots[i]._setup == setup || _ctrlMode == Options) &&
              hotspots[i]._region.contains(pos)) {
             if (hotspots[i]._objId>=0 && !_hotobject[hotspots[i]._objId]._active)
@@ -940,12 +973,14 @@ void HotspotMan::cutSceneMode(int mode) {
 }
 
 void HotspotMan::restoreCursor() {
+    _activeHS = nullptr;
+    g_grim->getCursor()->setPersistent(1, -1);
 #ifdef ANDROID
     g_grim->getCursor()->setCursor(-1);
     if (_cutScene > 0 && _ctrlMode != Dialog && _ctrlMode != Options)
-        g_grim->getCursor()->setPersistent(7, 320, 240);
+        g_grim->getCursor()->setPersistent(0, 7, 320, 240);
     else
-        g_grim->getCursor()->setPersistent(-1);
+        g_grim->getCursor()->setPersistent(0, -1);
 #else
     hover(_lastCursor);
 #endif

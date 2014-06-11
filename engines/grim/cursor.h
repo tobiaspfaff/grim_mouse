@@ -24,35 +24,52 @@
 #define CURSOR_H_
 
 #include "common/rect.h"
+#include "common/array.h"
 
 namespace Grim {
 
 class GrimEngine;
 class Bitmap;
 
+class CursorData {
+public:
+	CursorData(const Common::String& name);
+	~CursorData();
+	void draw(const Common::Point& pos);
+	void reset();
+
+private:
+	Bitmap* load(const Common::String& name);
+	Bitmap** _anim;
+	unsigned _frameTick, _rotTick;
+	int _frame, _frames;
+	bool _repeat;
+	float _rot, _rotDelta;
+};
+
 class Cursor {
 public:
 	Cursor(GrimEngine *vm);
-	virtual ~Cursor();
+	~Cursor();
 
 	Common::Point getPosition() { return _position; }
 	void updatePosition(Common::Point &mouse);
-	void setCursor(int id) { _curCursor = id; }
+	void setCursor(int id);
 	void reload();
-	void setPersistent(int id, int x=-1, int y=-1);
+	void setPersistent(int pc, int id, int x=-1, int y=-1);
 
 	void draw();
 private:
 
 	float _scaleX, _scaleY;
-    int32 _hotspotx, _hotspoty;
-    int32 _curCursor, _persistentCursor;
+    int _curCursor;
+	int _persistentCursor[2];
 
 	Common::Point _position;
-	Common::Point _persistentPosition;
+	Common::Point _persistentPosition[2];
 
 	void loadAvailableCursors();
-    Bitmap** _bitmaps;
+    CursorData** _data;
 };
 
 } /* namespace  */

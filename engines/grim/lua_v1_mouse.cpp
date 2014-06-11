@@ -43,8 +43,8 @@ void Lua_V1::RegisterHotspot() {
     lua_pushnumber(n);
 }
 
-void Lua_V1::ActivateHotspot() { 
-    int num = lua_getnumber(lua_getparam(1));    
+void Lua_V1::ActivateHotspot() {
+    int num = lua_getnumber(lua_getparam(1));
     if (num < 0) {
         g_grim->getHotspotMan()->disableAll();
     } else {
@@ -53,7 +53,7 @@ void Lua_V1::ActivateHotspot() {
     }
 }
 
-void Lua_V1::UpdateHotspot() { 
+void Lua_V1::UpdateHotspot() {
 	Common::String id = lua_getstring(lua_getparam(1));
 	Math::Vector3d pos (lua_getnumber(lua_getparam(2)),
 						lua_getnumber(lua_getparam(3)),
@@ -62,12 +62,12 @@ void Lua_V1::UpdateHotspot() {
 	g_grim->getHotspotMan()->updateHotspot(id,pos,visible);
 }
 
-void Lua_V1::SwitchControlMode() { 
-    int mode = lua_getnumber(lua_getparam(1));    
+void Lua_V1::SwitchControlMode() {
+    int mode = lua_getnumber(lua_getparam(1));
     g_grim->getHotspotMan()->switchMode(mode);
     if (mode == 1 || mode == 5) {
         if (!lua_isnumber(lua_getparam(2))) return;
-        int lines = lua_getnumber(lua_getparam(2));    
+        int lines = lua_getnumber(lua_getparam(2));
         int x0 = lua_getnumber(lua_getparam(3));
         int y0 = lua_getnumber(lua_getparam(4));
         int width = lua_getnumber(lua_getparam(5));
@@ -84,15 +84,16 @@ void Lua_V1::SwitchControlMode() {
     }
 }
 
-void Lua_V1::NotifyWalkOut() { 
-    g_grim->getHotspotMan()->notifyWalkOut();
+void Lua_V1::NotifyWalk() {
+    int id = lua_getnumber(lua_getparam(1));
+    g_grim->getHotspotMan()->notifyWalk(id);
 }
 
-void Lua_V1::RegisterInventory() { 
+void Lua_V1::RegisterInventory() {
 	Common::String id = lua_getstring(lua_getparam(1));
 	if (id=="reset")
 		g_grim->getHotspotMan()->resetInventory();
-	else { 
+	else {
 		Common::String pic = lua_getstring(lua_getparam(2));
 		g_grim->getHotspotMan()->addInventory(id,pic);
 	}
@@ -121,7 +122,7 @@ void Lua_V1::GetControlMode() {
 void Lua_V1::SetOptionMode() {
 	Common::String name = lua_getstring(lua_getparam(1));
 	Common::String old = g_grim->getHotspotMan()->getOptionMode();
-    
+
     g_grim->getHotspotMan()->setOptionMode(name);
     lua_pushstring(old.c_str());
 }

@@ -90,7 +90,7 @@ public:
     void saveState(SaveGame* savedState);
     void switchMode(int ctrlMode) { _ctrlMode = ctrlMode; }
     void setupDialog(int x0, int y0, int w, int h, int rows, int cols) { _x0=x0; _y0=y0; _w=w; _h=h; _cols=cols; _rows=rows; }
-    void notifyWalkOut();
+    void notifyWalk(int id);
     void debug(int num);
     void update();
     void resetInventory();
@@ -142,6 +142,9 @@ protected:
     Polygon _selectPoly;
     Common::String _lastName;
     Common::Array<Math::Vector3d> _selectPath;
+
+    // active hotspot
+    Hotspot* _activeHS;
 };
 
 } /* namespace  */

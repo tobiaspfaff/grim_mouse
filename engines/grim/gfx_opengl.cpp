@@ -97,7 +97,7 @@ static char dimFragSrc[] =
 GfxOpenGL::GfxOpenGL() : _smushNumTex(0),
 		_smushTexIds(nullptr), _smushWidth(0), _smushHeight(0),
 		_useDepthShader(false), _fragmentProgram(0), _useDimShader(0),
-		_dimFragProgram(0), _maxLights(0), _storedDisplay(nullptr), 
+		_dimFragProgram(0), _maxLights(0), _storedDisplay(nullptr),
 		_emergFont(0), _alpha(1.f) {
 	g_driver = this;
 	// GL_LEQUAL as glDepthFunc ensures that subsequent drawing attempts for
@@ -384,7 +384,7 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 
             winX = winX/_scaleW;
             winY = winY/_scaleH;
-            
+
 			if (winX > right)
 				right = winX;
 			if (winX < left)
@@ -431,29 +431,29 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		*y2 = -1;
 		return;
 	}
-	
+
 	GLdouble top = 1000;
 	GLdouble right = -1000;
 	GLdouble left = 1000;
 	GLdouble bottom = -1000;
 	GLdouble winX, winY, winZ;
-	
+
 	GLdouble modelView[16], projection[16];
 	GLint viewPort[4];
-	
+
 	glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
 	glGetDoublev(GL_PROJECTION_MATRIX, projection);
 	glGetIntegerv(GL_VIEWPORT, viewPort);
-	
+
 	for (uint i = 0; i < model->_numFaces; i++) {
 		int *indices = (int *)model->_faces[i]._indexes;
 
 		for (uint j = 0; j < model->_faces[i]._faceLength * 3; j++) {
 			int index = indices[j];
 			Math::Vector3d v = model->_drawVertices[index];
-			
+
 			gluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
-			
+
             winX = winX/_scaleW;
             winY = winY/_scaleH;
 
@@ -467,11 +467,11 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 				bottom = winY;
 		}
 	}
-	
+
 	double t = bottom;
 	bottom = _gameHeight - top;
 	top = _gameHeight - t;
-	
+
 	if (left < 0)
 		left = 0;
 	if (right >= _gameWidth)
@@ -480,7 +480,7 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		top = 0;
 	if (bottom >= _gameHeight)
 		bottom = _gameHeight - 1;
-	
+
 	if (top >= _gameHeight || left >= _gameWidth || bottom < 0 || right < 0) {
 		*x1 = -1;
 		*y1 = -1;
@@ -488,7 +488,7 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		*y2 = -1;
 		return;
 	}
-	
+
 	*x1 = (int)left;
 	*y1 = (int)(_gameHeight - bottom);
 	*x2 = (int)right;
@@ -1043,7 +1043,7 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 	}
 }
 
-void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
+void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer, float rot) {
 
 	// The PS2 version of EMI uses a TGA for it's splash-screen
 	// avoid using the TIL-code below for that, by checking
@@ -1859,7 +1859,7 @@ void GfxOpenGL::blackbox(int x0, int y0, int x1, int y1, float opacity) {
 	glEnable(GL_LIGHTING);
 	glDisable(GL_BLEND);
 }
-    
+
 void GfxOpenGL::drawRectangle(const PrimitiveObject *primitive) {
 	float x1 = primitive->getP1().x * _scaleW;
 	float y1 = primitive->getP1().y * _scaleH;
@@ -2051,12 +2051,12 @@ bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
     glGetIntegerv(GL_VIEWPORT, viewPort);
 
     gluProject(vec.x(), vec.y(), vec.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
-    
+
     winX = winX/_scaleW;
     winY = winY/_scaleH;
-    
+
     winY = _gameHeight - winY;
-    
+
     if (winX < 0)
         winX = 0;
     if (winX >= _gameWidth)
@@ -2079,10 +2079,10 @@ bool GfxOpenGL::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
     glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
     glGetDoublev(GL_PROJECTION_MATRIX, projection);
     glGetIntegerv(GL_VIEWPORT, viewPort);
-    
+
     gluUnProject(winX, winY, 0.0, modelView, projection, viewPort, &p0[0], &p0[1], &p0[2]);
     gluUnProject(winX, winY, 1.0, modelView, projection, viewPort, &p1[0], &p1[1], &p1[2]);
-    
+
     r0 = Math::Vector3d(p0[0],p0[1],p0[2]);
     r1 = Math::Vector3d(p1[0],p1[1],p1[2]) - r0;
     return true;

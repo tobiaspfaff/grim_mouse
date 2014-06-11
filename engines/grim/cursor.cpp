@@ -27,21 +27,116 @@
 #include "engines/grim/bitmap.h"
 #include "graphics/surface.h"
 #include "graphics/cursorman.h"
+#include "common/system.h"
 
-const static int numCursors = 8;
+
+const static int numCursors = 9;
+static const char * const cursorName[] =
+#ifdef ANDROID
+	{"", "redcircle", "bluecircle", "cursor3", "cursor4", "cursor5",
+	 "cursor6", "hourglass", "wave" };
+#else
+	{"cursor0", "cursor1", "cursor2", "cursor3", "cursor4", "cursor5",
+	"cursor6", "cursor7", "" };
+#endif
 
 namespace Grim {
 
+CursorData::CursorData(const Common::String& name) :
+	_frameTick(0), _rotTick(0), _frame(0), _repeat(true), _rotDelta(0), _rot(0) {
+	_anim = nullptr;
+	_frames = 0;
+	if (name == "wave") _repeat = false;
+	if (name == "redcircle") _rotDelta = 2;
+	if (name == "bluecircle") _rotDelta = -2;
+
+	if (SearchMan.hasFile(name + "_0.tga")) {
+		// animation
+		while (SearchMan.hasFile(Common::String::format((name+"_%d.tga").c_str(),_frames)))
+			_frames++;
+
+		_anim = new Bitmap*[_frames];
+		for (int i=0; i<_frames; i++)
+			_anim[i] = load(Common::String::format((name+"_%d.tga").c_str(),i));
+	} else {
+		// single image
+		if (SearchMan.hasFile(name+".tga")) {
+			_frames = 1;
+			_anim = new Bitmap*[1];
+			_anim[0] = load(name + ".tga");
+		}
+	}
+}
+
+CursorData::~CursorData() {
+	if (_anim != nullptr)
+		delete[] _anim;
+	_anim = nullptr;
+}
+
+Bitmap* CursorData::load(const Common::String& name) {
+	Bitmap * bmp = Bitmap::create(name.c_str());
+	bmp->_data->_smoothInterpolation = true;
+	bmp->_data->_canRotate = _rotDelta != 0;
+	bmp->_data->load();
+	bmp->_data->_hasTransparency = true;
+	return bmp;
+}
+
+void CursorData::reset() {
+	_frame = 0;
+	_frameTick = _rotTick = g_system->getMillis();
+}
+
+void CursorData::draw(const Common::Point& pos) {
+	if (_anim == nullptr) return;
+
+	unsigned delta = 50;
+	unsigned curTick = g_system->getMillis();
+	if (curTick - _frameTick > 5 * delta) {
+		_frameTick = curTick;
+		_frame = 0;
+	}
+	while (curTick - _frameTick > delta) {
+		_frameTick += delta;
+		_frame++;
+		if (_repeat)
+			_frame = _frame % _frames;
+	}
+	if (_frame >= _frames)
+		return;
+
+	if (_rotDelta != 0) {
+		_rot += _rotDelta * 0.001 * (curTick-_rotTick);
+		if (fabs(curTick-_rotTick) > 3000) _rot = 0;
+		_rotTick = curTick;
+		_rot = fmod(_rot + 2*M_PI, 2*M_PI);
+	}
+
+	Bitmap* bmp = _anim[_frame];
+	Common::Point hs(bmp->getWidth() / 2, bmp->getHeight() / 2);
+	g_driver->drawBitmap(bmp,pos.x - hs.x, pos.y - hs.y,0,_rot);
+}
+
 Cursor::Cursor(GrimEngine *vm) :
 	_position(320, 210),
-	_curCursor(0), _persistentCursor(-1)
+	_curCursor(0)
 {
-    _bitmaps = new Bitmap*[numCursors];
-    for (int i=0; i<numCursors; i++)
-        _bitmaps[i] = 0;
+	for (int i=0; i<2; i++)
+		_persistentCursor[i] = -1;
+	_data = new CursorData*[numCursors];
+	for(int i=0; i<numCursors; i++)
+		_data[i] = nullptr;
     loadAvailableCursors();
     _scaleX = 1.0f/g_driver->getScaleW();
     _scaleY = 1.0f/g_driver->getScaleH();
+}
+
+Cursor::~Cursor() {
+	for(int i=0; i<numCursors; i++) {
+		if (_data[i]) delete _data[i];
+	}
+	delete[] _data;
 }
 
 void Cursor::updatePosition(Common::Point& mouse) {
@@ -50,21 +145,10 @@ void Cursor::updatePosition(Common::Point& mouse) {
 }
 
 void Cursor::loadAvailableCursors() {
-   for(int i=0; i<numCursors; i++) {
-#ifdef ANDROID
-		Common::String fn = Common::String::format("touch%d.tga",i);
-#else
-		Common::String fn = Common::String::format("cursor%d.tga",i);
-#endif
-		_bitmaps[i] = nullptr;
-		if (SearchMan.hasFile(fn)) {
-        	_bitmaps[i] = Bitmap::create(fn.c_str());
-	        _bitmaps[i]->_data->_smoothInterpolation = true;
-	        _bitmaps[i]->_data->load();
-	        _bitmaps[i]->_data->_hasTransparency = true;
-    	}
+    for(int i=0; i<numCursors; i++) {
+		if (_data[i]) delete _data[i];
+		_data[i] = new CursorData(cursorName[i]);
 	}
-    _hotspotx = _hotspoty = 15;
     CursorMan.showMouse(false);
 }
 
@@ -72,28 +156,28 @@ void Cursor::reload() {
     loadAvailableCursors();
 }
 
-Cursor::~Cursor() {
-    delete[] _bitmaps;
-    _bitmaps = 0;
-	/*for (int i=0; i<numCursors; i++) {
-        if (_bitmaps[i])
-            delete _bitmaps[i];
-        _bitmaps[i] = 0;
-    }*/
+void Cursor::setCursor(int id) {
+	if (_curCursor != id && id >= 0) {
+		_data[id]->reset();
+	}
+	_curCursor = id;
 }
 
-void Cursor::setPersistent(int id, int x, int y) {
-	_persistentCursor = id;
-	_persistentPosition.x = x;
-	_persistentPosition.y = y;
+void Cursor::setPersistent(int pc, int id, int x, int y) {
+	if (_persistentCursor[pc] != id && id >= 0) {
+		_data[id]->reset();
+	}
+	_persistentCursor[pc] = id;
+	_persistentPosition[pc].x = x;
+	_persistentPosition[pc].y = y;
 }
 
 void Cursor::draw() {
-	if (_curCursor >= 0 && _bitmaps[_curCursor] != nullptr)
-    	_bitmaps[_curCursor]->draw(_position.x - _hotspotx, _position.y - _hotspoty);
-	if (_persistentCursor >=0 && _bitmaps[_persistentCursor] != nullptr)
-		_bitmaps[_persistentCursor]->draw(_persistentPosition.x - _hotspotx,
-										  _persistentPosition.y - _hotspoty);
+	if (_curCursor >= 0)
+		_data[_curCursor]->draw(_position);
+	for (int i=0; i<2; i++)
+		if (_persistentCursor[i] >= 0)
+			_data[_persistentCursor[i]]->draw(_persistentPosition[i]);
 }
 
 } /* namespace Grim */
