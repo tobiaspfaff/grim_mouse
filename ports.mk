@@ -93,7 +93,7 @@ ifdef USE_OPENGL_SHADERS
 endif
 	cp residualvm-static $(bundle_name)/Contents/MacOS/residualvm
 	chmod 755 $(bundle_name)/Contents/MacOS/residualvm
-#	$(STRIP) $(bundle_name)/Contents/MacOS/residualvm
+	$(STRIP) $(bundle_name)/Contents/MacOS/residualvm
 
 iphonebundle: iphone
 	mkdir -p $(bundle_name)
