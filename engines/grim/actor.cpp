@@ -83,8 +83,8 @@ void Actor::restoreStaticState(SaveGame *state) {
 
 Actor::Actor() :
 		_talkColor(255, 255, 255), _pos(0, 0, 0),
-		_lookingMode(false), _followBoxes(false), _running(false), 
-		_pitch(0), _yaw(0), _roll(0), _walkRate(0.3f),
+		_lookingMode(false), _followBoxes(false), _running(false),
+		_pitch(0), _yaw(0), _roll(0), _walkRate(0.3f), _walkBwd(false),
 		_turnRateMultiplier(0.f), _talkAnim(0),
 		_reflectionAngle(80), _scale(1.f), _timeScale(1.f),
 		_visible(true), _lipSync(nullptr), _turning(false), _walking(false),
@@ -94,8 +94,8 @@ Actor::Actor() :
 		_sayLineText(0), _talkDelay(0),
 		_attachedActor(0), _attachedJoint(""),
 		_globalAlpha(1.f), _alphaMode(AlphaOff),
-		 _mustPlaceText(false), 
-		_shadowActive(false), _puckOrient(false), _talking(false), 
+		 _mustPlaceText(false),
+		_shadowActive(false), _puckOrient(false), _talking(false),
 		_inOverworld(false), _drawnToClean(false), _backgroundTalk(false),
 		_sortOrder(0), _haveSectorSortOrder(false), _sectorSortOrder(0),
 		_cleanBuffer(0), _lightMode(LightFastDyn), _hasFollowedBoxes(false) {
@@ -509,7 +509,6 @@ void Actor::calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, 
 			up = s->getNormal();
 		}
 	}
-
 	Math::Matrix3 m;
 	m.buildFromTargetDir(actorForward, _walkBwd ? -lookVector : lookVector, actorUp, up);
 
@@ -1950,7 +1949,7 @@ bool Actor::handleCollisionWith(Actor *actor, CollisionMode mode, Math::Vector3d
 	// because it seems the original does so.
 	// if you change this code test this places: the rocks in lb and bv (both when booting directly in the
 	// set and when coming in from another one) and the poles in xb.
-	if (!this->getSphereInfo(true, size1, p1) || 
+	if (!this->getSphereInfo(true, size1, p1) ||
 	    !actor->getSphereInfo(false, size2, p2)) {
 		return false;
 	}
