@@ -76,7 +76,7 @@
 #ifdef __SYMBIAN32__
 #include <zlib\zlib.h>
 #else
-#include <zlib.h>
+#include "zlib/zlib.h"
 #endif
 
 #else  // !USE_ZLIB
