@@ -92,7 +92,7 @@ enum EventType {
 	EVENT_DOUBLETAP = 100,
 	EVENT_SCROLL = 101,
 	EVENT_SCROLL_UP = 102,
-	EVENT_SCROLL_DOWN = 103
+	EVENT_SCROLL_MOVE = 103
 };
 
 typedef uint32 CustomEventType;
@@ -132,6 +132,7 @@ struct Event {
 	 * This field is ResidualVM specific
 	 */
 	Common::Point relMouse;
+	Common::Point origin;
 
 	Event() : type(EVENT_INVALID), synthetic(false) {
 #ifdef ENABLE_KEYMAPPER

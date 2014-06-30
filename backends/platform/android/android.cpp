@@ -147,6 +147,7 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	// TODO put these values in some option dlg?
 	_touchpad_mode(true),
 	_isScrolling(false),
+	_isLong(false),
 	_touchpad_scale(66),
 	_dpad_scale(4),
 	_fingersDown(0),

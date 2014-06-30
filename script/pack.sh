@@ -5,6 +5,7 @@ tmpdir=/tmp/grim_pnc
 delta=dists/engine-data/patches/grim_pnc_delta
 lab=dists/engine-data/mouse.lab
 
+a=`pwd`
 cd ~/code/grim_mouse
 
 mkdir -p $tmpdir
@@ -14,4 +15,4 @@ cp $delta/* $tmpdir/
 python script/convert_to_bin.py
 python script/patch_lua.py
 $tooldir/mklab --grim $tmpdir $lab
-cp $lab .
+cp $lab $a/

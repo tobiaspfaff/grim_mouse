@@ -44,6 +44,7 @@ struct Polygon {
     bool contains(const Common::Point& pos);
     void move(const Common::Point& center);
     Common::Point center();
+    void fixBorders();
 };
 
 struct HotObject {
@@ -72,7 +73,7 @@ public:
     HotspotMan();
     virtual ~HotspotMan();
 
-    enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5, Options=6 };
+    enum ControlMode { Normal=0, Dialog=1, Special=2, Linear=3, Inventory=4, NoWalk=5, Options=6, Passive=10 };
 
     int addHotspot(const Common::String& name, const Math::Vector3d& pos, const Common::String& scene);
     void disableAll();
@@ -97,13 +98,14 @@ public:
     void addInventory(const Common::String& id, const Common::String& pic);
     void updateHotspot(const Common::String& id, const Math::Vector3d& pos, int vis);
     int getCtrlMode() { return _ctrlMode; }
-    bool isDialog() { return _cutScene > 0 || _ctrlMode == Dialog; }
+    bool isDialog() { return _cutScene > 0 || _ctrlMode == Dialog || _ctrlMode == Passive; }
     void setAxis(const Math::Vector3d& a, float offset) { _axis = a; _offset=offset; }
     void cutSceneMode(int mode);
     void flashHotspots();
     void renameHotspot(int id, const Common::String& name);
     void setOptionMode(const Common::String& name) { _curOption = name; }
     Common::String& getOptionMode() { return _curOption; }
+    Common::Point mannyPos2D(float zOffset);
 protected:
     void append_hotspot(const Common::String& id, const Common::String& name, int type);
     int inBox(const Common::Point& p);
@@ -111,6 +113,8 @@ protected:
     void loadFlashBitmaps();
     void restoreCursor();
     Common::String active_set();
+
+    int _cutScene;
 
     // dialog support
     int _ctrlMode, _rows, _cols;
@@ -130,7 +134,6 @@ protected:
     Common::String _curScene, _curOption;
     Common::Array<HotObject> _hotobject;
     Common::Point _lastCursor;
-    int _cutScene;
 
     // hotspot display
     bool _flashHS;

@@ -227,6 +227,7 @@ private:
 	Graphics::Shader* _primitiveProgram;
 	Graphics::Shader* _irisProgram;
 	Graphics::Shader* _shadowPlaneProgram;
+	Graphics::Shader* _rotProgram;
 
 	int _smushWidth;
 	int _smushHeight;

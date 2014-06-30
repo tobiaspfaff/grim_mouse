@@ -600,13 +600,13 @@ void GfxOpenGLS::startActorDraw(const Actor *actor) {
 
 		if (_currentShadowArray) {
 			const Sector *shadowSector = _currentShadowArray->planeList.front().sector;
-			const Math::Vector3d color = Math::Vector3d(_shadowColorR, _shadowColorG, _shadowColorB) / 255.f;
+			const Math::Vector3d scolor = Math::Vector3d(_shadowColorR, _shadowColorG, _shadowColorB) / 255.f;
 			Math::Vector3d normal = shadowSector->getNormal();
 			if (!_currentShadowArray->dontNegate)
 				normal = -normal;
 
 			_actorProgram->setUniform("shadow._active", true);
-			_actorProgram->setUniform("shadow._color", color);
+			_actorProgram->setUniform("shadow._color", scolor);
 			_actorProgram->setUniform("shadow._light", _currentShadowArray->pos);
 			_actorProgram->setUniform("shadow._point", shadowSector->getVertices()[0]);
 			_actorProgram->setUniform("shadow._normal", normal);
@@ -840,7 +840,7 @@ void GfxOpenGLS::drawSprite(const Sprite *sprite) {
 	} else {
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
-	
+
 	// FIXME: depth test does not work yet because final z coordinates
 	//        for Sprites and actor textures are inconsistently calculated
 	if (sprite->_writeDepth || _currentActor->isInOverworld()) {
@@ -1605,10 +1605,10 @@ void GfxOpenGLS::drawGenericPrimitive(const float *vertices, uint32 numVertices,
 }
 
 void GfxOpenGLS::drawRectangle(const PrimitiveObject *primitive) {
-	float x1 = primitive->getP1().x * _scaleW;
-	float y1 = primitive->getP1().y * _scaleH;
-	float x2 = primitive->getP2().x * _scaleW;
-	float y2 = primitive->getP2().y * _scaleH;
+	float x1 = primitive->getP1().x; //* _scaleW;
+	float y1 = primitive->getP1().y; //* _scaleH;
+	float x2 = primitive->getP2().x; //* _scaleW;
+	float y2 = primitive->getP2().y; //* _scaleH;
 
 	float data[] = { x1, y1, x2, y1, x2, y2, x1, y2 };
 
@@ -1616,10 +1616,10 @@ void GfxOpenGLS::drawRectangle(const PrimitiveObject *primitive) {
 }
 
 void GfxOpenGLS::drawLine(const PrimitiveObject *primitive) {
-	float x1 = primitive->getP1().x * _scaleW;
-	float y1 = primitive->getP1().y * _scaleH;
-	float x2 = primitive->getP2().x * _scaleW;
-	float y2 = primitive->getP2().y * _scaleH;
+	float x1 = primitive->getP1().x;// * _scaleW;
+	float y1 = primitive->getP1().y;// * _scaleH;
+	float x2 = primitive->getP2().x;// * _scaleW;
+	float y2 = primitive->getP2().y;// * _scaleH;
 
 	float data[] = { x1, y1, x2, y2 };
 
@@ -1627,14 +1627,14 @@ void GfxOpenGLS::drawLine(const PrimitiveObject *primitive) {
 }
 
 void GfxOpenGLS::drawPolygon(const PrimitiveObject *primitive) {
-	float x1 = primitive->getP1().x * _scaleW;
-	float y1 = primitive->getP1().y * _scaleH;
-	float x2 = primitive->getP2().x * _scaleW;
-	float y2 = primitive->getP2().y * _scaleH;
-	float x3 = primitive->getP3().x * _scaleW;
-	float y3 = primitive->getP3().y * _scaleH;
-	float x4 = primitive->getP4().x * _scaleW;
-	float y4 = primitive->getP4().y * _scaleH;
+	float x1 = primitive->getP1().x;// * _scaleW;
+	float y1 = primitive->getP1().y;// * _scaleH;
+	float x2 = primitive->getP2().x;// * _scaleW;
+	float y2 = primitive->getP2().y;// * _scaleH;
+	float x3 = primitive->getP3().x;// * _scaleW;
+	float y3 = primitive->getP3().y;// * _scaleH;
+	float x4 = primitive->getP4().x;// * _scaleW;
+	float y4 = primitive->getP4().y;// * _scaleH;
 
 	const float data[] = { x1, y1, x2, y2, x3, y3, x4, y4 };
 
@@ -1824,8 +1824,8 @@ void GfxOpenGLS::createModel(Mesh *mesh) {
 }
 
 void GfxOpenGLS::blackbox(int x0, int y0, int x1, int y1, float opacity) {
-	float px1 = x0 * _scaleW, py1 = y0 * _scaleH;
-	float px2 = x1 * _scaleW, py2 = y1 * _scaleH;
+	float px1 = x0, py1 = y0;// * _scaleW, py1 = y0 * _scaleH;
+	float px2 = x1, py2 = y1;// * _scaleW, py2 = y1 * _scaleH;
 	float data[] = { px1, py1, px1, py2, px2, py1, px2, py2 };
 
 	GLuint prim = nextPrimitive();

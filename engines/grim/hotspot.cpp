@@ -45,6 +45,9 @@
 
 namespace Grim {
 
+inline int16 max(int16 a, int16 b) { return a>b ? a : b; }
+inline int16 min(int16 a, int16 b) { return a<b ? a : b; }
+
 void Polygon::draw(const Color& col) {
     PrimitiveObject line;
     for (size_t i=0; i<_pnts.size(); i++) {
@@ -78,6 +81,28 @@ void Polygon::move(const Common::Point& c) {
     Common::Point offset(c.x - p.x/_pnts.size(), c.y - p.y/_pnts.size());
     for (size_t i=0; i<_pnts.size(); i++)
         _pnts[i] += offset;
+}
+
+void Polygon::fixBorders() {
+    const int FIX_BORDER = 6;
+    Common::Point c = center();
+    for (size_t i=0; i<_pnts.size(); i++) {
+        Common::Point& p = _pnts[i];
+        if (p.x <= FIX_BORDER && p.x < c.x) p.x = 0;
+        if (p.x >= 640-FIX_BORDER && p.x > c.x) p.x = 640;
+        if (p.y <= FIX_BORDER && p.y < c.y) p.y = 0;
+        if (p.y >= 480-FIX_BORDER && p.y > c.y) p.y = 480;
+    }
+#ifdef ANDROID
+    const int WIDEN_BORDERS = 22;
+    for (size_t i=0; i<_pnts.size(); i++) {
+        Common::Point& p = _pnts[i];
+        if (c.x <= WIDEN_BORDERS && p.x > c.x) p.x = max(p.x, c.x+WIDEN_BORDERS);
+        if (c.x >= 640-WIDEN_BORDERS && p.x < c.x) p.x = min(p.x, c.x-WIDEN_BORDERS);
+        if (c.y <= WIDEN_BORDERS && p.y > c.y) p.y = max(p.y, c.y+WIDEN_BORDERS);
+        if (c.y >= 480-WIDEN_BORDERS && p.y < c.y) p.y = min(p.y, c.y-WIDEN_BORDERS);
+    }
+#endif
 }
 
 inline Actor* getManny() {
@@ -132,6 +157,7 @@ void HotspotMan::initialize() {
                 int x = data->readSint32LE(), y = data->readSint32LE();
                 hs._region._pnts.push_back(Common::Point(x,y));
             }
+            hs._region.fixBorders();
             _hotspots[setID].push_back(hs);
         }
     }
@@ -206,7 +232,7 @@ void HotspotMan::drawActive(int debugMode) {
         //return;
     }
     if (_ctrlMode == Inventory) {
-        const int dx = 5;//, dx2 = 6;
+        const int dx = 4;//, dx2 = 6;
         int num_rows = (_inventory.size()-1)/_cols+1;
         int x1 = _x0+_w*_cols, y1 =_y0+_h*num_rows;
         g_driver->blackbox(0,0,640,480,0.4);
@@ -513,6 +539,8 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
         button = 2;
     else if (ev.type == Common::EVENT_MBUTTONDOWN)
         button = 3;
+    else if (ev.type == Common::EVENT_SCROLL_UP)
+        button = 4;
     else if (ev.type == Common::EVENT_SCROLL)
         button = 4;
     if (ev.kbd.hasFlags(Common::KBD_ALT))
@@ -538,8 +566,9 @@ void HotspotMan::event(const Common::Point& cursor, const Common::Event& ev, int
     _lastCursor = cursor;
 #ifdef ANDROID
     restoreCursor();
-    if (_cutScene == 0)
+    if (_cutScene == 0 && _ctrlMode == Normal && ev.type != Common::EVENT_SCROLL) {
         g_grim->getCursor()->setPersistent(0, 8, cursor.x, cursor.y);
+    }
 #endif
 
     if (_ctrlMode == Dialog && button > 0) {
@@ -759,6 +788,18 @@ void HotspotMan::hover(const Common::Point& pos) {
         LuaBase::instance()->callback("mouseHover", objects);
         return;
     }
+}
+
+Common::Point HotspotMan::mannyPos2D(float zOffset) {
+    int x=0, y=0;
+    Actor* manny = getManny();
+    if (g_grim->getCurrSet() && manny) {
+        Math::Vector3d p = manny->getPos();
+        p += Math::Vector3d(0,0,zOffset);
+        g_grim->getCurrSet()->setupCamera();
+        g_driver->worldToScreen(p,x,y);
+    }
+    return Common::Point(x,y);
 }
 
 void HotspotMan::freeClick(const Common::Point& cursor, int button, bool doubleClick, bool climbing) {

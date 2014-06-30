@@ -229,6 +229,7 @@ private:
 	int _eventScaleY;
 	bool _touchpad_mode;
 	bool _isScrolling;
+	bool _isLong;
 	int _touchpad_scale;
 	int _trackball_scale;
 	int _dpad_scale;
