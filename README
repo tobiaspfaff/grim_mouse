@@ -40,9 +40,8 @@ In short:
    into a folder on your hard drive. Overwriting duplicate files is fine.
 2. Download the original v1.1 patch (gfupd101.exe) from residualvm.org/downloads
    and put it into the same folder.
-3. Extract the Grim Mouse package
-   Mac: Drag the residualvm icon into /Applications
-   Windows: Copy residualvm.exe and mouse.lab into any folder on your hard disk
+3. Mac: Mount (double-click) the .dmg file, and drag the residualvm icon into /Applications
+   Windows: Extract the contents of the zip file to any folder on your hard disk
 4. Start Grim Mouse / ResidualVM
 5. Click 'Add Game' and navigate to your gamedata folder from Step 1
    The screen should say "Grim Fandango Windows/English". That's ok, even
