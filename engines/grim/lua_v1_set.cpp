@@ -27,8 +27,10 @@
 #include "engines/grim/actor.h"
 #include "engines/grim/grim.h"
 #include "engines/grim/set.h"
+#include "engines/grim/hotspot.h"
 
 #include "engines/grim/lua/lauxlib.h"
+#include "engines/grim/lua/lapi.h"
 
 namespace Grim {
 
@@ -242,7 +244,7 @@ void Lua_V1::UnLockSet() {
 }
 
 void Lua_V1::MakeCurrentSet() {
-	lua_Object nameObj = lua_getparam(1);
+    lua_Object nameObj = lua_getparam(1);
 	if (!lua_isstring(nameObj)) {
 		// TODO setting current set null
 		warning("Lua_V1::MakeCurrentSet: implement missing case");
@@ -252,6 +254,7 @@ void Lua_V1::MakeCurrentSet() {
 	const char *name = lua_getstring(nameObj);
 	Debug::debug(Debug::Engine, "Entered new scene '%s'.", name);
 	g_grim->setSet(name);
+	g_grim->getHotspotMan()->updatePerspective();
 }
 
 void Lua_V1::MakeCurrentSetup() {

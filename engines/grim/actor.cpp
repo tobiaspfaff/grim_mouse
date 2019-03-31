@@ -83,8 +83,8 @@ void Actor::restoreStaticState(SaveGame *state) {
 
 Actor::Actor() :
 		_talkColor(255, 255, 255), _pos(0, 0, 0),
-		_lookingMode(false), _followBoxes(false), _running(false), 
-		_pitch(0), _yaw(0), _roll(0), _walkRate(0.3f),
+		_lookingMode(false), _followBoxes(false), _running(false),
+		_pitch(0), _yaw(0), _roll(0), _walkRate(0.3f), _walkBwd(false),
 		_turnRateMultiplier(0.f), _talkAnim(0),
 		_reflectionAngle(80), _scale(1.f), _timeScale(1.f),
 		_visible(true), _lipSync(nullptr), _turning(false), _singleTurning(false), _walking(false),
@@ -94,7 +94,7 @@ Actor::Actor() :
 		_sayLineText(0), _talkDelay(0),
 		_attachedActor(0), _attachedJoint(""),
 		_globalAlpha(1.f), _alphaMode(AlphaOff),
-		 _mustPlaceText(false), 
+		 _mustPlaceText(false),
 		_puckOrient(false), _talking(false), 
 		_inOverworld(false), _drawnToClean(false), _backgroundTalk(false),
 		_sortOrder(0), _useParentSortOrder(false),
@@ -510,8 +510,9 @@ void Actor::setRot(const Math::Angle &pitchParam, const Math::Angle &yawParam, c
 	_turning = false;
 }
 
-void Actor::setPos(const Math::Vector3d &position) {
-	_walking = false;
+void Actor::setPos(const Math::Vector3d &position, int xnum) {
+	if (xnum==0)
+		_walking = false;
 	_pos = position;
 
 	// Don't allow positions outside the sectors.
@@ -551,9 +552,8 @@ void Actor::calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, 
 			up = s->getNormal();
 		}
 	}
-
 	Math::Matrix3 m;
-	m.buildFromTargetDir(actorForward, lookVector, actorUp, up);
+	m.buildFromTargetDir(actorForward, _walkBwd ? -lookVector : lookVector, actorUp, up);
 
 	if (_puckOrient) {
 		m.getEuler(yaw, pitch, roll, Math::EO_ZXY);
@@ -597,7 +597,7 @@ void Actor::turnTo(const Math::Angle &pitchParam, const Math::Angle &yawParam, c
 		_turning = false;
 }
 
-void Actor::walkTo(const Math::Vector3d &p) {
+void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 	if (p == _pos)
 		_walking = false;
 	else {
@@ -660,7 +660,7 @@ void Actor::walkTo(const Math::Vector3d &p) {
 					pathFound = true;
 					break;
 				}
-
+				//warning("cs %s",sector->getName().c_str());
 				for (Common::List<Sector *>::iterator i = sectors.begin(); i != sectors.end(); ++i) {
 					Sector *s = *i;
 					bool inClosed = false;
@@ -748,9 +748,13 @@ void Actor::walkTo(const Math::Vector3d &p) {
 			if (!pathFound) {
 				warning("Actor::walkTo(): No path found for %s", _name.c_str());
 				if (g_grim->getGameType() == GType_MONKEY4) {
-					_walking = false;
+                    _walking = false;
 					return;
 				}
+				if (!force_walk && getName() == "Manny") {
+					_walking = false;
+    	            return;
+    	        }
 			}
 		}
 
@@ -1147,6 +1151,10 @@ Math::Angle Actor::getYawTo(const Math::Vector3d &p) const {
 }
 
 void Actor::sayLine(const char *msgId, bool background, float x, float y) {
+	if (!msgId) {
+		warning("zero pointer in message encountered");
+		return;
+	}
 	assert(msgId);
 
 	if (msgId[0] == 0) {
@@ -2137,7 +2145,7 @@ bool Actor::handleCollisionWith(Actor *actor, CollisionMode mode, Math::Vector3d
 	// because it seems the original does so.
 	// if you change this code test this places: the rocks in lb and bv (both when booting directly in the
 	// set and when coming in from another one) and the poles in xb.
-	if (!this->getSphereInfo(true, size1, p1) || 
+	if (!this->getSphereInfo(true, size1, p1) ||
 	    !actor->getSphereInfo(false, size2, p2)) {
 		return false;
 	}

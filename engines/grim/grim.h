@@ -27,6 +27,7 @@
 
 #include "common/str-array.h"
 #include "common/hashmap.h"
+#include "common/array.h"
 #include "common/events.h"
 
 #include "engines/advancedDetector.h"
@@ -48,6 +49,8 @@ class PrimitiveObject;
 class Debugger;
 class LuaBase;
 class GfxBase;
+class Cursor;
+class HotspotMan;
 
 enum GrimGameType {
 	GType_GRIM,
@@ -110,6 +113,7 @@ public:
 	void setFlipEnable(bool state) { _flipEnable = state; }
 	bool getFlipEnable() { return _flipEnable; }
 	virtual void drawTextObjects();
+	void drawCursor();
 	void playIrisAnimation(Iris::Direction dir, int x, int y, int time);
 
 	void mainLoop();
@@ -180,8 +184,11 @@ public:
 	TextObjectDefaults _sayLineDefaults, _printLineDefaults, _blastTextDefaults;
 
 	void debugLua(const Common::String &str);
-
+    
 	void setSideTextures(const Common::String &setup);
+
+    inline HotspotMan* getHotspotMan() { return _hotspotManager; }
+    inline Cursor* getCursor() { return _cursor; }
 
 protected:
 	virtual void pauseEngineIntern(bool pause) override;
@@ -259,6 +266,11 @@ protected:
 	Common::Language _gameLanguage;
 	Debugger *_debugger;
 	uint32 _pauseStartTime;
+    
+    Cursor *_cursor;
+    HotspotMan *_hotspotManager;
+    int _opMode;
+    bool _devMode;
 };
 
 extern GrimEngine *g_grim;

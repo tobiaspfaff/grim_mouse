@@ -7,6 +7,9 @@
 residualvm.dwp
 lib*.a
 .deps
+*.so
+*.apk
+/build
 
 /config.log
 /residualvm
@@ -181,3 +184,12 @@ TAGS
 libogg.dll
 libvorbis.dll
 libvorbisfile.dll
+
+residualvm.kdev4
+hs/.kdev4/
+
+lua.tgz
+mouse.lab
+dists/engine-data/patches/grim_pnc
+*.sublime-project
+*.sublime-workspace

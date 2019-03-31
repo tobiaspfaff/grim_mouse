@@ -60,7 +60,14 @@ MODULE_OBJS := \
 	tinygl/zmath.o \
 	tinygl/ztriangle.o \
 	tinygl/zblit.o \
-	tinygl/zdirtyrect.o \
+	tinygl/zdirtyrect.o
+
+#   tinygl/ztriangle_shadow.o
+
+ifdef USE_OPENGL_SHADERS
+MODULE_OBJS += \
+	projection.o
+endif
 
 ifdef USE_SCALERS
 MODULE_OBJS += \

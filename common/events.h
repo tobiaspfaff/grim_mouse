@@ -92,6 +92,12 @@ enum EventType {
 	EVENT_JOYAXIS_MOTION = 23,
 	EVENT_JOYBUTTON_DOWN = 24,
 	EVENT_JOYBUTTON_UP = 25
+	,
+	// special events for touch interaction
+	EVENT_DOUBLETAP = 100,
+	EVENT_SCROLL = 101,
+	EVENT_SCROLL_UP = 102,
+	EVENT_SCROLL_MOVE = 103
 };
 
 const int16 JOYAXIS_MIN = -32768;
@@ -184,6 +190,7 @@ struct Event {
 	 * This field is ResidualVM specific
 	 */
 	Common::Point relMouse;
+	Common::Point origin;
 
 	/**
 	 * Joystick data; only valid for joystick events (EVENT_JOYAXIS_MOTION,

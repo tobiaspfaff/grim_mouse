@@ -76,7 +76,6 @@ static void checkCparams(int32 nParams) {
 static lua_Object put_luaObject(TObject *o) {
 	luaD_openstack((lua_state->stack.top - lua_state->stack.stack) - lua_state->Cstack.base);
 	lua_state->stack.stack[lua_state->Cstack.base++] = *o;
-
 	return lua_state->Cstack.base;  // this is +1 real position (see Ref)
 }
 

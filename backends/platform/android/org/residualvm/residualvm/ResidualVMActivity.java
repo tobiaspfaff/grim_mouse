@@ -24,71 +24,86 @@ import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 import android.widget.Button;
-import android.widget.HorizontalScrollView;
+import android.widget.ScrollView;
 import android.widget.ImageView;
 
-import tv.ouya.console.api.OuyaController;
+//import tv.ouya.console.api.OuyaController;
 
 import java.io.File;
 
 public class ResidualVMActivity extends Activity {
 
-private boolean isBtnsShowing = false;
+    private static final int MOUSE_ACTION_CNT = 2;
+    private int mouseAction = 0;
 
-public View.OnClickListener optionsBtnOnClickListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
+    private static final int MOUSE_MODE_CNT = 2;
+    private int mouseMode = 0;
 
-	if(!isBtnsShowing)
-            ((HorizontalScrollView)findViewById(R.id.btns_scrollview)).setVisibility(View.VISIBLE);
-	else
-	    ((HorizontalScrollView)findViewById(R.id.btns_scrollview)).setVisibility(View.GONE);
+    private boolean sidebarShowing = false;
 
-	    isBtnsShowing = !isBtnsShowing;
-
-        }
+    public void toggleSidebar() {
+            sidebarShowing = !sidebarShowing;
+            if(sidebarShowing)
+                ((ScrollView)findViewById(R.id.sidebar)).setVisibility(View.VISIBLE);
+            else
+                ((ScrollView)findViewById(R.id.sidebar)).setVisibility(View.GONE);
     };
 
     private void emulateKeyPress(int keyCode){
-		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_DOWN, keyCode, 0, 0, 0, 0);
-		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
+        _residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_DOWN, keyCode, 0, 0, 0, 0);
+        _residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
     }
 
-public View.OnClickListener menuBtnOnClickListener = new View.OnClickListener() {
+    private static final int KEYCODE_F1 = 131;
+
+    public View.OnClickListener sidebarBtnOnClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_F1);
+            switch (v.getId()) {
+            case R.id.btnInventory:
+                emulateKeyPress(KeyEvent.KEYCODE_I);
+                break;
+            case R.id.btnMenu:
+                _residualvm.pushEvent(ResidualVMEvents.JE_SYS_KEY, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU, 0, 0, 0, 0);
+                break;
+            case R.id.btnTouchmode:
+                mouseMode = (mouseMode + 1) % MOUSE_MODE_CNT;
+                final int[] modeIcons =
+                    {R.drawable.ic_touchmode2, R.drawable.ic_action};
+                ((ImageView)v).setImageResource(modeIcons[mouseMode]);
+                _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 1, mouseMode, 0, 0, 0, 0);
+                break;
+            case R.id.btnAction:
+                mouseAction = (mouseAction + 1) % MOUSE_ACTION_CNT;
+                final int[] actIcons =
+                    {R.drawable.ic_use, R.drawable.ic_look_at, R.drawable.ic_pickup};
+                ((ImageView)v).setImageResource(actIcons[mouseAction]);
+                _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 2, mouseAction, 0, 0, 0, 0);
+                break;
+            case R.id.btnSkipDlg:
+                emulateKeyPress(KeyEvent.KEYCODE_PERIOD);
+                break;
+            case R.id.btnUp:
+                emulateKeyPress(KeyEvent.KEYCODE_DPAD_UP);
+                break;
+            case R.id.btnOK:
+                emulateKeyPress(KeyEvent.KEYCODE_ENTER);
+                break;
+            case R.id.btnDown:
+                emulateKeyPress(KeyEvent.KEYCODE_DPAD_DOWN);
+                break;
+            case R.id.btnLeft:
+                emulateKeyPress(KeyEvent.KEYCODE_DPAD_LEFT);
+                break;
+            case R.id.btnRight:
+                emulateKeyPress(KeyEvent.KEYCODE_DPAD_RIGHT);
+                break;
+            case R.id.btnHotspot:
+                emulateKeyPress(KeyEvent.KEYCODE_SPACE);
+                break;
+            }
         }
     };
-
-public View.OnClickListener inventoryBtnOnClickListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_I);
-        }
-    };
-
-public View.OnClickListener lookAtBtnOnClickListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_E);
-        }
-    };
-
-public View.OnClickListener useBtnOnClickListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_ENTER);
-        }
-    };
-
-public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-        	emulateKeyPress(KeyEvent.KEYCODE_P);
-        }
-    };
-
 
 	private class MyResidualVM extends ResidualVM {
 		private boolean usingSmallScreen() {
@@ -183,7 +198,7 @@ public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener(
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		setContentView(R.layout.main);
-		OuyaController.init(this);
+		//OuyaController.init(this);
 		takeKeyEvents(true);
 
 		// This is a common enough error that we should warn about it
@@ -235,26 +250,31 @@ public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener(
 		_events = new ResidualVMEvents(this, _residualvm);
 
 		// On screen buttons listeners
-		((ImageView)findViewById(R.id.options)).setOnClickListener(optionsBtnOnClickListener);
-		((Button)findViewById(R.id.menu_btn)).setOnClickListener(menuBtnOnClickListener);
-		((Button)findViewById(R.id.inventory_btn)).setOnClickListener(inventoryBtnOnClickListener);
-		((Button)findViewById(R.id.use_btn)).setOnClickListener(useBtnOnClickListener);
-		((Button)findViewById(R.id.pick_up_btn)).setOnClickListener(pickUpBtnOnClickListener);
-		((Button)findViewById(R.id.look_at_btn)).setOnClickListener(lookAtBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnMenu)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnInventory)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnTouchmode)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnAction)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnSkipDlg)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnUp)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnOK)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnDown)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnLeft)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnRight)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.btnHotspot)).setOnClickListener(sidebarBtnOnClickListener);
 
 		main_surface.setOnKeyListener(_events);
-		main_surface.setOnGenericMotionListener(_events);
+		//main_surface.setOnGenericMotionListener(_events);
 
 		_residualvm_thread = new Thread(_residualvm, "ResidualVM");
 		_residualvm_thread.start();
 	}
-	
+
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.game_menu, menu);
 		return true;
 	}
-	
+
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {

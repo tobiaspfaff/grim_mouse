@@ -283,8 +283,7 @@ endif
 residualvm-static: $(OBJS)
 	$(CXX) $(LDFLAGS) -force_cpusubtype_ALL -o residualvm-static $(OBJS) \
 		-framework CoreMIDI \
-		$(OSX_STATIC_LIBS) \
-		$(OSX_ZLIB)
+		$(OSX_STATIC_LIBS)
 
 # Special target to create a static linked binary for the iPhone (legacy, and iOS 7+)
 iphone: $(OBJS)

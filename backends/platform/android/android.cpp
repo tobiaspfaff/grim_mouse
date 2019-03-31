@@ -60,6 +60,9 @@
 #include "backends/platform/android/jni.h"
 #include "backends/platform/android/android.h"
 
+#include "engines/game.h"
+#include "engines/metaengine.h"
+
 const char *android_log_tag = "ResidualVM";
 
 // This replaces the bionic libc assert functions with something that
@@ -130,7 +133,6 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	_graphicsMode(0),
 	_fullscreen(true),
 	_ar_correction(true),
-	_show_mouse(false),
 	_show_overlay(false),
 	_virtcontrols_on(false),
 	_enable_zoning(false),
@@ -144,9 +146,12 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	_eventScaleY(100),
 	// TODO put these values in some option dlg?
 	_touchpad_mode(true),
+	_isScrolling(false),
+	_isLong(false),
 	_touchpad_scale(66),
 	_dpad_scale(4),
 	_fingersDown(0),
+	_mouse_action(0),
 	_trackball_scale(2) {
 
 	_fsFactory = new POSIXFilesystemFactory();
@@ -348,9 +353,29 @@ void OSystem_Android::initBackend() {
 	ConfMan.setBool("FM_high_quality", false);
 	ConfMan.setBool("FM_medium_quality", true);
 
-	// TODO hackity hack
-	if (ConfMan.hasKey("multi_midi"))
-		_touchpad_mode = !ConfMan.getBool("multi_midi");
+	// if no game target is present, construct a default one for Grim
+	const Common::ConfigManager::Domain *dom = ConfMan.getDomain("grim-win");
+	if (!dom) {
+		Common::FSNode dir("/sdcard/grim");
+		Common::FSList files;
+		if (dir.getChildren(files, Common::FSNode::kListAll)) {
+			GameList candidates(EngineMan.detectGames(files));
+			if (candidates.size() == 1) {
+				GameDescriptor result = candidates[0];
+				result["path"] = dir.getPath();
+
+				Common::String domain = result.preferredtarget();
+				ConfMan.addGameDomain(domain);
+
+				for (GameDescriptor::const_iterator iter = result.begin(); iter != result.end(); ++iter) {
+					if (!iter->_value.empty() && iter->_key != "preferredtarget") {
+						ConfMan.set(iter->_key, iter->_value, domain);
+					}
+				}
+				ConfMan.flushToDisk();
+			}
+		}
+	}
 
 	// must happen before creating TimerManager to avoid race in
 	// creating EventManager

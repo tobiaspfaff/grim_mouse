@@ -128,7 +128,7 @@ public:
 	 * @see createBitmap
 	 * @see destroyBitmap
 	 */
-	virtual void drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer = 0) override;
+	virtual void drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer = 0, float rot = 0) override;
 
 	/**
 	 * Deletes any internal references and representations of a bitmap
@@ -210,7 +210,9 @@ public:
 	virtual void destroyEMIModel(EMIModel *model) override;
 
 	virtual void setBlendMode(bool additive) override;
-
+    bool worldToScreen(const Math::Vector3d &vec, int& x, int &y);
+    bool raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1);
+    void blackbox(int x0, int y0, int x1, int y1, float opacity);
 protected:
 	void setupShaders();
 	GLuint compileShader(const char *vertex, const char *fragment);
@@ -231,11 +233,12 @@ private:
 	OpenGL::Shader* _dimPlaneProgram;
 	OpenGL::Shader* _dimRegionProgram;
 	OpenGL::Shader* _smushProgram;
-	GLuint _smushVBO, _quadEBO;
+	GLuint _smushVBO, _quadEBO, _quadEBO99;
 	OpenGL::Shader* _textProgram;
 	OpenGL::Shader* _primitiveProgram;
 	OpenGL::Shader* _irisProgram;
 	OpenGL::Shader* _shadowPlaneProgram;
+	Graphics::Shader* _rotProgram;
 
 	int _smushWidth;
 	int _smushHeight;
@@ -251,10 +254,27 @@ private:
 	float _fov;
 	float _nclip;
 	float _fclip;
+
+private:
+
+	/*
+	 * Note: rows and colums of _projMatrix, _viewMatrix and _mvpMatrix
+	 * are swapped (transposed), so the internal float-array (\ref Matrix::getData())
+	 * is compatible with OpenGL's column major layout.
+	 */
+
+	/**
+	 * Projection Matrix (equals GL_PROJECTION_MATRIX).
+	 */
 	Math::Matrix4 _projMatrix;
+
+	/**
+	 * View Matrix (equals GL_MODELVIEW_MATRIX)
+	 */
 	Math::Matrix4 _viewMatrix;
 	Math::Matrix4 _mvpMatrix;
 	Math::Matrix4 _overworldProjMatrix;
+private:
 
 	void setupTexturedCenteredQuad();
 

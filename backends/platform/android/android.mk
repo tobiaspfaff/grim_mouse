@@ -3,7 +3,7 @@
 # These must be incremented for each market upload
 ANDROID_VERSIONCODE = 1000
 
-ANDROID_TARGET_VERSION = 15
+ANDROID_TARGET_VERSION = 10
 
 NDK_BUILD = $(ANDROID_NDK)/ndk-build APP_ABI=$(ABI)
 SDK_ANDROID = $(ANDROID_SDK)/tools/android
@@ -21,13 +21,78 @@ RESOURCES = \
 	$(PATH_BUILD_RES)/layout/main.xml \
 	$(PATH_BUILD_RES)/drawable/residualvm.png \
 	$(PATH_BUILD_RES)/drawable/residualvm_big.png \
-	$(PATH_BUILD_RES)/drawable-hdpi/ic_action_settings.png \
-	$(PATH_BUILD_RES)/drawable-mdpi/ic_action_settings.png \
-	$(PATH_BUILD_RES)/drawable-xhdpi/ic_action_settings.png \
-	$(PATH_BUILD_RES)/drawable-xxhdpi/ic_action_settings.png
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_action.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_down.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_exit.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_hotspot.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_inventory.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_launcher.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_left.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_look_at.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_menu.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_ok.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_pickup.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_right.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_skip_dialog.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_touchmode2.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_touchmode.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_up.png \
+	$(PATH_BUILD_RES)/drawable-hdpi/ic_use.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_action.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_down.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_exit.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_hotspot.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_inventory.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_launcher.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_left.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_look_at.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_menu.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_ok.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_pickup.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_right.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_skip_dialog.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_touchmode2.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_touchmode.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_up.png \
+	$(PATH_BUILD_RES)/drawable-ldpi/ic_use.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_action.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_down.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_exit.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_hotspot.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_inventory.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_launcher.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_left.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_look_at.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_menu.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_ok.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_pickup.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_right.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_skip_dialog.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_touchmode2.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_touchmode.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_up.png \
+	$(PATH_BUILD_RES)/drawable-mdpi/ic_use.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_action.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_down.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_exit.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_hotspot.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_inventory.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_launcher.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_left.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_look_at.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_menu.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_ok.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_pickup.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_right.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_skip_dialog.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_touchmode2.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_touchmode.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_up.png \
+	$(PATH_BUILD_RES)/drawable-xhdpi/ic_use.png
+	
 
-JAVA_EXTRA_LIBS = \
-	$(PATH_BUILD)/libs/ouya-sdk.jar
+#JAVA_EXTRA_LIBS = \
+#	$(PATH_BUILD)/libs/ouya-sdk.jar
 
 DIST_ANDROID_MK = $(PATH_DIST)/jni/Android.mk
 DIST_BUILD_XML = $(PATH_DIST)/custom_rules.xml

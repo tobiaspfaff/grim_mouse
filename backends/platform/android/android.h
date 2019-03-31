@@ -130,7 +130,7 @@ private:
 	Common::Point _mouse_hotspot;
 	uint32 _mouse_keycolor;
 	int _mouse_targetscale;
-	bool _show_mouse;
+	//bool _show_mouse;
 	bool _use_mouse_palette;
 
 	bool _virtcontrols_on;
@@ -228,10 +228,13 @@ private:
 	int _eventScaleX;
 	int _eventScaleY;
 	bool _touchpad_mode;
+	bool _isScrolling;
+	bool _isLong;
 	int _touchpad_scale;
 	int _trackball_scale;
 	int _dpad_scale;
 	int _fingersDown;
+	int _mouse_action; // action to perform on left click
 
 	void clipMouse(Common::Point &p);
 	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true);
