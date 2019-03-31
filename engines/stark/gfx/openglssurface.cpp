@@ -46,19 +46,20 @@ void OpenGLSSurfaceRenderer::render(const Texture *texture, const Common::Point 
 
 void OpenGLSSurfaceRenderer::render(const Texture *texture, const Common::Point &dest, uint width, uint height) {
 	// Destination rectangle with given width and height
-	const float sLeft = dest.x;
-	const float sTop = dest.y;
-
 	_gfx->start2DMode();
 
 	_shader->use();
 	_shader->setUniform1f("fadeLevel", _fadeLevel);
-	_shader->setUniform("verOffsetXY", normalizeOriginalCoordinates(sLeft, sTop));
+	_shader->setUniform1f("snapToGrid", _snapToGrid);
+	_shader->setUniform("verOffsetXY", normalizeOriginalCoordinates(dest.x, dest.y));
 	if (_noScalingOverride) {
 		_shader->setUniform("verSizeWH", normalizeCurrentCoordinates(width, height));
 	} else {
 		_shader->setUniform("verSizeWH", normalizeOriginalCoordinates(width, height));
 	}
+
+	Common::Rect nativeViewport = _gfx->getViewport();
+	_shader->setUniform("viewport", Math::Vector2d(nativeViewport.width(), nativeViewport.height()));
 
 	texture->bind();
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -67,12 +68,12 @@ void OpenGLSSurfaceRenderer::render(const Texture *texture, const Common::Point 
 	_gfx->end2DMode();
 }
 
-Math::Vector2d OpenGLSSurfaceRenderer::normalizeOriginalCoordinates(float x, float y) const {
+Math::Vector2d OpenGLSSurfaceRenderer::normalizeOriginalCoordinates(int x, int y) const {
 	Common::Rect viewport = _gfx->getUnscaledViewport();
 	return Math::Vector2d(x / (float)viewport.width(), y / (float)viewport.height());
 }
 
-Math::Vector2d OpenGLSSurfaceRenderer::normalizeCurrentCoordinates(float x, float y) const {
+Math::Vector2d OpenGLSSurfaceRenderer::normalizeCurrentCoordinates(int x, int y) const {
 	Common::Rect viewport = _gfx->getViewport();
 	return Math::Vector2d(x / (float)viewport.width(), y / (float)viewport.height());
 }

@@ -98,6 +98,7 @@ extern void checkGlError(const char *expr, const char *file, int line);
 #define GLTHREADCHECK do {  } while (false)
 #endif
 
+class MutexManager;
 class OSystem_Android : public EventsBaseBackend, public PaletteManager, public KeyReceiver {
 private:
 	// passed from the dark side
@@ -133,8 +134,6 @@ private:
 	//bool _show_mouse;
 	bool _use_mouse_palette;
 
-	bool _virtcontrols_on;
-
 	int _graphicsMode;
 	bool _fullscreen;
 	bool _ar_correction;
@@ -152,6 +151,7 @@ private:
 	bool _enable_zoning;
 	bool _virtkeybd_on;
 
+	MutexManager *_mutexManager;
 	Audio::MixerImpl *_mixer;
 	timeval _startTime;
 
@@ -164,7 +164,6 @@ private:
 	void initOverlay();
 
 #ifdef USE_RGB_COLOR
-	Common::String getPixelFormatName(const Graphics::PixelFormat &format) const;
 	void initTexture(GLESBaseTexture **texture, uint width, uint height,
 						const Graphics::PixelFormat *format);
 #endif
@@ -217,6 +216,7 @@ public:
 public:
 	void pushEvent(int type, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6);
 	void keyPress(const Common::KeyCode keycode, const KeyReceiver::KeyPressType type);
+	bool shouldGenerateMouseEvents();
 
 private:
 	Common::Queue<Common::Event> _event_queue;
@@ -237,7 +237,7 @@ private:
 	int _mouse_action; // action to perform on left click
 
 	void clipMouse(Common::Point &p);
-	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true);
+	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true, bool touchpadMode = false);
 	void updateEventScale();
 	void disableCursorPalette();
 
@@ -302,6 +302,10 @@ public:
 	virtual void addSysArchivesToSearchSet(Common::SearchSet &s,
 											int priority = 0);
 	virtual bool openUrl(const Common::String &url);
+	virtual bool hasTextInClipboard();
+	virtual Common::String getTextFromClipboard();
+	virtual bool setTextInClipboard(const Common::String &text);
+	virtual bool isConnectionLimited();
 	virtual Common::String getSystemLanguage() const;
 
 	// ResidualVM specific method

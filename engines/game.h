@@ -26,6 +26,7 @@
 #include "common/array.h"
 #include "common/hash-str.h"
 #include "common/str.h"
+#include "common/str-array.h"
 #include "common/language.h"
 #include "common/platform.h"
 
@@ -63,6 +64,18 @@ public:
 };
 
 /**
+ * The description of a game supported by an engine
+ */
+struct QualifiedGameDescriptor : public PlainGameDescriptor {
+	const char *engineId;
+
+	QualifiedGameDescriptor();
+	QualifiedGameDescriptor(const char *engine, const PlainGameDescriptor &pgd);
+};
+
+typedef Common::Array<QualifiedGameDescriptor> QualifiedGameList;
+
+/**
  * Ths is an enum to describe how done a game is. This also indicates what level of support is expected.
  */
 enum GameSupportLevel {
@@ -97,8 +110,8 @@ typedef Common::HashMap<Common::String, FileProperties, Common::IgnoreCase_Hash,
  */
 struct DetectedGame {
 	DetectedGame();
-	explicit DetectedGame(const PlainGameDescriptor &pgd);
-	DetectedGame(const Common::String &id,
+	DetectedGame(const Common::String &engine, const PlainGameDescriptor &pgd);
+	DetectedGame(const Common::String &engine, const Common::String &id,
 	               const Common::String &description,
 	               Common::Language language = Common::UNK_LANG,
 	               Common::Platform platform = Common::kPlatformUnknown,
@@ -108,10 +121,7 @@ struct DetectedGame {
 	void appendGUIOptions(const Common::String &str);
 	Common::String getGUIOptions() const { return _guiOptions; }
 
-	/**
-	 * The name of the engine supporting the detected game
-	 */
-	const char *engineName;
+	Common::String engineId;
 
 	/**
 	 * A game was detected, but some files were not recognized
@@ -141,6 +151,7 @@ struct DetectedGame {
 	Common::Language language;
 	Common::Platform platform;
 	Common::String path;
+	Common::String shortPath;
 	Common::String extra;
 
 	/**
@@ -198,7 +209,15 @@ public:
 	 *
 	 * Recognized games can be added to the configuration manager and then launched.
 	 */
-	DetectedGames listRecognizedGames();
+	DetectedGames listRecognizedGames() const;
+
+	/**
+	 * List all the games that were detected
+	 *
+	 * That includes entries that don't have enough information to be added to the
+	 * configuration manager.
+	 */
+	DetectedGames listDetectedGames() const;
 
 	/**
 	 * Were unknown game variants found by the engines?
@@ -208,16 +227,26 @@ public:
 	bool foundUnknownGames() const;
 
 	/**
-	 * Generate a report that we found an unknown game variant, together with the file
-	 * names, sizes and MD5 sums.
+	 * Generate a report that we found an unknown game variant.
 	 *
-	 * @param translate translate the report to the currently active GUI language
-	 * @param wordwrapAt word wrap the text part of the report after a number of characters
+	 * @see ::generateUnknownGameReport
 	 */
 	Common::String generateUnknownGameReport(bool translate, uint32 wordwrapAt = 0) const;
 
 private:
 	DetectedGames _detectedGames;
 };
+
+/**
+ * Generate a report that we found an unknown game variant, together with the file
+ * names, sizes and MD5 sums.
+ *
+ * @param translate translate the report to the currently active GUI language
+ * @param fullPath include the full path where the files are located, otherwise only the name
+ *                 of last component of the path is included
+ * @param wordwrapAt word wrap the text part of the report after a number of characters
+ */
+Common::String generateUnknownGameReport(const DetectedGames &detectedGames, bool translate, bool fullPath, uint32 wordwrapAt = 0);
+Common::String generateUnknownGameReport(const DetectedGame &detectedGame, bool translate, bool fullPath, uint32 wordwrapAt = 0);
 
 #endif

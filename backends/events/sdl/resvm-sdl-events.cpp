@@ -66,7 +66,7 @@ bool ResVmSdlEventSource::handleJoyAxisMotion(SDL_Event &ev, Common::Event &even
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 
-byte mapSDLControllerButtonToResVM(Uint8 sdlButton) {
+static int mapSDLControllerButtonToResVM(Uint8 sdlButton) {
 	Common::JoystickButton resvmButtons[] = {
 	    Common::JOYSTICK_BUTTON_A,
 	    Common::JOYSTICK_BUTTON_B,
@@ -111,7 +111,7 @@ bool ResVmSdlEventSource::handleControllerButton(const SDL_Event &ev, Common::Ev
 			}
 		}
 #endif
-		byte button = mapSDLControllerButtonToResVM(ev.cbutton.button);
+		int button = mapSDLControllerButtonToResVM(ev.cbutton.button);
 		if (button == -1) {
 			return false;
 		}
@@ -173,16 +173,16 @@ bool ResVmSdlEventSource::handleKbdMouse(Common::Event &event) {
 	// The ResidualVM version of this method handles relative mouse
 	// movement, as required by Myst III.
 
-	int16 oldKmX = _km.x;
-	int16 oldKmY = _km.y;
+	int32 oldKmX = _km.x;
+	int32 oldKmY = _km.y;
 
 	updateKbdMouse();
 
 	if (_km.x != oldKmX || _km.y != oldKmY) {
 		ResVmSdlGraphicsManager *graphicsManager = dynamic_cast<ResVmSdlGraphicsManager *>(_graphicsManager);
 
-		int16 relX = _km.x - oldKmX;
-		int16 relY = _km.y - oldKmY;
+		int32 relX = _km.x - oldKmX;
+		int32 relY = _km.y - oldKmY;
 
 		if (graphicsManager) {
 			if (graphicsManager->isMouseLocked()) {

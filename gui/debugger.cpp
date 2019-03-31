@@ -139,7 +139,7 @@ void Debugger::debugPrintColumns(const Common::StringArray &list) {
 		for (j = 0; j < columns; j++) {
 			uint pos = i + j * lines;
 			if (pos < list.size()) {
-				debugPrintf("%*s", -columnWidth, list[pos].c_str());
+				debugPrintf("%*s", -1 * columnWidth, list[pos].c_str());
 			}
 		}
 		debugPrintf("\n");
@@ -257,6 +257,7 @@ void Debugger::enter() {
 
 	do {
 		printf("debug> ");
+		::fflush(stdout);
 		if (!fgets(buf, sizeof(buf), stdin))
 			return;
 

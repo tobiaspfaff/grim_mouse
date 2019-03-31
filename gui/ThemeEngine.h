@@ -37,7 +37,7 @@
 #include "graphics/pixelformat.h"
 
 
-#define SCUMMVM_THEME_VERSION_STR "SCUMMVM_STX0.8.26"
+#define SCUMMVM_THEME_VERSION_STR "SCUMMVM_STX0.8.28"
 
 class OSystem;
 
@@ -79,6 +79,13 @@ enum DrawData {
 	kDDButtonHover,
 	kDDButtonDisabled,
 	kDDButtonPressed,
+
+	kDDDropDownButtonIdle,
+	kDDDropDownButtonHoverLeft,
+	kDDDropDownButtonHoverRight,
+	kDDDropDownButtonDisabled,
+	kDDDropDownButtonPressedLeft,
+	kDDDropDownButtonPressedRight,
 
 	kDDSliderFull,
 	kDDSliderHover,
@@ -131,6 +138,7 @@ enum TextData {
 	kTextDataButton,
 	kTextDataNormalFont,
 	kTextDataTooltip,
+	kTextDataConsole,
 	kTextDataMAX
 };
 
@@ -220,6 +228,7 @@ public:
 		kFontStyleFixedBold = 4,    ///< Fixed size bold font.
 		kFontStyleFixedItalic = 5,  ///< Fixed size italic font.
 		kFontStyleTooltip = 6,      ///< Tiny console font
+		kFontStyleConsole = 7,      ///< Debug console font
 		kFontStyleMax
 	};
 
@@ -261,10 +270,6 @@ public:
 	static const char *const kImageEditSmallButton; ///< Edit recording metadata in recorder onscreen dialog (for 320xY)
 	static const char *const kImageSwitchModeSmallButton; ///< Switch mode button in recorder onscreen dialog (for 320xY)
 	static const char *const kImageFastReplaySmallButton; ///< Fast playback mode button in recorder onscreen dialog (for 320xY)
-	static const char *const kImageDropboxLogo;      ///< Dropbox logo used in the StorageWizardDialog
-	static const char *const kImageOneDriveLogo;      ///< OneDrive logo used in the StorageWizardDialog
-	static const char *const kImageGoogleDriveLogo;      ///< Google Drive logo used in the StorageWizardDialog
-	static const char *const kImageBoxLogo;      ///< Box logo used in the StorageWizardDialog
 
 	/**
 	 * Graphics mode enumeration.
@@ -361,6 +366,8 @@ public:
 			return kTextDataNormalFont;
 		if (font == kFontStyleTooltip)
 			return kTextDataTooltip;
+		if (font == kFontStyleConsole)
+			return kTextDataConsole;
 		return kTextDataDefault;
 	}
 
@@ -387,6 +394,11 @@ public:
 	 */
 	Common::Rect swapClipRect(const Common::Rect &newRect);
 
+	/**
+	 * Set the clipping rect to allow rendering on the whole surface.
+	 */
+	void disableClipRect();
+
 	/** @name WIDGET DRAWING METHODS */
 	//@{
 
@@ -395,7 +407,10 @@ public:
 	void drawButton(const Common::Rect &r, const Common::String &str, WidgetStateInfo state = kStateEnabled,
 	                uint16 hints = 0);
 
-	void drawSurface(const Common::Rect &r, const Graphics::Surface &surface, bool themeTrans = false);
+	void drawDropDownButton(const Common::Rect &r, uint32 dropdownWidth, const Common::String &str,
+	                        WidgetStateInfo buttonState, bool inButton, bool inDropdown);
+
+	void drawSurface(const Common::Point &p, const Graphics::Surface &surface, bool themeTrans = false);
 
 	void drawSlider(const Common::Rect &r, int width, WidgetStateInfo state = kStateEnabled);
 
@@ -633,7 +648,6 @@ protected:
 	                bool elipsis, Graphics::TextAlign alignH = Graphics::kTextAlignLeft,
 	                TextAlignVertical alignV = kTextAlignVTop, int deltax = 0,
 	                const Common::Rect &drawableTextArea = Common::Rect(0, 0, 0, 0));
-	void drawBitmap(const Graphics::Surface *bitmap, const Common::Rect &clippingRect, bool alpha);
 
 	/**
 	 * DEBUG: Draws a white square and writes some text next to it.

@@ -518,7 +518,7 @@ void String::wordWrap(const uint32 maxLength) {
 
 	makeUnique();
 
-	enum { kNoSpace = 0xFFFFFFFF };
+	const uint32 kNoSpace = 0xFFFFFFFF;
 
 	uint32 i = 0;
 	while (i < _size) {
@@ -603,6 +603,31 @@ void String::replace(uint32 posOri, uint32 countOri, const char *str,
 	for (uint32 i = 0; i < countDest; i++)
 		_str[posOri + i] = str[posDest + i];
 
+}
+
+uint32 String::find(const String &str, uint32 pos) const {
+	if (pos >= _size) {
+		return npos;
+	}
+
+	const char *strP = str.c_str();
+
+	for (const_iterator cur = begin() + pos; *cur; ++cur) {
+		uint i = 0;
+		while (true) {
+			if (!strP[i]) {
+				return cur - begin();
+			}
+
+			if (cur[i] != strP[i]) {
+				break;
+			}
+
+			++i;
+		}
+	}
+
+	return npos;
 }
 
 // static
@@ -884,6 +909,7 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 
 	const char *p = nullptr;
 	const char *q = nullptr;
+	bool escaped = false;
 
 	for (;;) {
 		if (pathMode && *str == '/') {
@@ -893,6 +919,7 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 				return false;
 		}
 
+		const char curPat = *pat;
 		switch (*pat) {
 		case '*':
 			if (*str) {
@@ -912,12 +939,23 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 				return true;
 			break;
 
+		case '\\':
+			if (!escaped) {
+				pat++;
+				break;
+			}
+			// fallthrough
+
 		case '#':
-			if (!isDigit(*str))
-				return false;
-			pat++;
-			str++;
-			break;
+			// treat # as a wildcard for digits unless escaped
+			if (!escaped) {
+				if (!isDigit(*str))
+					return false;
+				pat++;
+				str++;
+				break;
+			}
+			// fallthrough
 
 		default:
 			if ((!ignoreCase && *pat != *str) ||
@@ -940,6 +978,8 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 			pat++;
 			str++;
 		}
+
+		escaped = !escaped && (curPat == '\\');
 	}
 }
 

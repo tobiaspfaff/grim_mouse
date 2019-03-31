@@ -204,6 +204,12 @@ protected:
 	 */
 	FilesystemFactory *_fsFactory;
 
+	/**
+	 * Used by the default clipboard implementation, for backends that don't
+	 * implement clipboard support.
+	 */
+	Common::String _clipboard;
+
 private:
 	/**
 	 * Indicate if initBackend() has been called.
@@ -355,7 +361,6 @@ public:
 
 		//ResidualVM specific
 		kFeatureOpenGL,
-		kFeatureVirtControls,
 		// Can side textures be rendered on the side for widescreen support?
 		kFeatureSideTextures,
 
@@ -390,8 +395,11 @@ public:
 		kFeatureDisplayLogFile,
 
 		/**
-		 * The presence of this feature indicates whether the hasTextInClipboard(),
-		 * getTextFromClipboard() and setTextInClipboard() calls are supported.
+		 * The presence of this feature indicates whether the system clipboard is
+		 * available. If this feature is not present, the hasTextInClipboard(),
+		 * getTextFromClipboard() and setTextInClipboard() calls can still be used,
+		 * however it should not be used in scenarios where the user is expected to
+		 * copy data outside of the application.
 		 *
 		 * This feature has no associated state.
 		 */
@@ -668,6 +676,18 @@ public:
 		return list;
 	};
 #endif
+
+	/**
+	 * !!! ResidualVM specific method !!!
+	 *
+	 * Retrieve a list of supported levels of anti-aliasting.
+	 * Anti-aliasing only works when using one of the hardware
+	 * accelerated renderers. An empty list means anti-aliasing
+	 * is not supported.
+	 */
+	virtual Common::Array<uint> getSupportedAntiAliasingLevels() const {
+		return Common::Array<uint>();
+	}
 
 	/**
 	 * !!! Not used in ResidualVM !!!
@@ -984,9 +1004,6 @@ public:
 	 * Fills the screen with a given color value.
 	 * !!! Not used in ResidualVM !!!
 	 *
-	 * @note We are using uint32 here even though currently
-	 * we only support 8bpp indexed mode. Thus the value should
-	 * be always inside [0, 255] for now.
 	 */
 	virtual void fillScreen(uint32 col) = 0;
 
@@ -997,7 +1014,7 @@ public:
 	 * This method could be called very often by engines. Backends are hence
 	 * supposed to only perform any redrawing if it is necessary, and otherwise
 	 * return immediately. See
-	 * <http://wiki.scummvm.org/index.php/HOWTO-Backends#updateScreen.28.29_method>
+	 * <https://wiki.scummvm.org/index.php/HOWTO-Backends#updateScreen.28.29_method>
 	 */
 	virtual void updateScreen() = 0;
 
@@ -1560,7 +1577,7 @@ public:
 	 *
 	 * @return true if there is text in the clipboard, false otherwise
 	 */
-	virtual bool hasTextInClipboard() { return false; }
+	virtual bool hasTextInClipboard() { return !_clipboard.empty(); }
 
 	/**
 	 * Returns clipboard contents as a String.
@@ -1571,7 +1588,7 @@ public:
 	 *
 	 * @return clipboard contents ("" if hasTextInClipboard() == false)
 	 */
-	virtual Common::String getTextFromClipboard() { return ""; }
+	virtual Common::String getTextFromClipboard() { return _clipboard; }
 
 	/**
 	 * Set the content of the clipboard to the given string.
@@ -1582,7 +1599,7 @@ public:
 	 *
 	 * @return true if the text was properly set in the clipboard, false otherwise
 	 */
-	virtual bool setTextInClipboard(const Common::String &text) { return false; }
+	virtual bool setTextInClipboard(const Common::String &text) { _clipboard = text; return true; }
 
 	/**
 	 * Open the given Url in the default browser (if available on the target
@@ -1615,6 +1632,13 @@ public:
 	 * @return locale of the system
 	 */
 	virtual Common::String getSystemLanguage() const;
+
+	/**
+	 * Returns whether connection's limited (if available on the target system).
+	 *
+	 * Returns true if connection seems limited.
+	 */
+	virtual bool isConnectionLimited();
 
 	//@}
 };

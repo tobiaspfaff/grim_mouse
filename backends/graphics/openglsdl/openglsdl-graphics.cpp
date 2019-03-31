@@ -37,7 +37,12 @@
 #include "graphics/opengl/system_headers.h"
 #include "graphics/opengl/texture.h"
 #include "graphics/opengl/tiledsurface.h"
+
+#ifdef USE_PNG
 #include "image/png.h"
+#else
+#include "image/bmp.h"
+#endif
 
 OpenGLSdlGraphicsManager::OpenGLSdlGraphicsManager(SdlEventSource *sdlEventSource, SdlWindow *window, const Capabilities &capabilities)
 	:
@@ -104,18 +109,38 @@ void OpenGLSdlGraphicsManager::setupScreen(uint gameWidth, uint gameHeight, bool
 	assert(accel3d);
 	closeOverlay();
 
-#if SDL_VERSION_ATLEAST(2, 0, 0)
-	// Clear the GL context when going from / to the launcher
-	SDL_GL_DeleteContext(_glContext);
-	_glContext = nullptr;
-#endif
-
 	_engineRequestedWidth = gameWidth;
 	_engineRequestedHeight = gameHeight;
 	_antialiasing = ConfMan.getInt("antialiasing");
 	_fullscreen = fullscreen;
 	_lockAspectRatio = ConfMan.getBool("aspect_ratio");
 	_vsync = ConfMan.getBool("vsync");
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	bool needsWindowReset = false;
+	if (_window->getSDLWindow()) {
+		// The anti-aliasing setting cannot be changed without recreating the window.
+		// So check if the window needs to be recreated.
+
+		int currentSamples = 0;
+		SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &currentSamples);
+
+		// When rendering to a framebuffer, MSAA is enabled on that framebuffer, not on the screen
+		int targetSamples = shouldRenderToFramebuffer() ? 0 : _antialiasing;
+
+		if (currentSamples != targetSamples) {
+			needsWindowReset = true;
+		}
+	}
+
+	// Clear the GL context when going from / to the launcher
+	SDL_GL_DeleteContext(_glContext);
+	_glContext = nullptr;
+
+	if (needsWindowReset) {
+		_window->destroyWindow();
+	}
+#endif
 
 	createOrUpdateScreen();
 
@@ -156,7 +181,7 @@ void OpenGLSdlGraphicsManager::createOrUpdateScreen() {
 	// If the game can't adapt to any resolution, render it to a framebuffer
 	// so it can be scaled to fill the available space.
 	bool engineSupportsArbitraryResolutions = !g_engine || g_engine->hasFeature(Engine::kSupportsArbitraryResolutions);
-	bool renderToFrameBuffer = !engineSupportsArbitraryResolutions && _capabilities.openGLFrameBuffer;
+	bool renderToFrameBuffer = shouldRenderToFramebuffer();
 
 	// Choose the effective window size or fullscreen mode
 	uint effectiveWidth;
@@ -171,7 +196,8 @@ void OpenGLSdlGraphicsManager::createOrUpdateScreen() {
 	}
 
 	if (!createOrUpdateGLContext(_engineRequestedWidth, _engineRequestedHeight,
-	                             effectiveWidth, effectiveHeight, renderToFrameBuffer)) {
+	                             effectiveWidth, effectiveHeight,
+	                             renderToFrameBuffer, engineSupportsArbitraryResolutions)) {
 		warning("SDL Error: %s", SDL_GetError());
 		g_system->quit();
 	}
@@ -302,7 +328,8 @@ OpenGLSdlGraphicsManager::OpenGLPixelFormat::OpenGLPixelFormat(uint screenBytesP
 
 bool OpenGLSdlGraphicsManager::createOrUpdateGLContext(uint gameWidth, uint gameHeight,
                                                        uint effectiveWidth, uint effectiveHeight,
-                                                       bool renderToFramebuffer) {
+                                                       bool renderToFramebuffer,
+                                                       bool engineSupportsArbitraryResolutions) {
 	// Build a list of OpenGL pixel formats usable by ResidualVM
 	Common::Array<OpenGLPixelFormat> pixelFormats;
 	if (_antialiasing > 0 && !renderToFramebuffer) {
@@ -354,7 +381,12 @@ bool OpenGLSdlGraphicsManager::createOrUpdateGLContext(uint gameWidth, uint game
 #endif
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-		uint32 sdlflags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+		uint32 sdlflags = SDL_WINDOW_OPENGL;
+
+		if (renderToFramebuffer || engineSupportsArbitraryResolutions) {
+			sdlflags |= SDL_WINDOW_RESIZABLE;
+		}
+
 		if (_fullscreen) {
 			// On Linux/X11, when toggling to fullscreen, the window manager saves
 			// the window size to be able to restore it when going back to windowed mode.
@@ -376,6 +408,9 @@ bool OpenGLSdlGraphicsManager::createOrUpdateGLContext(uint gameWidth, uint game
 			_glContext = SDL_GL_GetCurrentContext();
 			if (!_glContext) {
 				_glContext = SDL_GL_CreateContext(_window->getSDLWindow());
+				if (_glContext) {
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+				}
 			}
 
 			if (_glContext) {
@@ -410,6 +445,11 @@ bool OpenGLSdlGraphicsManager::createOrUpdateGLContext(uint gameWidth, uint game
 	}
 
 	return it != pixelFormats.end();
+}
+
+bool OpenGLSdlGraphicsManager::shouldRenderToFramebuffer() const {
+	bool engineSupportsArbitraryResolutions = !g_engine || g_engine->hasFeature(Engine::kSupportsArbitraryResolutions);
+	return !engineSupportsArbitraryResolutions && _capabilities.openGLFrameBuffer;
 }
 
 bool OpenGLSdlGraphicsManager::isVSyncEnabled() const {
@@ -678,39 +718,17 @@ bool OpenGLSdlGraphicsManager::saveScreenshot(const Common::String &file) const 
 		_frameBuffer->attach();
 	}
 
-#ifdef USE_PNG
-	Graphics::PixelFormat format(3, 8, 8, 8, 0, 16, 8, 0, 0);
+#ifdef SCUMM_LITTLE_ENDIAN
+	const Graphics::PixelFormat format(3, 8, 8, 8, 0, 0, 8, 16, 0);
+#else
+	const Graphics::PixelFormat format(3, 8, 8, 8, 0, 16, 8, 0, 0);
+#endif
 	Graphics::Surface data;
 	data.init(width, height, lineSize, &pixels.front(), format);
+#ifdef USE_PNG
 	return Image::writePNG(out, data, true);
 #else
-	for (uint y = height; y-- > 0;) {
-		uint8 *line = &pixels.front() + y * lineSize;
-
-		for (uint x = width; x > 0; --x, line += 3) {
-			SWAP(line[0], line[2]);
-		}
-	}
-
-	out.writeByte('B');
-	out.writeByte('M');
-	out.writeUint32LE(height * lineSize + 54);
-	out.writeUint32LE(0);
-	out.writeUint32LE(54);
-	out.writeUint32LE(40);
-	out.writeUint32LE(width);
-	out.writeUint32LE(height);
-	out.writeUint16LE(1);
-	out.writeUint16LE(24);
-	out.writeUint32LE(0);
-	out.writeUint32LE(0);
-	out.writeUint32LE(0);
-	out.writeUint32LE(0);
-	out.writeUint32LE(0);
-	out.writeUint32LE(0);
-	out.write(&pixels.front(), pixels.size());
-
-	return true;
+	return Image::writeBMP(out, data, true);
 #endif
 }
 

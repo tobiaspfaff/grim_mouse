@@ -40,7 +40,8 @@ static const TextDataInfo kTextDataDefaults[] = {
 	{ kTextDataDefault,			"text_default" },
 	{ kTextDataButton,			"text_button" },
 	{ kTextDataNormalFont,		"text_normal" },
-	{ kTextDataTooltip,			"tooltip_normal" }
+	{ kTextDataTooltip,			"tooltip_normal" },
+	{ kTextDataConsole,			"console" }
 };
 
 
@@ -627,6 +628,17 @@ bool ThemeParser::parseDrawStep(ParserNode *stepNode, Graphics::DrawStep *drawst
 			drawstep->padding.top = pt;
 			drawstep->padding.right = pr;
 			drawstep->padding.bottom = pb;
+		}
+	}
+
+	if (stepNode->values.contains("clip")) {
+		val = stepNode->values["clip"];
+		int cl, ct, cr, cb;
+		if (parseIntegerKey(val, 4, &cl, &ct, &cr, &cb)) {
+			drawstep->clip.left = cl;
+			drawstep->clip.top = ct;
+			drawstep->clip.right = cr;
+			drawstep->clip.bottom = cb;
 		}
 	}
 

@@ -32,6 +32,7 @@
 #include "graphics/surface.h"
 
 #include "common/file.h"
+#include "common/config-manager.h"
 #include "common/singleton.h"
 #include "common/stream.h"
 #include "common/memstream.h"
@@ -44,6 +45,11 @@
 #include FT_GLYPH_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_TRUETYPE_TAGS_H
+
+// ResidualVM specific
+#if FREETYPE_MAJOR > 2 || ( FREETYPE_MAJOR == 2 &&  FREETYPE_MINOR >= 9)
+#include FT_TRUETYPE_DRIVER_H
+#endif
 
 namespace Graphics {
 
@@ -111,7 +117,7 @@ public:
 	TTFFont();
 	virtual ~TTFFont();
 
-	bool load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping);
+	bool load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening);
 
 	virtual int getFontHeight() const;
 
@@ -178,7 +184,7 @@ TTFFont::~TTFFont() {
 	}
 }
 
-bool TTFFont::load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping) {
+bool TTFFont::load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening) {
 	if (!g_ttf.isInitialized())
 		return false;
 
@@ -211,6 +217,18 @@ bool TTFFont::load(Common::SeekableReadStream &stream, int size, TTFSizeMode siz
 		g_ttf.closeFont(_face);
 
 		return false;
+	}
+
+	// RedisualVM specific
+	if (stemDarkening) {
+#if FREETYPE_MAJOR > 2 || ( FREETYPE_MAJOR == 2 &&  FREETYPE_MINOR >= 9)
+		FT_Parameter param;
+		param.tag = FT_PARAM_TAG_STEM_DARKENING;
+		param.data = &stemDarkening;
+		FT_Face_Properties(_face, 1, &param);
+#else
+		warning("Stem darkening is not available with this version of FreeType");
+#endif
 	}
 
 	// Check whether we have kerning support
@@ -657,10 +675,10 @@ void TTFFont::assureCached(uint32 chr) const {
 	}
 }
 
-Font *loadTTFFont(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping) {
+Font *loadTTFFont(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening) {
 	TTFFont *font = new TTFFont();
 
-	if (!font->load(stream, size, sizeMode, dpi, renderMode, mapping)) {
+	if (!font->load(stream, size, sizeMode, dpi, renderMode, mapping, stemDarkening)) {
 		delete font;
 		return 0;
 	}
@@ -669,14 +687,24 @@ Font *loadTTFFont(Common::SeekableReadStream &stream, int size, TTFSizeMode size
 }
 
 Font *loadTTFFontFromArchive(const Common::String &filename, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping) {
-	Common::Archive *archive;
-	if (!Common::File::exists("fonts.dat") || (archive = Common::makeZipArchive("fonts.dat")) == nullptr) {
-		return 0;
+	Common::SeekableReadStream *archiveStream = nullptr;
+	if (ConfMan.hasKey("extrapath")) {
+		Common::FSDirectory extrapath(ConfMan.get("extrapath"));
+		archiveStream = extrapath.createReadStreamForMember("fonts.dat");
+	}
+
+	if (!archiveStream) {
+		archiveStream = SearchMan.createReadStreamForMember("fonts.dat");
+	}
+
+	Common::Archive *archive = Common::makeZipArchive(archiveStream);
+	if (!archive) {
+		return nullptr;
 	}
 
 	Common::File f;
 	if (!f.open(filename, *archive)) {
-		return 0;
+		return nullptr;
 	}
 
 	Font *font = loadTTFFont(f, size, sizeMode, dpi, renderMode, mapping);

@@ -409,12 +409,15 @@ Common::Array<Common::Point> ItemVisual::listExitPositionsImpl() {
 	Common::Point invalidPosition(-1, -1);
 
 	for (uint i = 0; i < pattables.size(); ++i) {
-		if (pattables[i]->getDefaultAction() == PATTable::kActionExit) {
-			Common::Point hotspot = getAnim()->getHotspotPosition(i);
-			if (hotspot != invalidPosition) {
-				hotspot += _renderEntry->getPosition();
-				positions.push_back(hotspot);
-			}
+		if (pattables[i]->getDefaultAction() != PATTable::kActionExit) continue;
+
+		Anim *anim = getAnim();
+		if (!anim) continue;
+
+		Common::Point hotspot = anim->getHotspotPosition(i);
+		if (hotspot != invalidPosition) {
+			hotspot += _renderEntry->getPosition();
+			positions.push_back(hotspot);
 		}
 	}
 
@@ -813,10 +816,24 @@ void FloorPositionedImageItem::readData(Formats::XRCReadStream *stream) {
 	setFloorFaceIndex(stream->readSint32LE());
 	_position = stream->readPoint();
 
-	// WORKAROUND: For the shelves having an incorrect position in the game datafiles
+	// WORKAROUND: Fix the position of various items being incorrect in the game datafiles
 	Location *location = findParent<Location>();
 	if (_name == "Shelves" && location && location->getName() == "April's Room") {
 		_position = Common::Point(543, 77);
+	} else if (_name == "Door" && location && location->getName() == "Hallway") {
+		_position = Common::Point(328, 44);
+	} else if (_name == "Bench" && location && location->getName() == "Outside Border House") {
+		_position = Common::Point(707, 255);
+	} else if (_name == "Printer" && location && location->getName() == "Archives") {
+		_position = Common::Point(260, 119);
+	} else if (_name == "Prop04_chair01" && location && location->getName() == "Inn Night") {
+		_position = Common::Point(185, 324);
+	} else if (_name == "Prop05_chair02" && location && location->getName() == "Inn Night") {
+		_position = Common::Point(381, 329);
+	} else if (_name == "Gargoyle" && location && location->getName() == "Below Floating Mountain") {
+		_position = Common::Point(352, 0);
+	} else if (_name == "Computer" && location && location->getName() == "Vanguard Laboratory") {
+		_position = Common::Point(411, 141);
 	}
 }
 

@@ -43,6 +43,8 @@
 		<def var = 'Predictive.Button.Height' value = '15' />
 		<def var = 'Predictive.ShowDeletePic' value = '0'/>
 
+		<def var = 'DropdownButton.Width' value = '7'/>
+
 		<widget name = 'Button'
 				size = '72, 16'
 		/>
@@ -322,6 +324,14 @@
 						type = 'OptionsLabel'
 				/>
 				<widget name = 'grRendererTypePopup'
+						type = 'PopUp'
+				/>
+			</layout>
+			<layout type = 'horizontal' padding = '0, 0, 0, 0' spacing = '6' center = 'true'>
+				<widget name = 'grAntiAliasPopupDesc'
+						type = 'OptionsLabel'
+				/>
+				<widget name = 'grAntiAliasPopup'
 						type = 'PopUp'
 				/>
 			</layout>
@@ -1698,5 +1708,7 @@
 				/>
 			</layout>
 		</layout>
+	</dialog>
+	<dialog name = 'DropdownDialog' overlays = 'screen_center'>
 	</dialog>
 </layout_info>

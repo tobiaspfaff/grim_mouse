@@ -54,7 +54,7 @@ public:
 	};
 
 	TextureSet(Object *parent, byte subType, uint16 index, const Common::String &name);
-	virtual ~TextureSet();
+	~TextureSet() override;
 
 	// Resource API
 	void readData(Formats::XRCReadStream *stream) override;
@@ -63,8 +63,12 @@ public:
 	/** Obtain the texture to be rendered */
 	Gfx::TextureSet *getTexture();
 
+	/** Extract the texture set archive to the dump directory relative to the current directory */
+	void extractArchive();
+
 protected:
 	void printData() override;
+	Gfx::TextureSet *readOverrideDdsArchive();
 
 	Common::String _filename;
 	Common::String _archiveName;

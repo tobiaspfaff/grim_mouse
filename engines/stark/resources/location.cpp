@@ -39,6 +39,7 @@
 #include "engines/stark/services/global.h"
 #include "engines/stark/services/services.h"
 #include "engines/stark/services/stateprovider.h"
+#include "engines/stark/services/userinterface.h"
 
 #include "common/random.h"
 
@@ -73,6 +74,17 @@ void Location::onAllLoaded() {
 	Object::onAllLoaded();
 
 	_layers = listChildren<Layer>();
+
+	Layer *threeDLayer = findChildWithSubtype<Layer>(Layer::kLayer3D);
+	if (threeDLayer) {
+		_modelItems = threeDLayer->listChildren<ModelItem>(Item::kItemModel);
+	}
+}
+
+void Location::onEnterLocation() {
+	Object::onEnterLocation();
+
+	StarkScene->setFadeLevel(1.0f);
 }
 
 void Location::onGameLoop() {
@@ -82,7 +94,10 @@ void Location::onGameLoop() {
 	if (april) {
 		_idleActionWaitMs -= StarkGlobal->getMillisecondsPerGameloop();
 		if (_idleActionWaitMs <= 0) {
-			if (!april->getActionAnim() && april->getAnimActivity() == Anim::kActorActivityIdle) {
+			if (!april->getActionAnim()
+			    && april->getAnimActivity() == Anim::kActorActivityIdle
+			    && StarkUserInterface->isInteractive()) {
+
 				Anim *idleAction = april->getIdleActionAnim();
 				if (idleAction) {
 					april->playActionAnim(idleAction);
@@ -419,15 +434,8 @@ void Location::registerCharacterItem(int32 character, ItemVisual *item) {
 	}
 }
 
-Common::Array<ItemVisual *> Location::listCharacters() const {
-	Common::Array<ItemVisual *> characters;
-
-	CharacterMap::const_iterator it;
-	for (it = _characterItemMap.begin(); it != _characterItemMap.end(); it++) {
-		characters.push_back(it->_value);
-	}
-
-	return characters;
+const Common::Array<ModelItem *> &Location::listModelItems() const {
+	return _modelItems;
 }
 
 void Location::printData() {

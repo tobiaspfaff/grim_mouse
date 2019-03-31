@@ -28,6 +28,7 @@
 
 #include "engines/stark/resources/anim.h"
 #include "engines/stark/resources/knowledgeset.h"
+#include "engines/stark/resources/image.h"
 #include "engines/stark/resources/item.h"
 #include "engines/stark/resources/location.h"
 #include "engines/stark/resources/layer.h"
@@ -131,8 +132,6 @@ void GameWindow::onMouseMove(const Common::Point &pos) {
 
 	checkObjectAtPos(pos, selectedInventoryItem, singlePossibleAction, defaultAction);
 
-	Common::String mouseHint;
-
 	if (selectedInventoryItem != -1 && !defaultAction) {
 		VisualImageXMG *cursorImage = StarkGameInterface->getCursorImage(selectedInventoryItem);
 		_cursor->setCursorImage(cursorImage);
@@ -156,11 +155,14 @@ void GameWindow::onMouseMove(const Common::Point &pos) {
 				_cursor->setCursorImage(cursorImage);
 				break;
 		}
-
-		mouseHint = StarkGameInterface->getItemTitleAt(_objectUnderCursor, _objectRelativePosition);
 	} else {
 		// Not an object
 		_cursor->setCursorType(Cursor::kDefault);
+	}
+
+	Common::String mouseHint;
+	if (_objectUnderCursor) {
+		mouseHint = StarkGameInterface->getItemTitleAt(_objectUnderCursor, _objectRelativePosition);
 	}
 	_cursor->setMouseHint(mouseHint);
 }
@@ -283,16 +285,11 @@ void GameWindow::onScreenChanged() {
 		return;
 	}
 
-	Common::Array<Resources::Layer *> layers = StarkGlobal->getCurrent()->getLocation()->listLayers();
+	Resources::Location *location = StarkGlobal->getCurrent()->getLocation();
+	Common::Array<Resources::ImageText *> images = location->listChildrenRecursive<Resources::ImageText>(Resources::Image::kImageText);
 
-	for (uint i = 0; i < layers.size(); ++i) {
-		Gfx::RenderEntryArray renderEntries = layers[i]->listRenderEntries();
-		for (uint j = 0; j < renderEntries.size(); ++j) {
-			VisualText *text = renderEntries[j]->getText();
-			if (text) {
-				text->resetTexture();
-			}
-		}
+	for (uint i = 0; i < images.size(); i++) {
+		images[i]->resetVisual();
 	}
 }
 

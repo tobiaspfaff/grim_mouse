@@ -32,9 +32,8 @@
 namespace Stark {
 
 static const PlainGameDescriptor starkGames[] = {
-	{"stark", "Stark Game"},
-	{"tlj", "The Longest Journey"},
-	{nullptr, nullptr}
+	{ "tlj", "The Longest Journey" },
+	{ nullptr, nullptr }
 };
 
 static const ADGameDescription gameDescriptions[] = {
@@ -48,7 +47,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::EN_ANY,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -62,7 +61,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::EN_ANY,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -76,7 +75,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::EN_ANY,
 		Common::kPlatformWindows,
-		ADGF_DEMO | ADGF_UNSTABLE,
+		ADGF_DEMO | ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -90,7 +89,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::EN_ANY,
 		Common::kPlatformWindows,
-		ADGF_DEMO | ADGF_UNSTABLE,
+		ADGF_DEMO | ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -104,7 +103,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::FR_FRA,
 		Common::kPlatformWindows,
-		ADGF_DEMO | ADGF_UNSTABLE,
+		ADGF_DEMO | ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -118,7 +117,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::NB_NOR,
 		Common::kPlatformWindows,
-		ADGF_DEMO | ADGF_UNSTABLE,
+		ADGF_DEMO | ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -132,7 +131,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::NB_NOR,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -146,7 +145,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::NB_NOR,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -160,7 +159,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::DE_DEU,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -174,7 +173,35 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::DE_DEU,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
+		GUIO_NONE
+	},
+	
+	// The Longest Journey
+	// Italian DVD version
+	{
+		"tlj", "DVD", {
+			{"x.xarc", 0, "de8327850d7bba90b690b141eaa23f61", 3032},
+			{"chapters.ini", 0, "9a81ea4e6f5b84511dd4e56d04a64e2e", 498},
+			{nullptr, 0, nullptr, 0}
+		},
+		Common::IT_ITA,
+		Common::kPlatformWindows,
+		ADGF_TESTING,
+		GUIO_NONE
+	},
+
+	// The Longest Journey
+	// Italian 4CD
+	{
+		"tlj", "4 CD", {
+			{"x.xarc", 0, "a0559457126caadab0cadac02d35f26f", 3032},
+			{"chapters.ini", 0, "9a81ea4e6f5b84511dd4e56d04a64e2e", 498},
+			{nullptr, 0, nullptr, 0}
+		},
+		Common::IT_ITA,
+		Common::kPlatformWindows,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -188,7 +215,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::NL_NLD,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -202,7 +229,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::ES_ESP,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -216,7 +243,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::FR_FRA,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -230,7 +257,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::FR_FRA,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -244,7 +271,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::SE_SWE,
 		Common::kPlatformWindows,
-		ADGF_DEMO | ADGF_UNSTABLE,
+		ADGF_DEMO | ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -258,7 +285,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::SE_SWE,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -272,7 +299,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::SE_SWE,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -286,7 +313,7 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::PL_POL,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
@@ -300,15 +327,16 @@ static const ADGameDescription gameDescriptions[] = {
 		},
 		Common::RU_RUS,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE,
+		ADGF_TESTING,
 		GUIO_NONE
 	},
 
 	AD_TABLE_END_MARKER
 };
 
-#define GAMEOPTION_ASSETS_MOD       GUIO_GAMEOPTIONS1
-#define GAMEOPTION_LINEAR_FILTERING GUIO_GAMEOPTIONS2
+#define GAMEOPTION_ASSETS_MOD        GUIO_GAMEOPTIONS1
+#define GAMEOPTION_LINEAR_FILTERING  GUIO_GAMEOPTIONS2
+#define GAMEOPTION_FONT_ANTIALIASING GUIO_GAMEOPTIONS3
 
 static const ADExtraGuiOptionsMap optionsList[] = {
 	{
@@ -329,6 +357,15 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			true
 		}
 	},
+	{
+		GAMEOPTION_FONT_ANTIALIASING,
+		{
+			_s("Enable font anti-aliasing"),
+			_s("When font anti-aliasing is enabled, the text is smoother."),
+			"enable_font_antialiasing",
+			true
+		}
+	},
 
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
@@ -336,12 +373,15 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 class StarkMetaEngine : public AdvancedMetaEngine {
 public:
 	StarkMetaEngine() : AdvancedMetaEngine(gameDescriptions, sizeof(ADGameDescription), starkGames, optionsList) {
-		_singleId = "stark";
-		_guiOptions = GUIO3(GUIO_NOMIDI, GAMEOPTION_ASSETS_MOD, GAMEOPTION_LINEAR_FILTERING);
+		_guiOptions = GUIO4(GUIO_NOMIDI, GAMEOPTION_ASSETS_MOD, GAMEOPTION_LINEAR_FILTERING, GAMEOPTION_FONT_ANTIALIASING);
 	}
 
 	const char *getName() const override {
-		return "Stark Engine";
+		return "Stark";
+	}
+
+	const char *getEngineId() const override {
+		return "stark";
 	}
 
 	const char *getOriginalCopyright() const override {
@@ -364,19 +404,11 @@ public:
 	}
 
 	SaveStateList listSaves(const char *target) const override {
-		Common::String pattern = Common::String::format("%s-###.tlj", target);
-		Common::StringArray filenames = g_system->getSavefileManager()->listSavefiles(pattern);
-
-		int targetLen = strlen(target);
+		Common::StringArray filenames = StarkEngine::listSaveNames(target);
 
 		SaveStateList saveList;
 		for (Common::StringArray::const_iterator filename = filenames.begin(); filename != filenames.end(); ++filename) {
-			// Extract the slot number from the filename
-			char slot[4];
-			slot[0] = (*filename)[targetLen + 1];
-			slot[1] = (*filename)[targetLen + 2];
-			slot[2] = (*filename)[targetLen + 3];
-			slot[3] = '\0';
+			int slot = StarkEngine::getSaveNameSlot(target, *filename);
 
 			// Read the description from the save
 			Common::String description;
@@ -386,7 +418,7 @@ public:
 				description = stream.readString();
 			}
 
-			saveList.push_back(SaveStateDescriptor(atoi(slot), description));
+			saveList.push_back(SaveStateDescriptor(slot, description));
 		}
 
 		Common::sort(saveList.begin(), saveList.end(), SaveStateDescriptorSlotComparator());

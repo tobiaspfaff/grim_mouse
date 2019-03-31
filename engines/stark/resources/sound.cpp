@@ -28,6 +28,7 @@
 
 #include "engines/stark/formats/iss.h"
 #include "engines/stark/formats/xrc.h"
+#include "engines/stark/resources/location.h"
 #include "engines/stark/services/archiveloader.h"
 #include "engines/stark/services/global.h"
 #include "engines/stark/services/services.h"
@@ -113,6 +114,10 @@ Audio::Mixer::SoundType Sound::getMixerSoundType() {
 }
 
 void Sound::play() {
+	if (isPlaying()) {
+		return;
+	}
+
 	Audio::RewindableAudioStream *rewindableStream = makeAudioStream();
 
 	if (!rewindableStream) {
@@ -183,6 +188,13 @@ void Sound::printData() {
 void Sound::onGameLoop() {
 	Object::onGameLoop();
 
+	if (_subType == kSoundBackground && !isPlaying()) {
+		Location *location = StarkGlobal->getCurrent()->getLocation();
+		if (location->getName() != "Amongst Stalls" || StarkGlobal->getCurrentChapter() < 100) {
+			play();
+		}
+	}
+
 	if (_looping && !_loopIndefinitely) {
 		// Automatically stop after the maximum run time has been reached
 		uint32 elapsedTime = g_system->getMixer()->getSoundElapsedTime(_handle);
@@ -239,7 +251,7 @@ void Sound::saveLoadCurrent(ResourceSerializer *serializer) {
 	bool playing = isPlaying();
 	serializer->syncAsUint32LE(playing);
 
-	if (_subType != kSoundSub3 && playing) {
+	if (_subType != kSoundBackground && playing) {
 		uint32 elapsed = g_system->getMixer()->getSoundElapsedTime(_handle);
 		serializer->syncAsUint32LE(elapsed);
 		serializer->syncAsFloat(_volume);

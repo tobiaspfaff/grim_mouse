@@ -40,6 +40,7 @@ class MutexManager;
  *   OSystem::getMillis()
  *   OSystem::delayMillis()
  *   OSystem::getTimeAndDate()
+ *   OSystem::quit()
  *
  * And, it should also initialize all the managers variables
  * declared in this class, or override their related functions.
@@ -78,7 +79,7 @@ public:
 	virtual Graphics::PixelFormat getScreenFormat() const override;
 	virtual Common::List<Graphics::PixelFormat> getSupportedFormats() const override;
 #endif
-	virtual void initSize(uint width, uint height, const Graphics::PixelFormat *format = NULL);
+	virtual void initSize(uint width, uint height, const Graphics::PixelFormat *format = NULL) override;
 	virtual void setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d); // ResidualVM specific method
 	virtual Graphics::PixelBuffer getScreenPixelBuffer(); // ResidualVM specific method
 	virtual void suggestSideTextures(Graphics::Surface *left, Graphics::Surface *right); // ResidualVM specific method
@@ -138,7 +139,6 @@ public:
 	/** @name Miscellaneous */
 	//@{
 
-	virtual void quit() override;
 	virtual void displayMessageOnOSD(const char *msg) override;
 	virtual void displayActivityIconOnOSD(const Graphics::Surface *icon) override;
 
