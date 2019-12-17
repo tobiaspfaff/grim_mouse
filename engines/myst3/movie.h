@@ -41,16 +41,20 @@ public:
 	Movie(Myst3Engine *vm, uint16 id);
 	virtual ~Movie();
 
-	virtual void draw();
-	virtual void drawOverlay();
+	virtual void draw() override;
+	virtual void drawOverlay() override;
+
+	/** Increase or decrease the movie's pause level by one */
+	void pause(bool pause);
 
 	uint16 getId() { return _id; }
+	bool isVideoLoaded() {return _bink.isVideoLoaded(); }
 	void setPosU(int32 v) { _posU = v; }
 	void setPosV(int32 v) { _posV = v; }
-	void setForce2d(bool b) { _force2d = b; }
+	void setForce2d(bool b);
 	void setForceOpaque(bool b) { _forceOpaque = b; }
-	void setStartFrame(int32 v) { _startFrame = v; }
-	void setEndFrame(int32 v) { _endFrame = v; }
+	void setStartFrame(int32 v);
+	void setEndFrame(int32 v);
 	void setVolume(int32 v) { _volume = v; }
 
 protected:
@@ -77,6 +81,10 @@ protected:
 
 	int32 _volume;
 
+	bool _additiveBlending;
+	int32 _transparency;
+
+	int32 adjustFrameForRate(int32 frame, bool dataToBink);
 	void loadPosition(const VideoData &videoData);
 	void drawNextFrameToTexture();
 
@@ -89,8 +97,8 @@ public:
 	ScriptedMovie(Myst3Engine *vm, uint16 id);
 	virtual ~ScriptedMovie();
 
-	void draw();
-	void drawOverlay();
+	void draw() override;
+	void drawOverlay() override;
 	virtual void update();
 
 	void setEndFrameVar(uint16 v) { _endFrameVar = v; }
@@ -108,6 +116,9 @@ public:
 	void setScriptDriven(bool b) { _scriptDriven = b; }
 	void setSoundHeading(uint16 v) { _soundHeading = v; }
 	void setSoundAttenuation(uint16 v) { _soundAttenuation = v; }
+	void setAdditiveBlending(bool b) { _additiveBlending = b; }
+	void setTransparency(int32 v) { _transparency = v; }
+	void setTransparencyVar(uint16 v) { _transparencyVar = v; }
 
 protected:
 	bool _enabled;
@@ -133,6 +144,8 @@ protected:
 
 	uint16 _playingVar;
 
+	uint16 _transparencyVar;
+
 	void updateVolume();
 };
 
@@ -141,14 +154,19 @@ public:
 	SimpleMovie(Myst3Engine *vm, uint16 id);
 	virtual ~SimpleMovie();
 
-	bool update();
+	void update();
+	bool endOfVideo();
 
 	void playStartupSound();
+	void refreshAmbientSounds();
 
 	void setSynchronized(bool b) { _synchronized = b; }
+
+	void play();
+
 private:
 	bool _synchronized;
-	uint _startEngineFrame;
+	uint _startEngineTick;
 };
 
 // Used by the projectors on J'nanin, see puzzle #14
@@ -168,5 +186,6 @@ private:
 	uint8 _blurTableY[kBlurIterations];
 };
 
-} /* namespace Myst3 */
-#endif /* MOVIE_H_ */
+} // End of namespace Myst3
+
+#endif // MOVIE_H_

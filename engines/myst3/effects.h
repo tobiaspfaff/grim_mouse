@@ -24,6 +24,7 @@
 #define EFFECTS_H_
 
 #include "common/hashmap.h"
+#include "common/rect.h"
 
 #include "engines/myst3/directorysubentry.h"
 
@@ -37,27 +38,36 @@ class Myst3Engine;
 
 class Effect {
 public:
+	struct FaceMask {
+		FaceMask();
+		~FaceMask();
+
+		static Common::Rect getBlockRect(uint x, uint y);
+
+		Graphics::Surface *surface;
+		bool block[10][10];
+	};
+
 	virtual ~Effect();
 
 	virtual bool update() = 0;
 	virtual void applyForFace(uint face, Graphics::Surface *src, Graphics::Surface *dst) = 0;
 
 	bool hasFace(uint face) { return _facesMasks.contains(face); }
+	Common::Rect getUpdateRectForFace(uint face);
 
 	// Public and static for use by the debug console
-	static Graphics::Surface *loadMask(Common::SeekableReadStream *maskStream);
+	static FaceMask *loadMask(Common::SeekableReadStream *maskStream);
 
 protected:
 	Effect(Myst3Engine *vm);
 
-	bool loadMasks(uint32 id, DirectorySubEntry::ResourceType type);
-	void flipVertical(Graphics::Surface *s);
+	bool loadMasks(const Common::String &room, uint32 id, DirectorySubEntry::ResourceType type);
 
 	Myst3Engine *_vm;
 
-	typedef Common::HashMap<uint, Graphics::Surface *> FaceMaskMap;
+	typedef Common::HashMap<uint, FaceMask *> FaceMaskMap;
 	FaceMaskMap _facesMasks;
-
 };
 
 class WaterEffect : public Effect {
@@ -141,12 +151,51 @@ public:
 protected:
 	ShakeEffect(Myst3Engine *vm);
 
-	uint32 _lastFrame;
+	uint32 _lastTick;
 	uint _magnetEffectShakeStep;
 	float _pitchOffset;
 	float _headingOffset;
 
 };
 
-} /* namespace Myst3 */
-#endif /* EFFECTS_H_ */
+class RotationEffect : public Effect {
+public:
+	static RotationEffect *create(Myst3Engine *vm);
+	virtual ~RotationEffect();
+
+	bool update();
+	void applyForFace(uint face, Graphics::Surface *src, Graphics::Surface *dst);
+
+	float getHeadingOffset() { return _headingOffset; }
+
+protected:
+	RotationEffect(Myst3Engine *vm);
+
+	uint32 _lastUpdate;
+	float _headingOffset;
+
+};
+
+class ShieldEffect : public Effect {
+public:
+	static ShieldEffect *create(Myst3Engine *vm, uint32 id);
+	virtual ~ShieldEffect();
+
+	bool update();
+	void applyForFace(uint face, Graphics::Surface *src, Graphics::Surface *dst);
+
+protected:
+	ShieldEffect(Myst3Engine *vm);
+	bool loadPattern();
+
+	uint32 _lastTick;
+	float _amplitude;
+	float _amplitudeIncrement;
+
+	uint8 _pattern[4096];
+	int32 _displacement[256];
+};
+
+} // End of namespace Myst3
+
+#endif // EFFECTS_H_

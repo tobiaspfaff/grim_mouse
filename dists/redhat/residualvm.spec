@@ -7,7 +7,7 @@
 #   Prologue information
 #------------------------------------------------------------------------------
 Name		: residualvm
-Version		: 0.2.0git
+Version		: 0.4.0git
 Release		: 1
 Summary		: Interpreter for several 3D games
 Group		: Amusements/Games
@@ -34,7 +34,8 @@ BuildRequires: SDL-devel >= 1.2.2
 #   install scripts
 #------------------------------------------------------------------------------
 %prep
-%setup -q -a 1 -a 2 -n residualvm-%{version}
+%setup -q -a 1 -a 2 -a 3 -n residualvm-%{version}
+patch0 -p0
 mkdir tmp
 
 %build
@@ -54,6 +55,7 @@ install -m644 -D dists/redhat/residualvm48.png %{buildroot}%{_datadir}/icons/hic
 install -m644 -D gui/themes/modern.zip %{buildroot}%{_datadir}/residualvm/modern.zip
 install -m644 -D dists/engine-data/residualvm-grim-patch.lab %{buildroot}%{_datadir}/residualvm/residualvm-grim-patch.lab
 install -m644 -D dists/engine-data/residualvm-emi-patch.m4b %{buildroot}%{_datadir}/residualvm/residualvm-emi-patch.m4b
+install -m644 -D dists/engine-data/myst3.dat %{buildroot}%{_datadir}/residualvm/myst3.dat
 desktop-file-install --vendor residualvm --dir=%{buildroot}/%{_datadir}/applications dists/residualvm.desktop
 
 %clean
@@ -76,7 +78,7 @@ fi
 #------------------------------------------------------------------------------
 %files
 %defattr(0644,root,root,0755)
-%doc AUTHORS README KNOWN_BUGS NEWS COPYING COPYING.LGPL COPYING.BSD COPYING.FREEFONT COPYING.ISC COPYING.LUA COPYING.TINYGL COPYRIGHT
+%doc AUTHORS README.md KNOWN_BUGS NEWS COPYING COPYING.LGPL COPYING.BSD COPYING.FREEFONT COPYING.OFL COPYING.ISC COPYING.LUA COPYING.TINYGL COPYRIGHT
 %attr(0755,root,root)%{_bindir}/residualvm
 %{_datadir}/applications/*
 %{_datadir}/pixmaps/residualvm.xpm
@@ -85,6 +87,7 @@ fi
 %{_datadir}/residualvm/modern.zip
 %{_datadir}/residualvm/residualvm-grim-patch.lab
 %{_datadir}/residualvm/residualvm-emi-patch.m4b
+%{_datadir}/residualvm/myst3.dat
 %{_mandir}/man6/residualvm.6*
 
 #------------------------------------------------------------------------------

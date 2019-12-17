@@ -81,10 +81,6 @@ namespace Grim {
 //                given by a playing chore
 // update() -- gives the component a chance to update its internal
 //             state once every frame
-// setupTexture() -- sets up animated textures for the object.  This
-//                   is a separate stage from update() since all the
-//                   costumes on screen need to get updated before any
-//                   drawing can start.
 // draw() -- actually draws the component onto the screen
 // reset() -- notifies the component that a chore controlling it
 //            has stopped
@@ -107,9 +103,8 @@ namespace Grim {
 // along setKey requests to the actual bitmap object.
 
 Costume::Costume(const Common::String &fname, Actor *owner, Costume *prevCost) :
-		Object(), _head(new Head()), _chores(nullptr), _components(nullptr),
+		Object(), _head(nullptr), _chores(nullptr), _components(nullptr),
 		_numComponents(0), _numChores(0), _fname(fname), _owner(owner) {
-
 	_lookAtRate = 200;
 	_prevCostume = prevCost;
 }
@@ -194,6 +189,8 @@ void Costume::load(Common::SeekableReadStream *data) {
 		ts.scanString("chore %d", 1, &which);
 		_chores[which]->load(ts);
 	}
+
+	_head = new Head();
 }
 
 Costume::~Costume() {
@@ -419,12 +416,6 @@ int Costume::isChoring(bool excludeLooping) {
 	return -1;
 }
 
-void Costume::setupTextures() {
-	for (int i = 0; i < _numComponents; i++)
-		if (_components[i])
-			_components[i]->setupTexture();
-}
-
 void Costume::draw() {
 	for (int i = 0; i < _numComponents; i++)
 		if (_components[i])
@@ -482,13 +473,14 @@ void Costume::moveHead(bool entering, const Math::Vector3d &lookAt) {
 }
 
 int Costume::getHeadJoint() const {
-	return _head->getJoint3();
+	return static_cast<Head *>(_head)->getJoint3();
 }
 
 void Costume::setHead(int joint1, int joint2, int joint3, float maxRoll, float maxPitch, float maxYaw) {
-	_head->setJoints(joint1, joint2, joint3);
-	_head->loadJoints(getModelNodes());
-	_head->setMaxAngles(maxPitch, maxYaw, maxRoll);
+	Head *head = static_cast<Head *>(_head);
+	head->setJoints(joint1, joint2, joint3);
+	head->loadJoints(getModelNodes());
+	head->setMaxAngles(maxPitch, maxYaw, maxRoll);
 }
 
 void Costume::setLookAtRate(float rate) {
@@ -502,7 +494,7 @@ float Costume::getLookAtRate() const {
 void Costume::setPosRotate(const Math::Vector3d &pos, const Math::Angle &pitch,
 						   const Math::Angle &yaw, const Math::Angle &roll) {
 	_matrix.setPosition(pos);
-	_matrix.buildFromXYZ(yaw, pitch, roll, Math::EO_ZXY);
+	_matrix.buildFromEuler(yaw, pitch, roll, Math::EO_ZXY);
 }
 
 Math::Matrix4 Costume::getMatrix() const {

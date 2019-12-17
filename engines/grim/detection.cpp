@@ -27,8 +27,10 @@
 #include "engines/grim/savegame.h"
 #include "engines/grim/emi/emi.h"
 
+#include "common/config-manager.h"
 #include "common/system.h"
 #include "common/savefile.h"
+#include "common/translation.h"
 
 namespace Grim {
 
@@ -44,14 +46,26 @@ static const PlainGameDescriptor grimGames[] = {
 };
 
 #define GAMEOPTION_LOAD_DATAUSR GUIO_GAMEOPTIONS1
+#define GAMEOPTION_SHOW_FPS GUIO_GAMEOPTIONS2
+
+#define GUI_OPTIONS_GRIME GUIO2(GAMEOPTION_LOAD_DATAUSR, GAMEOPTION_SHOW_FPS)
 
 static const ADExtraGuiOptionsMap gameGuiOptions[] = {
 	{
 		GAMEOPTION_LOAD_DATAUSR,
 		{
-			"Load user patch (unsupported)",
-			"Load an user patch. Please note that the ResidualVM-team doesn't provide support for using such patches.",
+			_s("Load user patch (unsupported)"),
+			_s("Load an user patch. Please note that the ResidualVM-team doesn't provide support for using such patches."),
 			"datausr_load",
+			false
+		}
+	},
+	{
+		GAMEOPTION_SHOW_FPS,
+		{
+			_s("Show FPS"),
+			_s("Show the current FPS-rate, while you play."),
+			"show_fps",
 			false
 		}
 	},
@@ -69,7 +83,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -82,7 +96,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -95,7 +109,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::FR_FRA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -108,7 +122,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::PT_BRA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -121,7 +135,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::IT_ITA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -134,7 +148,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -147,7 +161,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -160,7 +174,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -173,7 +187,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -186,7 +200,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -199,7 +213,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::IT_ITA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -212,7 +226,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::FR_FRA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -225,7 +239,7 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::PT_BRA,
 			Common::kPlatformWindows,
 			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -238,7 +252,87 @@ static const GrimGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_DEMO,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			GUI_OPTIONS_GRIME
+		},
+		GType_GRIM
+	},
+	{
+		// Grim Fandango English demo version (with intro video)
+		{
+			"grim",
+			"Demo",
+			AD_ENTRY1s("gdemo001.lab", "c04c814093be829c4811a3a0aa80833d", 46615911),
+			Common::EN_ANY,
+			Common::kPlatformWindows,
+			ADGF_DEMO,
+			GUI_OPTIONS_GRIME
+		},
+		GType_GRIM
+	},
+	{
+		// Grim Fandango French demo version
+		{
+			"grim",
+			"Demo",
+			{
+				{"gfdemo01.lab", 0, "7df813f3809f2c0234213cfa4f6da062", 29533695},
+				{"voice001.lab", 0, "7df474e03c23692ed02e4ce45f1a6b30", 13764168},
+			},
+			Common::FR_FRA,
+			Common::kPlatformWindows,
+			ADGF_DEMO,
+			GUI_OPTIONS_GRIME
+		},
+		GType_GRIM
+	},
+
+	{
+		// Grim Fandango German demo version
+		{
+			"grim",
+			"Demo",
+			{
+				{"gfdemo01.lab", 0, "7df813f3809f2c0234213cfa4f6da062", 29533695},
+				{"voice001.lab", 0, "2788dc7fd226787f3a68ac9c853d2580", 16561196},
+			},
+			Common::DE_DEU,
+			Common::kPlatformWindows,
+			ADGF_DEMO,
+			GUI_OPTIONS_GRIME
+		},
+		GType_GRIM
+	},
+
+	{
+		// Grim Fandango Italian demo version
+		{
+			"grim",
+			"Demo",
+			{
+				{"gfdemo01.lab", 0, "7df813f3809f2c0234213cfa4f6da062", 29533695},
+				{"voice001.lab", 0, "3b8ace62584380c66b73981e014ea40e", 14907410},
+			},
+			Common::IT_ITA,
+			Common::kPlatformWindows,
+			ADGF_DEMO,
+			GUI_OPTIONS_GRIME
+		},
+		GType_GRIM
+	},
+
+	{
+		// Grim Fandango Spanish demo version
+		{
+			"grim",
+			"Demo",
+			{
+				{"gfdemo01.lab", 0, "7df813f3809f2c0234213cfa4f6da062", 29533695},
+				{"voice001.lab", 0, "a810ec11acaf9d76cd04d2f68fcdc912", 13367206},
+			},
+			Common::ES_ESP,
+			Common::kPlatformWindows,
+			ADGF_DEMO,
+			GUI_OPTIONS_GRIME
 		},
 		GType_GRIM
 	},
@@ -251,8 +345,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "61959da91d864bf5f4588daa4a5a3019", 18515664),
 			Common::EN_ANY,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -264,8 +358,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "007a33881478be6b6e0228d8888536ae", 18512568),
 			Common::DE_DEU,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -277,8 +371,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "d2f010c1cd1fd002eea403282a6b9a1e", 18513451),
 			Common::IT_ITA,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -290,8 +384,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "0d459954031c086a0448d2eb3fa068a1", 18514404),
 			Common::ES_ESP,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -303,8 +397,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "151af0a694382af873f325fcea293bb1", 18514420),
 			Common::FR_FRA,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -316,8 +410,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "030e7637aee7886a3caad60cf102f797", 18515747),
 			Common::PT_BRA,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -329,8 +423,25 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "779561a70a11dd5686974f122fc1516c", 18500052),
 			Common::RU_RUS,
 			Common::kPlatformWindows,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
+		},
+		GType_MONKEY4
+	},
+	{
+		// Escape from Monkey Island German (Mac)
+		{
+			"monkey4",
+			"",
+			{
+				{"artAll.m4b", 0, "007a33881478be6b6e0228d8888536ae", 18512568},
+				{"EFMI Installer", 0, "54298c7440dafedf33d2b27c7bb24052", 9241784},
+				AD_LISTEND
+			},
+			Common::DE_DEU,
+			Common::kPlatformMacintosh,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -342,8 +453,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "0dc9a4df0d8553f277d8dc8e23b6249d", 34593974),
 			Common::EN_ANY,
 			Common::kPlatformPS2,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -355,8 +466,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "5b5c7a3964c168eab44b82981db357d8", 34642186),
 			Common::DE_DEU,
 			Common::kPlatformPS2,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -368,8 +479,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "2de68c8fd955c1a3c50202b072bde0cb", 34642651),
 			Common::IT_ITA,
 			Common::kPlatformPS2,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -381,8 +492,8 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "ff6689dcca36c249ec834a3019aeb397", 34642656),
 			Common::ES_ESP,
 			Common::kPlatformPS2,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -394,21 +505,78 @@ static const GrimGameDescription gameDescriptions[] = {
 			AD_ENTRY1s("artAll.m4b", "5ce964a19a8672944b9b62170e45ce28", 34593681),
 			Common::FR_FRA,
 			Common::kPlatformPS2,
-			ADGF_NO_FLAGS,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
 	{
-		// Escape from Monkey Island demo
+		// Escape from Monkey Island demo (English)
 		{
 			"monkey4",
 			"Demo",
-			AD_ENTRY1s("magdemo.lab", "9e7eaa1b9317ff47d5deeda0b2c42ce3", 19826116),
+			{
+				{"magdemo.lab", 0, "9e7eaa1b9317ff47d5deeda0b2c42ce3", 19826116},
+				{"i9n.lab", 0, "274f8579b01e0872fe6f1ba267266149", 26951},
+				AD_LISTEND
+			},
 			Common::EN_ANY,
 			Common::kPlatformWindows,
-			ADGF_DEMO,
-			GUIO1(GAMEOPTION_LOAD_DATAUSR)
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
+		},
+		GType_MONKEY4
+	},
+	{
+		// Escape from Monkey Island demo (French)
+		{
+			"monkey4",
+			"Demo",
+			{
+				{"magdemo.lab", 0, "9e7eaa1b9317ff47d5deeda0b2c42ce3", 19826116},
+				{"i9n.lab", 0, "7f1744990472261bdcbc02036ba9f7ec", 1718385},
+				AD_LISTEND
+			},
+			Common::FR_FRA,
+			Common::kPlatformWindows,
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
+		},
+		GType_MONKEY4
+	},
+
+	{
+		// Escape from Monkey Island demo (German)
+		{
+			"monkey4",
+			"Demo",
+			{
+				{"magdemo.lab", 0, "9e7eaa1b9317ff47d5deeda0b2c42ce3", 19826116},
+				{"i9n.lab", 0, "28f6bc270b5c31970cc110c7656ff598", 1749051},
+				AD_LISTEND
+			},
+			Common::DE_DEU,
+			Common::kPlatformWindows,
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
+		},
+		GType_MONKEY4
+	},
+
+	{
+		// Escape from Monkey Island demo (Spanish)
+		{
+			"monkey4",
+			"Demo",
+			{
+				{"magdemo.lab", 0, "9e7eaa1b9317ff47d5deeda0b2c42ce3", 19826116},
+				{"i9n.lab", 0, "53b20d930f6e8c2e0880ed7e336eeebc", 1740761},
+				AD_LISTEND
+			},
+			Common::ES_ESP,
+			Common::kPlatformWindows,
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUI_OPTIONS_GRIME
 		},
 		GType_MONKEY4
 	},
@@ -425,31 +593,35 @@ static const Engines::ObsoleteGameID obsoleteGameIDsTable[] = {
 class GrimMetaEngine : public AdvancedMetaEngine {
 public:
 	GrimMetaEngine() : AdvancedMetaEngine(Grim::gameDescriptions, sizeof(Grim::GrimGameDescription), grimGames, gameGuiOptions) {
-		_guioptions = GUIO_NOMIDI;
+		_guiOptions = GUIO_NOMIDI;
 	}
 
-	virtual GameDescriptor findGame(const char *gameid) const override {
-		return Engines::findGameID(gameid, _gameids, obsoleteGameIDsTable);
+	PlainGameDescriptor findGame(const char *gameid) const override {
+		return Engines::findGameID(gameid, _gameIds, obsoleteGameIDsTable);
 	}
 
-	virtual const char *getName() const override {
-		return "Grim Engine";
+	const char *getName() const override {
+		return "Grim";
 	}
 
-	virtual const char *getOriginalCopyright() const override {
+	const char *getEngineId() const override {
+		return "grim";
+	}
+
+	const char *getOriginalCopyright() const override {
 		return "LucasArts GrimE Games (C) LucasArts";
 	}
 
-	virtual Common::Error createInstance(OSystem *syst, Engine **engine) const override {
+	Common::Error createInstance(OSystem *syst, Engine **engine) const override {
 		Engines::upgradeTargetIfNecessary(obsoleteGameIDsTable);
 		return AdvancedMetaEngine::createInstance(syst, engine);
 	}
 
-	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const override;
+	bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const override;
 
-	virtual bool hasFeature(MetaEngineFeature f) const override;
+	bool hasFeature(MetaEngineFeature f) const override;
 
-	virtual SaveStateList listSaves(const char *target) const override;
+	SaveStateList listSaves(const char *target) const override;
 };
 
 bool GrimMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
@@ -472,15 +644,15 @@ bool GrimMetaEngine::hasFeature(MetaEngineFeature f) const {
 		(f == kSupportsLoadingDuringStartup);
 }
 
-static bool cmpSave(const SaveStateDescriptor &x, const SaveStateDescriptor &y) {
-	return x.getSaveSlot() < y.getSaveSlot();
-}
-
 SaveStateList GrimMetaEngine::listSaves(const char *target) const {
+	Common::String gameId = ConfMan.get("gameid", target);
+	Common::Platform platform = Common::parsePlatform(ConfMan.get("platform", target));
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
 	Common::StringArray filenames;
-	Common::String targetString(target);
-	Common::String pattern = targetString.hasPrefix("monkey4") ? "efmi*.gsv" : "grim*.gsv";
+	Common::String pattern = gameId == "monkey4" ? "efmi###.gsv" : "grim##.gsv";
+	
+	if (platform == Common::kPlatformPS2)
+		pattern = "efmi###.ps2";
 
 	filenames = saveFileMan->listSavefiles(pattern);
 
@@ -494,7 +666,10 @@ SaveStateList GrimMetaEngine::listSaves(const char *target) const {
 		if (slotNum >= 0) {
 			SaveGame *savedState = SaveGame::openForLoading(*file);
 			if (savedState && savedState->isCompatible()) {
-				savedState->beginSection('SUBS');
+				if (platform == Common::kPlatformPS2)
+					savedState->beginSection('PS2S');
+				else
+					savedState->beginSection('SUBS');
 				strSize = savedState->readLESint32();
 				savedState->read(str, strSize);
 				savedState->endSection();
@@ -504,7 +679,7 @@ SaveStateList GrimMetaEngine::listSaves(const char *target) const {
 		}
 	}
 
-	Common::sort(saveList.begin(), saveList.end(), cmpSave);
+	Common::sort(saveList.begin(), saveList.end(), SaveStateDescriptorSlotComparator());
 	return saveList;
 }
 

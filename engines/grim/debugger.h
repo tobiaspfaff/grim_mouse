@@ -23,6 +23,8 @@
 #ifndef GRIM_DEBUGGER_H
 #define GRIM_DEBUGGER_H
 
+#include "common/debug.h"
+
 #include "gui/debugger.h"
 
 namespace Grim {
@@ -34,7 +36,10 @@ public:
 
 	bool cmd_checkFiles(int argc, const char **argv);
 	bool cmd_lua_do(int argc, const char **argv);
-	bool cmd_emi_jump(int argc, const char **argv);
+	bool cmd_jump(int argc, const char **argv);
+	bool cmd_set_renderer(int argc, const char **argv);
+	bool cmd_save(int argc, const char **argv);
+	bool cmd_load(int argc, const char **argv);
 };
 
 }

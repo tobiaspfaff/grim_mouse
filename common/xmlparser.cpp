@@ -69,12 +69,12 @@ bool XMLParser::loadBuffer(const byte *buffer, uint32 size, DisposeAfterUse::Fla
 bool XMLParser::loadStream(SeekableReadStream *stream) {
 	_stream = stream;
 	_fileName = "File Stream";
-	return true;
+	return _stream != nullptr;
 }
 
 void XMLParser::close() {
 	delete _stream;
-	_stream = 0;
+	_stream = nullptr;
 }
 
 bool XMLParser::parserError(const String &errStr) {
@@ -97,35 +97,37 @@ bool XMLParser::parserError(const String &errStr) {
 	assert(_stream->pos() == startPosition);
 	currentPosition = startPosition;
 
-	int keyOpening = 0;
-	int keyClosing = 0;
-
-	while (currentPosition-- && keyOpening == 0) {
-		_stream->seek(-2, SEEK_CUR);
-		c = _stream->readByte();
-
-		if (c == '<')
-			keyOpening = currentPosition - 1;
-		else if (c == '>')
-			keyClosing = currentPosition;
-	}
-
-	_stream->seek(startPosition, SEEK_SET);
-	currentPosition = startPosition;
-	while (keyClosing == 0 && c && currentPosition++) {
-		c = _stream->readByte();
-
-		if (c == '>')
-			keyClosing = currentPosition;
-	}
-
 	Common::String errorMessage = Common::String::format("\n  File <%s>, line %d:\n", _fileName.c_str(), lineCount);
 
-	currentPosition = (keyClosing - keyOpening);
-	_stream->seek(keyOpening, SEEK_SET);
+	if (startPosition > 1) {
+		int keyOpening = 0;
+		int keyClosing = 0;
 
-	while (currentPosition--)
-		errorMessage += (char)_stream->readByte();
+		while (currentPosition-- && keyOpening == 0) {
+			_stream->seek(-2, SEEK_CUR);
+			c = _stream->readByte();
+
+			if (c == '<')
+				keyOpening = currentPosition - 1;
+			else if (c == '>')
+				keyClosing = currentPosition;
+		}
+
+		_stream->seek(startPosition, SEEK_SET);
+		currentPosition = startPosition;
+		while (keyClosing == 0 && c && currentPosition++) {
+			c = _stream->readByte();
+
+			if (c == '>')
+				keyClosing = currentPosition;
+		}
+
+		currentPosition = (keyClosing - keyOpening);
+		_stream->seek(keyOpening, SEEK_SET);
+
+		while (currentPosition--)
+			errorMessage += (char)_stream->readByte();
+	}
 
 	errorMessage += "\n\nParser error: ";
 	errorMessage += errStr;
@@ -297,13 +299,13 @@ bool XMLParser::closeKey() {
 }
 
 bool XMLParser::parse() {
-	if (_stream == 0)
+	if (_stream == nullptr)
 		return false;
 
 	// Make sure we are at the start of the stream.
 	_stream->seek(0, SEEK_SET);
 
-	if (_XMLkeys == 0)
+	if (_XMLkeys == nullptr)
 		buildLayout();
 
 	while (!_activeKey.empty())
@@ -371,12 +373,12 @@ bool XMLParser::parse() {
 					break;
 				}
 			} else {
-				ParserNode *node = allocNode(); //new ParserNode;
+				ParserNode *node = allocNode(); // new ParserNode;
 				node->name = _token;
 				node->ignore = false;
 				node->header = activeHeader;
 				node->depth = _activeKey.size();
-				node->layout = 0;
+				node->layout = nullptr;
 				_activeKey.push(node);
 			}
 

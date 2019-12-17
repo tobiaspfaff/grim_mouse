@@ -1,15 +1,23 @@
 package org.residualvm.residualvm;
 
+import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.media.AudioManager;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.net.wifi.WifiInfo;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.ClipboardManager;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
-import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -19,112 +27,93 @@ import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 import android.widget.Button;
-import android.widget.ScrollView;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 
-//import tv.ouya.console.api.OuyaController;
-
 import java.io.File;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ResidualVMActivity extends Activity {
 
-    private static final int MOUSE_ACTION_CNT = 2;
-    private int mouseAction = 0;
+	public static final String[] REQUIRED_PERMISSIONS = {Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
+	static int PERMISSION_REQUEST_REQUIRED_PERMISSIONS = 1001;
 
-    private static final int MOUSE_MODE_CNT = 2;
-    private int mouseMode = 0;
+	private boolean isBtnsShowing = false;
 
-    private boolean sidebarShowing = false;
-
-    public void toggleSidebar() {
-            sidebarShowing = !sidebarShowing;
-            if(sidebarShowing)
-                ((ScrollView)findViewById(R.id.sidebar)).setVisibility(View.VISIBLE);
-            else
-                ((ScrollView)findViewById(R.id.sidebar)).setVisibility(View.GONE);
-    };
-
-    private void emulateKeyPress(int keyCode){
-        _residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_DOWN, keyCode, 0, 0, 0, 0);
-        _residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
-    }
-
-    private static final int KEYCODE_F1 = 131;
-
-    public View.OnClickListener sidebarBtnOnClickListener = new View.OnClickListener() {
+public View.OnClickListener optionsBtnOnClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-            switch (v.getId()) {
-            case R.id.btnInventory:
-                emulateKeyPress(KeyEvent.KEYCODE_I);
-                break;
-            case R.id.btnMenu:
-                _residualvm.pushEvent(ResidualVMEvents.JE_SYS_KEY, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU, 0, 0, 0, 0);
-                break;
-            case R.id.btnTouchmode:
-                mouseMode = (mouseMode + 1) % MOUSE_MODE_CNT;
-                final int[] modeIcons =
-                    {R.drawable.ic_touchmode2, R.drawable.ic_action};
-                ((ImageView)v).setImageResource(modeIcons[mouseMode]);
-                _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 1, mouseMode, 0, 0, 0, 0);
-                break;
-            case R.id.btnAction:
-                mouseAction = (mouseAction + 1) % MOUSE_ACTION_CNT;
-                final int[] actIcons =
-                    {R.drawable.ic_use, R.drawable.ic_look_at, R.drawable.ic_pickup};
-                ((ImageView)v).setImageResource(actIcons[mouseAction]);
-                _residualvm.pushEvent(ResidualVMEvents.JE_SPECIAL, 2, mouseAction, 0, 0, 0, 0);
-                break;
-            case R.id.btnSkipDlg:
-                emulateKeyPress(KeyEvent.KEYCODE_PERIOD);
-                break;
-            case R.id.btnUp:
-                emulateKeyPress(KeyEvent.KEYCODE_DPAD_UP);
-                break;
-            case R.id.btnOK:
-                emulateKeyPress(KeyEvent.KEYCODE_ENTER);
-                break;
-            case R.id.btnDown:
-                emulateKeyPress(KeyEvent.KEYCODE_DPAD_DOWN);
-                break;
-            case R.id.btnLeft:
-                emulateKeyPress(KeyEvent.KEYCODE_DPAD_LEFT);
-                break;
-            case R.id.btnRight:
-                emulateKeyPress(KeyEvent.KEYCODE_DPAD_RIGHT);
-                break;
-            case R.id.btnHotspot:
-                emulateKeyPress(KeyEvent.KEYCODE_SPACE);
-                break;
-            }
+
+	if(!isBtnsShowing)
+            ((HorizontalScrollView)findViewById(R.id.btns_scrollview)).setVisibility(View.VISIBLE);
+	else
+	    ((HorizontalScrollView)findViewById(R.id.btns_scrollview)).setVisibility(View.GONE);
+
+	    isBtnsShowing = !isBtnsShowing;
+
         }
     };
 
-	private class MyResidualVM extends ResidualVM {
-		private boolean usingSmallScreen() {
-			// Multiple screen sizes came in with Android 1.6.  Have
-			// to use reflection in order to continue supporting 1.5
-			// devices :(
-			DisplayMetrics metrics = new DisplayMetrics();
-			getWindowManager().getDefaultDisplay().getMetrics(metrics);
+    private void emulateKeyPress(int keyCode){
+		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_DOWN, keyCode, 0, 0, 0, 0);
+		_residualvm.pushEvent(ResidualVMEvents.JE_KEY, KeyEvent.ACTION_UP, keyCode, 0, 0, 0, 0);
+    }
 
-			try {
-				// This 'density' term is very confusing.
-				int DENSITY_LOW = metrics.getClass().getField("DENSITY_LOW").getInt(null);
-				int densityDpi = metrics.getClass().getField("densityDpi").getInt(metrics);
-				return densityDpi <= DENSITY_LOW;
-			} catch (Exception e) {
-				return false;
-			}
+public View.OnClickListener menuBtnOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+        	emulateKeyPress(KeyEvent.KEYCODE_F1);
+        }
+    };
+
+public View.OnClickListener inventoryBtnOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+        	emulateKeyPress(KeyEvent.KEYCODE_I);
+        }
+    };
+
+public View.OnClickListener lookAtBtnOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+        	emulateKeyPress(KeyEvent.KEYCODE_E);
+        }
+    };
+
+public View.OnClickListener useBtnOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+        	emulateKeyPress(KeyEvent.KEYCODE_ENTER);
+        }
+    };
+
+public View.OnClickListener pickUpBtnOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+        	emulateKeyPress(KeyEvent.KEYCODE_P);
+        }
+    };
+
+	/* Establish whether the hover events are available */
+	private static boolean _hoverAvailable;
+
+	private ClipboardManager _clipboard;
+
+	static {
+		try {
+			MouseHelper.checkHoverAvailable(); // this throws exception if we're on too old version
+			_hoverAvailable = true;
+		} catch (Throwable t) {
+			_hoverAvailable = false;
 		}
+	}
+
+	private class MyResidualVM extends ResidualVM {
 
 		public MyResidualVM(SurfaceHolder holder) {
 			super(ResidualVMActivity.this.getAssets(), holder);
-
-			// Enable ResidualVM zoning on 'small' screens.
-			// FIXME make this optional for the user
-			// disabled for now since it crops too much
-			//enableZoning(usingSmallScreen());
 		}
 
 		@Override
@@ -140,6 +129,57 @@ public class ResidualVMActivity extends Activity {
 		protected void displayMessageOnOSD(String msg) {
 			Log.i(LOG_TAG, "OSD: " + msg);
 			Toast.makeText(ResidualVMActivity.this, msg, Toast.LENGTH_LONG).show();
+		}
+
+		@Override
+		protected void openUrl(String url) {
+			startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+		}
+
+		@Override
+		protected boolean hasTextInClipboard() {
+			return _clipboard.hasText();
+		}
+
+		@Override
+		protected byte[] getTextFromClipboard() {
+			CharSequence text = _clipboard.getText();
+			if (text != null) {
+				String encoding = getCurrentCharset();
+				byte[] out;
+				Log.d(LOG_TAG, String.format("Converting from UTF-8 to %s", encoding));
+				try {
+					out = text.toString().getBytes(encoding);
+				} catch (java.io.UnsupportedEncodingException e) {
+					out = text.toString().getBytes();
+				}
+				return out;
+			}
+			return null;
+		}
+
+		@Override
+		protected boolean setTextInClipboard(byte[] text) {
+			String encoding = getCurrentCharset();
+			String out;
+			Log.d(LOG_TAG, String.format("Converting from %s to UTF-8", encoding));
+			try {
+				out = new String(text, encoding);
+			} catch (java.io.UnsupportedEncodingException e) {
+				out = new String(text);
+			}
+			_clipboard.setText(out);
+			return true;
+		}
+
+		@Override
+		protected boolean isConnectionLimited() {
+			WifiManager wifiMgr = (WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+			if (wifiMgr != null && wifiMgr.isWifiEnabled()) {
+				WifiInfo wifiInfo = wifiMgr.getConnectionInfo();
+				return (wifiInfo == null || wifiInfo.getNetworkId() == -1); //WiFi is on, but it's not connected to any network
+			}
+			return true;
 		}
 
 		@Override
@@ -169,36 +209,50 @@ public class ResidualVMActivity extends Activity {
 
 	private MyResidualVM _residualvm;
 	private ResidualVMEvents _events;
+	private MouseHelper _mouseHelper;
 	private Thread _residualvm_thread;
+
+	private boolean checkPermissions() {
+		for (String permission : REQUIRED_PERMISSIONS) {
+			if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+				return false;
+			}
+		}
+		return true;
+	}
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 
+		if (checkPermissions()) {
+			launchResidualVM();
+		} else {
+			ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_REQUIRED_PERMISSIONS);
+		}
+	}
+
+
+	@Override
+	public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+		Set<String> permissionsToCheck = new HashSet<>(Arrays.asList(REQUIRED_PERMISSIONS));
+		for (int i = 0; i < permissions.length; i++) {
+			if (grantResults[i] == PackageManager.PERMISSION_GRANTED)
+				permissionsToCheck.remove(permissions[i]);
+		}
+
+		if (permissionsToCheck.isEmpty()) {
+			launchResidualVM();
+		} else {
+			// TODO
+		}
+	}
+
+	private void launchResidualVM() {
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		setContentView(R.layout.main);
-		//OuyaController.init(this);
 		takeKeyEvents(true);
-
-		// This is a common enough error that we should warn about it
-		// explicitly.
-		if (!Environment.getExternalStorageDirectory().canRead()) {
-			new AlertDialog.Builder(this)
-				.setTitle(R.string.no_sdcard_title)
-				.setIcon(android.R.drawable.ic_dialog_alert)
-				.setMessage(R.string.no_sdcard)
-				.setNegativeButton(R.string.quit,
-									new DialogInterface.OnClickListener() {
-										public void onClick(DialogInterface dialog,
-															int which) {
-											finish();
-										}
-									})
-				.show();
-
-			return;
-		}
 
 		SurfaceView main_surface = (SurfaceView)findViewById(R.id.main_surface);
 
@@ -216,34 +270,36 @@ public class ResidualVMActivity extends Activity {
 			savePath = getDir("saves", MODE_WORLD_READABLE).getPath();
 		}
 
+		_clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+
 		// Start ResidualVM
 		_residualvm = new MyResidualVM(main_surface.getHolder());
 
 		_residualvm.setArgs(new String[] {
-			"ResidualVM",
-			"--config=" + getFileStreamPath("residualvmrc").getPath(),
-			"--path=" + Environment.getExternalStorageDirectory().getPath(),
-			"--gui-theme=modern",
-			"--savepath=" + savePath
+				"ResidualVM",
+				"--config=" + getFileStreamPath("residualvmrc").getPath(),
+				"--path=" + Environment.getExternalStorageDirectory().getPath(),
+				"--gui-theme=modern",
+				"--savepath=" + savePath
 		});
 
-		_events = new ResidualVMEvents(this, _residualvm);
+		Log.d(ResidualVM.LOG_TAG, "Hover available: " + _hoverAvailable);
+		if (_hoverAvailable) {
+			_mouseHelper = new MouseHelper(_residualvm);
+			_mouseHelper.attach(main_surface);
+		}
+
+		_events = new ResidualVMEvents(this, _residualvm, _mouseHelper);
 
 		// On screen buttons listeners
-		((ImageView)findViewById(R.id.btnMenu)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnInventory)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnTouchmode)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnAction)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnSkipDlg)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnUp)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnOK)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnDown)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnLeft)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnRight)).setOnClickListener(sidebarBtnOnClickListener);
-		((ImageView)findViewById(R.id.btnHotspot)).setOnClickListener(sidebarBtnOnClickListener);
+		((ImageView)findViewById(R.id.options)).setOnClickListener(optionsBtnOnClickListener);
+		((Button)findViewById(R.id.menu_btn)).setOnClickListener(menuBtnOnClickListener);
+		((Button)findViewById(R.id.inventory_btn)).setOnClickListener(inventoryBtnOnClickListener);
+		((Button)findViewById(R.id.use_btn)).setOnClickListener(useBtnOnClickListener);
+		((Button)findViewById(R.id.pick_up_btn)).setOnClickListener(pickUpBtnOnClickListener);
+		((Button)findViewById(R.id.look_at_btn)).setOnClickListener(lookAtBtnOnClickListener);
 
 		main_surface.setOnKeyListener(_events);
-		//main_surface.setOnGenericMotionListener(_events);
 
 		_residualvm_thread = new Thread(_residualvm, "ResidualVM");
 		_residualvm_thread.start();
@@ -254,7 +310,7 @@ public class ResidualVMActivity extends Activity {
 		getMenuInflater().inflate(R.menu.game_menu, menu);
 		return true;
 	}
-
+	
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {

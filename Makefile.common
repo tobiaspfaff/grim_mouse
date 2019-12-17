@@ -8,6 +8,13 @@
 
 all: $(EXECUTABLE) plugins
 
+ifdef SPLIT_DWARF
+all: $(EXECUTABLE).dwp
+endif
+
+ifdef USE_PANDOC
+all: readme
+endif
 
 ######################################################################
 # Module settings
@@ -25,8 +32,8 @@ MODULES += \
 	backends \
 	engines \
 	video \
-	graphics \
 	image \
+	graphics \
 	audio \
 	math \
 	common \
@@ -72,10 +79,12 @@ QUIET_CC      = @echo '   ' C '      ' $@;
 QUIET_CXX     = @echo '   ' C++ '    ' $@;
 QUIET_AS      = @echo '   ' AS '     ' $@;
 QUIET_NASM    = @echo '   ' NASM '   ' $@;
+QUIET_PANDOC  = @echo '   ' PANDOC ' ' $@;
 QUIET_AR      = @echo '   ' AR '     ' $@;
 QUIET_RANLIB  = @echo '   ' RANLIB ' ' $@;
 QUIET_PLUGIN  = @echo '   ' PLUGIN ' ' $@;
 QUIET_LINK    = @echo '   ' LINK '   ' $@;
+QUIET_DWP     = @echo '   ' DWP '    ' $@;
 QUIET_WINDRES = @echo '   ' WINDRES '' $@;
 QUIET         = @
 endif
@@ -86,12 +95,21 @@ endif
 $(EXECUTABLE): $(OBJS)
 	$(QUIET_LINK)$(LD) $(LDFLAGS) $(PRE_OBJS_FLAGS) $+ $(POST_OBJS_FLAGS) $(LIBS) -o $@
 
+ifdef SPLIT_DWARF
+$(EXECUTABLE).dwp: $(EXECUTABLE)
+	$(QUIET_DWP)$(DWP) -e $(EXECUTABLE)
+endif
+
 distclean: clean clean-devtools
 	$(RM) config.h config.mk config.log engines/engines.mk engines/plugins_table.h
 
 clean:
 	$(RM_REC) $(DEPDIRS)
 	$(RM) $(OBJS) $(EXECUTABLE)
+ifdef SPLIT_DWARF
+	$(RM) $(OBJS:.o=.dwo)
+	$(RM) $(EXECUTABLE).dwp
+endif
 
 
 #
@@ -124,6 +142,10 @@ ifdef CXX_UPDATE_DEP_FLAG
 	$(QUIET)$(MKDIR) $(*D)/$(DEPDIR)
 	$(QUIET_AS)$(CXX) $(CXX_UPDATE_DEP_FLAG) $(ASFLAGS) -c $(<) -o $*.o
 
+base/version.o: base/version.cpp
+	$(QUIET)$(MKDIR) $(*D)/$(DEPDIR)
+	$(QUIET_CXX)$(CXX) $(CXX_UPDATE_DEP_FLAG) $(CXXFLAGS) $(VERFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
+
 else
 
 # Dumb compile rule, for C++ compilers that don't allow dependency tracking or
@@ -137,12 +159,21 @@ else
 	$(QUIET)$(MKDIR) $(*D)
 	$(QUIET_AS)$(CXX) $(ASFLAGS) -c $(<) -o $*.o
 
+base/version.o: base/version.cpp
+	$(QUIET)$(MKDIR) $(*D)
+	$(QUIET_CXX)$(CXX) $(CXXFLAGS) $(VERFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
 endif
 
 # Build rule for assembler files
 %.o: %.s
 	$(QUIET)$(MKDIR) $(*D)
 	$(QUIET_AS)$(AS) $(ASFLAGS) $(<) -o $*.o
+
+# Build rule for Windows resource files
+# TODO: Support dependency tracking
+%.o: %.rc
+	$(QUIET)$(MKDIR) $(*D)
+	$(QUIET_WINDRES)$(WINDRES) $(WINDRESFLAGS) $(CPPFLAGS) $(<) -o $*.o
 
 ifdef USE_NASM
 # Build rule for NASM assembler files
@@ -171,6 +202,11 @@ VER_MINOR = $(shell echo $(VERSION) | cut -d. -f 2)
 VER_PATCH = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c1)
 VER_EXTRA = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c2-)
 
+ifdef AMIGAOS
+# Amiga needs date in specific format for the version cookie
+AMIGA_DATE = $(shell gdate '+%d.%m.%Y')
+VERFLAGS += -DAMIGA_DATE=\"$(AMIGA_DATE)\"
+endif
 
 ######################################################################
 # Get git's working copy information
@@ -192,7 +228,7 @@ endif
 # Define the Subversion revision if available, either autodetected or
 # specified by the user, but only for base/version.cpp.
 ifneq ($(origin VER_REV), undefined)
-base/version.o: CXXFLAGS:=$(CXXFLAGS) -DSCUMMVM_REVISION=\"$(VER_REV)\"
+VERFLAGS += -DSCUMMVM_REVISION=\"$(VER_REV)\"
 endif
 
 ######################################################################
@@ -212,6 +248,12 @@ endif
 DISTNAME := residualvm-$(DISTVERSION)
 DISTDIR := dist
 VERFILE := $(DISTDIR)/$(DISTNAME)/base/internal_version.h
+
+ifdef USE_PANDOC
+# Convert README.md to plain text for any platform that might require it
+readme: README.md
+	$(QUIET_PANDOC)$(PANDOC) -f gfm -t $(PANDOCFORMAT) -o $(PANDOCOUTPUT) README.md
+endif
 
 # TODO git via $(GITROOT)
 $(VERFILE): $(srcdir)/base/internal_version.h
@@ -242,7 +284,10 @@ dist-src: \
 	@#DEB-src?
 
 # Common files
-DIST_FILES_DOCS:=$(addprefix $(srcdir)/,AUTHORS COPYING COPYING.BSD COPYING.LGPL COPYING.FREEFONT COPYING.ISC COPYING.LUA COPYING.TINYGL COPYRIGHT KNOWN_BUGS NEWS README)
+DIST_FILES_DOCS:=$(addprefix $(srcdir)/,AUTHORS COPYING COPYING.BSD COPYING.LGPL COPYING.FREEFONT COPYING.OFL COPYING.ISC COPYING.LUA COPYING.MIT COPYING.TINYGL COPYRIGHT KNOWN_BUGS NEWS README.md)
+ifdef USE_PANDOC
+DIST_FILES_DOCS+=$(PANDOCOUTPUT)
+endif
 
 # Themes files
 DIST_FILES_THEMES=modern.zip
@@ -250,6 +295,12 @@ ifdef USE_TRANSLATION
 DIST_FILES_THEMES+=translations.dat
 endif
 DIST_FILES_THEMES:=$(addprefix $(srcdir)/gui/themes/,$(DIST_FILES_THEMES))
+
+# Networking files
+DIST_FILES_NETWORKING=
+ifdef USE_SDL_NET
+DIST_FILES_NETWORKING:=$(addprefix $(srcdir)/dists/networking/,wwwroot.zip)
+endif
 
 # Engine data files
 DIST_FILES_ENGINEDATA=
@@ -259,6 +310,9 @@ DIST_FILES_ENGINEDATA+=mouse.lab
 endif
 ifdef ENABLE_MONKEY4
 DIST_FILES_ENGINEDATA+=residualvm-emi-patch.m4b
+endif
+ifdef ENABLE_MYST3
+DIST_FILES_ENGINEDATA+=myst3.dat
 endif
 DIST_FILES_ENGINEDATA:=$(addprefix $(srcdir)/dists/engine-data/,$(DIST_FILES_ENGINEDATA))
 
@@ -272,6 +326,9 @@ DIST_FILES_SHADERS+=$(wildcard $(srcdir)/engines/grim/shaders/*)
 endif
 ifdef ENABLE_MYST3
 DIST_FILES_SHADERS+=$(wildcard $(srcdir)/engines/myst3/shaders/*)
+endif
+ifdef ENABLE_STARK
+DIST_FILES_SHADERS+=$(wildcard $(srcdir)/engines/stark/shaders/*)
 endif
 endif
 

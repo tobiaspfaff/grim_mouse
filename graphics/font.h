@@ -25,6 +25,7 @@
 
 #include "common/str.h"
 #include "common/ustr.h"
+#include "common/rect.h"
 
 namespace Common {
 template<class T> class Array;
@@ -33,6 +34,7 @@ template<class T> class Array;
 namespace Graphics {
 
 struct Surface;
+class ManagedSurface;
 
 /** Text alignment modes */
 enum TextAlign {
@@ -84,10 +86,51 @@ public:
 	virtual int getKerningOffset(uint32 left, uint32 right) const;
 
 	/**
+	 * Calculate the bounding box of a character. It is assumed that
+	 * the character shall be drawn at position (0, 0).
+	 *
+	 * The idea here is that the character might be drawn outside the
+	 * rect (0, 0) to (getCharWidth(chr), getFontHeight()) for some fonts.
+	 * This is common among TTF fonts.
+	 *
+	 * The default implementation simply returns the rect with a width
+	 * of getCharWidth(chr) and height of getFontHeight().
+	 *
+	 * @param chr The character to draw.
+	 * @return The bounding box of the drawn glyph.
+	 */
+	virtual Common::Rect getBoundingBox(uint32 chr) const;
+
+	/**
+	 * Return the bounding box of a string drawn with drawString.
+	 *
+	 * @param x The x position where to start drawing
+	 * @param y The y position where to start drawing
+	 * @param w The width of the text area. This can be 0 to allow for
+	 *          obtaining the whole bounding box for a string. Note that this
+	 *          does not work with an align different from kTextAlignLeft or
+	 *          with useEllipsis.
+	 * @param align The text alignment. This can be used to center a string
+	 *              in the given area or to align it to the right.
+	 * @param delatx Offset to the x starting position of the string.
+	 * @param useEllipsis Try to fit the string in the area by inserting an
+	 *                    ellipsis. Be ware that the default is false for this
+	 *                    one unlike for drawString!
+	 * @return The actual area where the string is drawn.
+	 */
+	Common::Rect getBoundingBox(const Common::String &str, int x = 0, int y = 0, const int w = 0, TextAlign align = kTextAlignLeft, int deltax = 0, bool useEllipsis = false) const;
+	Common::Rect getBoundingBox(const Common::U32String &str, int x = 0, int y = 0, const int w = 0, TextAlign align = kTextAlignLeft) const;
+
+	/**
 	 * Draw a character at a specific point on a surface.
 	 *
-	 * Note that the point describes the top left edge point of the
-	 * character's bounding box.
+	 * Note that the point describes the top left edge point where to draw
+	 * the character. This can be different from top left edge point of the
+	 * character's bounding box! For example, TTF fonts sometimes move
+	 * characters like 't' one (or more) pixels to the left to create better
+	 * visual results. To query the actual bounding box of a character use
+	 * getBoundingBox.
+	 * @see getBoundingBox
 	 *
 	 * The Font implemenation should take care of not drawing outside of the
 	 * specified surface.
@@ -99,13 +142,21 @@ public:
 	 * @param color The color of the character.
 	 */
 	virtual void drawChar(Surface *dst, uint32 chr, int x, int y, uint32 color) const = 0;
+	void drawChar(ManagedSurface *dst, uint32 chr, int x, int y, uint32 color) const;
 
 	// TODO: Add doxygen comments to this
 	void drawString(Surface *dst, const Common::String &str, int x, int y, int w, uint32 color, TextAlign align = kTextAlignLeft, int deltax = 0, bool useEllipsis = true) const;
-	void drawString(Surface *dst, const Common::U32String &str, int x, int y, int w, uint32 color, TextAlign align = kTextAlignLeft) const;
+	void drawString(Surface *dst, const Common::U32String &str, int x, int y, int w, uint32 color, TextAlign align = kTextAlignLeft, int deltax = 0) const;
+	void drawString(ManagedSurface *dst, const Common::String &str, int x, int y, int w, uint32 color, TextAlign align = kTextAlignLeft, int deltax = 0, bool useEllipsis = true) const;
+	void drawString(ManagedSurface *dst, const Common::U32String &str, int x, int y, int w, uint32 color, TextAlign align = kTextAlignLeft, int deltax = 0) const;
 
 	/**
 	 * Compute and return the width the string str has when rendered using this font.
+	 * This describes the logical width of the string when drawn at (0, 0).
+	 * This can be different from the actual bounding box of the string. Use
+	 * getBoundingBox when you need the bounding box of a drawn string.
+	 * @see getBoundingBox
+	 * @see drawChar
 	 */
 	int getStringWidth(const Common::String &str) const;
 	int getStringWidth(const Common::U32String &str) const;
@@ -118,13 +169,19 @@ public:
 	 * It returns the maximal width of any of the new lines (i.e. a value which is less
 	 * or equal to maxWidth).
 	 *
-	 * @param str      the string to word wrap
-	 * @param maxWidth the maximum width a line may have
-	 * @param lines    the string list to which the text lines from str are appended
+	 * @param str       the string to word wrap
+	 * @param maxWidth  the maximum width a line may have
+	 * @param lines     the string list to which the text lines from str are appended
+	 * @param initWidth the starting width of the first line, for partially filled lines (optional)
+	 * @param evenWidthLinesModeEnabled if enabled, the resulting line segments will be close to the same width (optional)
+	 * @param wrapOnExplicitNewLines if enabled, forces wrapping on new line characters, otherwise treats them as single white space (optional)
 	 * @return the maximal width of any of the lines added to lines
 	 */
-	int wordWrapText(const Common::String &str, int maxWidth, Common::Array<Common::String> &lines) const;
-	int wordWrapText(const Common::U32String &str, int maxWidth, Common::Array<Common::U32String> &lines) const;
+	int wordWrapText(const Common::String &str, int maxWidth, Common::Array<Common::String> &lines, int initWidth = 0, bool evenWidthLinesModeEnabled = false, bool wrapOnExplicitNewLines = true) const;
+	int wordWrapText(const Common::U32String &str, int maxWidth, Common::Array<Common::U32String> &lines, int initWidth = 0, bool evenWidthLinesModeEnabled = false, bool wrapOnExplicitNewLines = true) const;
+
+private:
+	Common::String handleEllipsis(const Common::String &str, int w) const;
 };
 
 } // End of namespace Graphics

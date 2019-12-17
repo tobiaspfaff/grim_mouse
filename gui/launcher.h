@@ -38,8 +38,6 @@ class StaticTextWidget;
 class EditTextWidget;
 class SaveLoadChooser;
 
-Common::String addGameToConf(const GameDescriptor &result);
-
 class LauncherDialog : public Dialog {
 	typedef Common::String String;
 	typedef Common::Array<Common::String> StringArray;
@@ -47,11 +45,14 @@ public:
 	LauncherDialog();
 	~LauncherDialog();
 
+	void rebuild();
+
 	virtual void handleCommand(CommandSender *sender, uint32 cmd, uint32 data);
 
 	virtual void handleKeyDown(Common::KeyState state);
 	virtual void handleKeyUp(Common::KeyState state);
-
+	virtual void handleOtherEvent(Common::Event evt);
+	bool doGameDetection(const Common::String &path);
 protected:
 	EditTextWidget  *_searchWidget;
 	ListWidget		*_list;
@@ -81,7 +82,9 @@ protected:
 	void updateListing();
 
 	void updateButtons();
-	void switchButtonsText(ButtonWidget *button, const char *normalText, const char *shiftedText);
+
+	void build();
+	void clean();
 
 	void open();
 	void close();
@@ -90,6 +93,7 @@ protected:
 	 * Handle "Add game..." button.
 	 */
 	virtual void addGame();
+	void massAddGame();
 
 	/**
 	 * Handle "Remove game..." button.
@@ -100,11 +104,6 @@ protected:
 	 * Handle "Edit game..." button.
 	 */
 	void editGame(int item);
-
-	/**
-	 * Facade for "Load..."/"Record..." buttons.
-	 */
-	void loadGameButtonPressed(int item);
 
 	/**
 	 * Handle "Record..." button.

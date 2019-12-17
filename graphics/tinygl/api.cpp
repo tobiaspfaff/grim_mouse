@@ -1,3 +1,30 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 #include "graphics/tinygl/zgl.h"
 
@@ -23,7 +50,7 @@ void tglVertex3f(float x, float y, float z)  {
 	tglVertex4f(x, y, z, 1);
 }
 
-void tglVertex3fv(float *v)  {
+void tglVertex3fv(const float *v)  {
 	tglVertex4f(v[0], v[1], v[2], 1);
 }
 
@@ -40,48 +67,37 @@ void tglNormal3f(float x, float y, float z) {
 	TinyGL::gl_add_op(p);
 }
 
-void tglNormal3fv(float *v)  {
+void tglNormal3fv(const float *v)  {
 	tglNormal3f(v[0], v[1], v[2]);
 }
 
 // glColor
 
 void tglColor4f(float r, float g, float b, float a) {
-	TinyGL::GLParam p[8];
+	TinyGL::GLParam p[9];
 
 	p[0].op = TinyGL::OP_Color;
 	p[1].f = r;
 	p[2].f = g;
 	p[3].f = b;
 	p[4].f = a;
-	// direct convertion to integer to go faster if no shading
-	p[5].ui = (unsigned int)(r * (ZB_POINT_RED_MAX - ZB_POINT_RED_MIN) + ZB_POINT_RED_MIN);
-	p[6].ui = (unsigned int)(g * (ZB_POINT_GREEN_MAX - ZB_POINT_GREEN_MIN) + ZB_POINT_GREEN_MIN);
-	p[7].ui = (unsigned int)(b * (ZB_POINT_BLUE_MAX - ZB_POINT_BLUE_MIN) + ZB_POINT_BLUE_MIN);
 	gl_add_op(p);
 }
 
-void tglColor4fv(float *v) {
-	TinyGL::GLParam p[8];
-
-	p[0].op = TinyGL::OP_Color;
-	p[1].f = v[0];
-	p[2].f = v[1];
-	p[3].f = v[2];
-	p[4].f = v[3];
-	// direct convertion to integer to go faster if no shading
-	p[5].ui = (unsigned int)(v[0] * (ZB_POINT_RED_MAX - ZB_POINT_RED_MIN) + ZB_POINT_RED_MIN);
-	p[6].ui = (unsigned int)(v[1] * (ZB_POINT_GREEN_MAX - ZB_POINT_GREEN_MIN) + ZB_POINT_GREEN_MIN);
-	p[7].ui = (unsigned int)(v[2] * (ZB_POINT_BLUE_MAX - ZB_POINT_BLUE_MIN) + ZB_POINT_BLUE_MIN);
-	TinyGL::gl_add_op(p);
+void tglColor4fv(const float *v) {
+	tglColor4f(v[0], v[1], v[2], v[3]);
 }
 
 void tglColor3f(float x, float y, float z) {
 	tglColor4f(x, y, z, 1);
 }
 
-void glColor3fv(float *v)  {
+void tglColor3fv(const float *v)  {
 	tglColor4f(v[0], v[1], v[2], 1);
+}
+
+void tglColor3ub(unsigned char r, unsigned char g, unsigned char b) {
+	tglColor4f(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 }
 
 void tglColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
@@ -106,7 +122,7 @@ void tglTexCoord2f(float s, float t) {
 	tglTexCoord4f(s, t, 0, 1);
 }
 
-void tglTexCoord2fv(float *v) {
+void tglTexCoord2fv(const float *v) {
 	tglTexCoord4f(v[0], v[1], 0, 1);
 }
 
@@ -165,6 +181,42 @@ void tglColorMask(TGLboolean r, TGLboolean g, TGLboolean b, TGLboolean a) {
 	TinyGL::gl_add_op(p);
 }
 
+void tglDepthMask(int enableWrite) {
+	TinyGL::GLParam p[2];
+	p[0].op = TinyGL::OP_DepthMask;
+	p[1].i = enableWrite;
+
+	TinyGL::gl_add_op(p);
+}
+
+void tglBlendFunc(TGLenum sfactor, TGLenum dfactor) {
+	TinyGL::GLParam p[3];
+
+	p[0].op = TinyGL::OP_BlendFunc;
+	p[1].i = sfactor;
+	p[2].i = dfactor;
+
+	TinyGL::gl_add_op(p);
+}
+
+void tglAlphaFunc(TGLenum func, float ref) {
+	TinyGL::GLParam p[3];
+
+	p[0].op = TinyGL::OP_AlphaFunc;
+	p[1].i = func;
+	p[2].f = ref;
+
+	TinyGL::gl_add_op(p);
+}
+
+void tglDepthFunc(TGLenum func) {
+	TinyGL::GLParam p[2];
+	p[0].op = TinyGL::OP_DepthFunc;
+	p[1].i = func;
+
+	TinyGL::gl_add_op(p);
+}
+
 void tglPolygonMode(int face, int mode) {
 	TinyGL::GLParam p[3];
 
@@ -177,7 +229,6 @@ void tglPolygonMode(int face, int mode) {
 
 	TinyGL::gl_add_op(p);
 }
-
 
 // glEnable, glDisable
 
@@ -335,9 +386,23 @@ void tglFrustum(double left, double right, double bottom, double top, double nea
 	TinyGL::gl_add_op(p);
 }
 
+void tglOrtho(double left, double right, double bottom, double top, double zNear, double zFar) {
+	TinyGL::GLParam p[7];
+
+	p[0].op = TinyGL::OP_Ortho;
+	p[1].f = (float)left;
+	p[2].f = (float)right;
+	p[3].f = (float)bottom;
+	p[4].f = (float)top;
+	p[5].f = (float)zNear;
+	p[6].f = (float)zFar;
+
+	TinyGL::gl_add_op(p);
+}
+
 // lightening
 
-void tglMaterialfv(int mode, int type, float *v) {
+void tglMaterialfv(int mode, int type, const float *v) {
 	TinyGL::GLParam p[7];
 	int n;
 
@@ -380,7 +445,7 @@ void tglColorMaterial(int mode, int type) {
 	TinyGL::gl_add_op(p);
 }
 
-void tglLightfv(int light, int type, float *v) {
+void tglLightfv(int light, int type, const float *v) {
 	TinyGL::GLParam p[7];
 
 	p[0].op = TinyGL::OP_Light;
@@ -419,7 +484,7 @@ void tglLightModeli(int pname, int param) {
 	TinyGL::gl_add_op(p);
 }
 
-void tglLightModelfv(int pname, float *param) {
+void tglLightModelfv(int pname, const float *param) {
 	TinyGL::GLParam p[6];
 
 	p[0].op = TinyGL::OP_LightModel;
@@ -464,9 +529,7 @@ void tglClearDepth(double depth) {
 
 // textures
 
-void tglTexImage2D(int target, int level, int components,
-				   int width, int height, int border,
-				   int format, int type, void *pixels) {
+void tglTexImage2D(int target, int level, int components, int width, int height, int border, int format, int type, void *pixels) {
 	TinyGL::GLParam p[10];
 
 	p[0].op = TinyGL::OP_TexImage2D;
@@ -621,4 +684,9 @@ void tglSetShadowColor(unsigned char r, unsigned char g, unsigned char b) {
 	c->fb->shadow_color_r = r << 8;
 	c->fb->shadow_color_g = g << 8;
 	c->fb->shadow_color_b = b << 8;
+}
+
+void tglEnableDirtyRects(bool enable) {
+	TinyGL::GLContext *c = TinyGL::gl_get_context();
+	c->_enableDirtyRectangles = enable;
 }

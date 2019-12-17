@@ -27,9 +27,11 @@ namespace Common {
 
 const PlatformDescription g_platforms[] = {
 	{ "2gs", "2gs", "2gs", "Apple IIgs", kPlatformApple2GS },
+	{ "apple2", "apple2", "apple2", "Apple II", kPlatformApple2 },
 	{ "3do", "3do", "3do", "3DO", kPlatform3DO },
 	{ "acorn", "acorn", "acorn", "Acorn", kPlatformAcorn },
 	{ "amiga", "ami", "amiga", "Amiga", kPlatformAmiga },
+	{ "atari8", "atari8", "atari8", "Atari 8-bit", kPlatformAtari8Bit },
 	{ "atari", "atari-st", "st", "Atari ST", kPlatformAtariST },
 	{ "c64", "c64", "c64", "Commodore 64", kPlatformC64 },
 	{ "pc", "dos", "ibm", "DOS", kPlatformDOS },
@@ -49,14 +51,15 @@ const PlatformDescription g_platforms[] = {
 	{ "segacd", "segacd", "sega", "SegaCD", kPlatformSegaCD },
 	{ "windows", "win", "win", "Windows", kPlatformWindows },
 	{ "playstation", "psx", "psx", "Sony PlayStation", kPlatformPSX },
-	//ResidualVM: playstation2
+	//ResidualVM: playstation2, xbox
 	{ "playstation2", "ps2", "ps2", "Sony PlayStation 2", kPlatformPS2 },
+	{ "xbox", "xbox", "xbox", "Microsoft Xbox", kPlatformXbox },
 	{ "cdi", "cdi", "cdi", "Philips CD-i", kPlatformCDi },
 	{ "ios", "ios", "ios", "Apple iOS", kPlatformIOS },
 	{ "os2", "os2", "os2", "OS/2", kPlatformOS2 },
 	{ "beos", "beos", "beos", "BeOS", kPlatformBeOS },
 
-	{ 0, 0, 0, "Default", kPlatformUnknown }
+	{ nullptr, nullptr, nullptr, "Default", kPlatformUnknown }
 };
 
 Platform parsePlatform(const String &str) {
@@ -88,7 +91,7 @@ const char *getPlatformCode(Platform id) {
 		if (l->id == id)
 			return l->code;
 	}
-	return 0;
+	return nullptr;
 }
 
 const char *getPlatformAbbrev(Platform id) {
@@ -97,7 +100,7 @@ const char *getPlatformAbbrev(Platform id) {
 		if (l->id == id)
 			return l->abbrev;
 	}
-	return 0;
+	return nullptr;
 }
 
 const char *getPlatformDescription(Platform id) {

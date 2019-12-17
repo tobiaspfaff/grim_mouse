@@ -39,7 +39,9 @@ class LipSync;
 class Font;
 class Set;
 class Material;
+struct SetShadow;
 struct Joint;
+class EMIModel;
 
 struct Plane {
 	Common::String setName;
@@ -48,7 +50,7 @@ struct Plane {
 
 typedef Common::List<Plane> SectorListType;
 
-#define MAX_SHADOWS 5
+#define MAX_SHADOWS 8
 
 struct Shadow {
 	Shadow();
@@ -60,6 +62,7 @@ struct Shadow {
 	int shadowMaskSize;
 	bool active;
 	bool dontNegate;
+	Color color;
 	void *userData;
 };
 
@@ -226,6 +229,10 @@ public:
 	 */
 	bool isTurning() const;
 	/**
+	 * Stops the actor from turning
+	 */
+	void stopTurning();
+	/**
 	 * Sets the rotation of the actor in the 3D scene.
 	 * The effect is immediate.
 	 *
@@ -358,6 +365,14 @@ public:
 	void putInSet(const Common::String &setName);
 	/**
 	 * Returns true if the actor is in the given set.
+	 * For engine internal use only, do not expose via lua API.
+	 *
+	 * @param setName The name of the set.
+	 */
+	bool isDrawableInSet(const Common::String &setName) const;
+	/**
+	 * Returns true if the actor is in the given set.
+	 * Can be exposed via lua API.
 	 *
 	 * @param setName The name of the set.
 	 */
@@ -426,7 +441,7 @@ public:
 	 * @see isTalking
 	 * @see shutUp
 	 */
-	void sayLine(const char *msgId, bool background);
+	void sayLine(const char *msgId, bool background, float x, float y);
 	// When we clean all text objects we don't want the actors to clean their
 	// objects again since they're already freed
 	void lineCleanup();
@@ -453,30 +468,30 @@ public:
 	int getTalkChore(int index) const;
 	Costume *getTalkCostume(int index) const;
 	void setMumbleChore(int choreNumber, Costume *cost);
-	bool playLastWearChore();
-	void setLastWearChore(int choreNumber, Costume *cost);
 	void stopAllChores(bool ignoreLoopingChores = false);
 	void setColormap(const char *map);
 	void pushCostume(const char *name);
 	void setCostume(const char *name);
 	void popCostume();
 	void clearCostumes();
-	Costume *getCurrentCostume() const {
-		if (_costumeStack.empty())
-			return nullptr;
-		else
-			return _costumeStack.back();
-	}
+	Costume *getCurrentCostume() const;
+	void setLocalAlphaMode(unsigned int vertex, AlphaMode alphamode);
+	void setLocalAlpha(unsigned int vertex, float alpha);
+	bool hasLocalAlpha() const;
+	float getLocalAlpha(unsigned int vertex) const;
 	Costume *findCostume(const Common::String &name);
 	int getCostumeStackDepth() const {
 		return _costumeStack.size();
 	}
+	const Common::List<Costume *> &getCostumes() const { return _costumeStack; }
 
 	void setActiveShadow(int shadowId);
 	void setShadowPoint(const Math::Vector3d &pos);
+	void setShadowColor(const Color &color);
 	void setShadowPlane(const char *name);
 	void addShadowPlane(const char *name);
 	void clearShadowPlanes();
+	void clearShadowPlane(int i);
 	void setShadowValid(int);
 	void setActivateShadow(int, bool);
 
@@ -494,16 +509,21 @@ public:
 	}
 	void setLookAtVectorZero() {
 		_lookAtVector.set(0.f, 0.f, 0.f);
+		_lookAtActor = 0;
 	}
 	void setLookAtVector(const Math::Vector3d &vector) {
 		_lookAtVector = vector;
+		_lookAtActor = 0;
 	}
 	Math::Vector3d getLookAtVector() {
 		return _lookAtVector;
 	}
+	void setLookAtActor(Actor *other) { _lookAtActor = other->getId(); }
 	void setLookAtRate(float rate);
 	float getLookAtRate() const;
 	void setHead(int joint1, int joint2, int joint3, float maxRoll, float maxPitch, float maxYaw);
+	void setHead(const char *joint, const Math::Vector3d &offset);
+	void setHeadLimits(float yawRange, float maxPitch, float minPitch);
 
 	void setCollisionMode(CollisionMode mode);
 	void setCollisionScale(float scale);
@@ -527,18 +547,17 @@ public:
 	float getGlobalAlpha() const { return _globalAlpha; }
 	AlphaMode getAlphaMode() const { return _alphaMode; }
 	float getEffectiveAlpha() const { return _alphaMode != AlphaOff ? _globalAlpha : 1.f; }
-	void setGlobalAlpha(float alpha) { _globalAlpha = alpha; }
-	void setAlphaMode(AlphaMode mode) { _alphaMode = mode; }
+	void setGlobalAlpha(float alpha, const Common::String &mesh);
+	void setAlphaMode(AlphaMode mode, const Common::String &mesh);
 
 	int getSortOrder() const;
-	void setSortOrder(const int order) { _sortOrder = order; }
+	void setSortOrder(const int order);
 	int getEffectiveSortOrder() const;
 
-	void activateShadow(bool active) { _shadowActive = active; }
+	void activateShadow(bool active, const char *shadowName);
+	void activateShadow(bool active, SetShadow *shadow);
 
-	void restoreCleanBuffer();
 	void drawToCleanBuffer();
-	void clearCleanBuffer();
 
 	bool isTalkingForeground() const;
 	void setWalkBwd(bool bwd) { _walkBwd = bwd; }
@@ -546,8 +565,10 @@ public:
 	LightMode getLightMode() const { return _lightMode; }
 	void setLightMode(LightMode lightMode) { _lightMode = lightMode; }
 
-	Material *loadMaterial(const Common::String &name, bool clamp);
-	Material *findMaterial(const Common::String &name);
+	ObjectPtr<Material> loadMaterial(const Common::String &name, bool clamp);
+	ObjectPtr<Material> findMaterial(const Common::String &name);
+
+	void getBBoxInfo(Math::Vector3d &bboxPos, Math::Vector3d &bboxSize) const;
 
 private:
 	void costumeMarkerCallback(int marker);
@@ -573,8 +594,8 @@ private:
 	Math::Vector3d getSimplePuckVector() const;
 	void calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, Math::Angle *yaw, Math::Angle *roll);
 
-	void getBBoxInfo(Math::Vector3d &bboxPos, Math::Vector3d &bboxSize) const;
 	bool getSphereInfo(bool adjustZ, float &size, Math::Vector3d &pos) const;
+	EMIModel *findModelWithMesh(const Common::String &mesh);
 
 	Common::String _name;
 	Common::String _setName;    // The actual current set
@@ -600,6 +621,7 @@ private:
 
 	// Variables for gradual turning
 	bool _turning;
+	bool _singleTurning;
 	// NOTE: The movement direction is separate from the direction
 	// the actor's model is facing. The model's direction is gradually
 	// updated to match the movement direction. This produces a smooth
@@ -653,7 +675,7 @@ private:
 	ActionChore _talkChore[10];
 	int _talkAnim;
 
-	ActionChore _mumbleChore, _lastWearChore;
+	ActionChore _mumbleChore;
 
 	Shadow *_shadowArray;
 	int _activeShadowSlot;
@@ -666,6 +688,7 @@ private:
 		return (dir > 0 ? &_leftTurnChore : &_rightTurnChore);
 	}
 
+	void freeCostume(Costume *costume);
 	void freeCostumeChore(const Costume *toFree, ActionChore *chore);
 
 	// lookAt
@@ -689,6 +712,7 @@ private:
 	static bool _isTalkingBackground;
 	int _talkDelay;
 	int _attachedActor;
+	int _lookAtActor;
 	Common::String _attachedJoint;
 	AlphaMode _alphaMode;
 	float _globalAlpha;
@@ -696,16 +720,20 @@ private:
 	bool _inOverworld;
 
 	int _sortOrder;
-	bool _haveSectorSortOrder;
 	int _sectorSortOrder;
+	bool _useParentSortOrder;
 
-	bool _shadowActive;
-	int _cleanBuffer;
+	bool _fakeUnbound;
 	bool _drawnToClean;
 
 	LightMode _lightMode;
 
-	Common::List<Material *> _materials;
+	Common::List<ObjectPtr<Material> > _materials;
+
+	// Highest vertex used in EMI
+	const static unsigned int MAX_LOCAL_ALPHA_VERTICES = 48;
+	Common::Array<float> _localAlpha;
+	Common::Array<int> _localAlphaMode;
 };
 
 } // end of namespace Grim

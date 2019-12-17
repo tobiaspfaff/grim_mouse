@@ -26,7 +26,9 @@
 #include "engines/myst3/gfx.h"
 
 #include "common/events.h"
+#include "common/hashmap.h"
 #include "common/memstream.h"
+#include "common/ptr.h"
 #include "common/rect.h"
 #include "common/savefile.h"
 #include "common/str-array.h"
@@ -39,16 +41,88 @@ class Myst3Engine;
 class SpotItemFace;
 class GameState;
 
-class Menu {
+enum DialogType {
+	kConfirmNewGame,
+	kConfirmLoadGame,
+	kConfirmOverwrite,
+	kConfirmEraseSavedGame,
+	kErrorEraseSavedGame,
+	kConfirmQuit
+};
+
+class Menu : public Drawable {
 public:
 	Menu(Myst3Engine *vm);
 	virtual ~Menu();
 
-	void draw();
-	void handleInput(const Common::KeyState &e);
+	/** Indicates if the player is currently in a menu node */
+	bool isOpen() const;
+
+	/**
+	 * Handle an event for the menu
+	 *
+	 * @return true if the event was handled
+	 */
+	virtual bool handleInput(const Common::KeyState &e) = 0;
 
 	void updateMainMenu(uint16 action);
 	void goToNode(uint16 node);
+
+	/**
+	 * Capture a save thumbnail
+	 */
+	Graphics::Surface *captureThumbnail();
+
+	/**
+	 * Capture and save a thumbnail
+	 * thumbnail can be obtain from borrowSaveThumbnail()
+	 */
+	void generateSaveThumbnail();
+
+	/**
+	 * Get the current save thumbnail
+	 *
+	 * Only valid while the menu is open
+	 */
+	Graphics::Surface *borrowSaveThumbnail();
+
+	virtual void saveLoadAction(uint16 action, uint16 item) = 0;
+	virtual void setSaveLoadSpotItem(uint16 id, SpotItemFace *spotItem);
+
+protected:
+	Myst3Engine *_vm;
+
+	Common::ScopedPtr<Graphics::Surface, Graphics::SurfaceDeleter> _saveThumbnail;
+
+	SpotItemFace *_saveLoadSpotItem;
+	Common::String _saveLoadAgeName;
+
+	uint dialogIdFromType(DialogType type);
+	uint16 dialogConfirmValue();
+	uint16 dialogSaveValue();
+
+	Graphics::Surface *createThumbnail(Graphics::Surface *big);
+
+	Common::String getAgeLabel(GameState *gameState);
+};
+
+class PagingMenu : public Menu {
+public:
+	PagingMenu(Myst3Engine *vm);
+	virtual ~PagingMenu();
+
+	void draw() override;
+	bool handleInput(const Common::KeyState &e) override;
+
+	void saveLoadAction(uint16 action, uint16 item) override;
+
+private:
+	Common::StringArray _saveLoadFiles;
+	Common::String _saveName;
+	bool _saveDrawCaret;
+	int32 _saveCaretCounter;
+
+	static const uint kCaretSpeed = 25;
 
 	void loadMenuOpen();
 	void loadMenuSelect(uint16 item);
@@ -59,52 +133,87 @@ public:
 	void saveMenuChangePage();
 	void saveMenuSave();
 	void saveLoadErase();
-	void setSaveLoadSpotItem(SpotItemFace *spotItem) { _saveLoadSpotItem = spotItem; }
-
-private:
-	Myst3Engine *_vm;
-
-	Common::StringArray _saveLoadFiles;
-	SpotItemFace *_saveLoadSpotItem;
-	Common::String _saveLoadAgeName;
-	Common::String _saveName;
-	bool _saveDrawCaret;
-	int32 _saveCaretCounter;
-
-	static const uint kCaretSpeed = 25;
 
 	void saveLoadUpdateVars();
 
-	Graphics::Surface *createThumbnail(Graphics::Surface *big);
-	void saveGameReadThumbnail(Common::InSaveFile *save);
-	void saveGameWriteThumbnail(Common::OutSaveFile *save);
-
-	Common::String getAgeLabel(GameState *gameState);
 	Common::String prepareSaveNameForDisplay(const Common::String &name);
+};
+
+class AlbumMenu : public Menu {
+public:
+	AlbumMenu(Myst3Engine *vm);
+	virtual ~AlbumMenu();
+
+	void draw() override;
+	bool handleInput(const Common::KeyState &e) override;
+
+	void saveLoadAction(uint16 action, uint16 item) override;
+	void setSaveLoadSpotItem(uint16 id, SpotItemFace *spotItem) override;
+
+private:
+	static const uint16 kAlbumThumbnailWidth = 100;
+	static const uint16 kAlbumThumbnailHeight = 56;
+
+	// This map does not own its elements
+	Common::HashMap<int, SpotItemFace *> _albumSpotItems;
+	Common::String _saveLoadTime;
+
+	void loadMenuOpen();
+	void loadMenuSelect();
+	void loadMenuLoad();
+	void saveMenuOpen();
+	void saveMenuSave();
+	void setSavesAvailable();
+
+	Common::String getSaveNameTemplate();
+	Common::HashMap<int, Common::String> listSaveFiles();
+	void loadSaves();
 };
 
 class Dialog : public Drawable {
 public:
 	Dialog(Myst3Engine *vm, uint id);
-	~Dialog();
-	void draw();
-	int16 update();
+	virtual ~Dialog();
+	virtual void draw() override;
+	virtual int16 update() = 0;
+
+protected:
+	Common::Rect getPosition() const;
+
+	Myst3Engine *_vm;
+	Video::BinkDecoder _bink;
+	Texture *_texture;
+
+	uint _buttonCount;
+};
+
+class ButtonsDialog : public Dialog {
+public:
+	ButtonsDialog(Myst3Engine *vm, uint id);
+	virtual ~ButtonsDialog();
+
+	void draw() override;
+	int16 update() override;
 
 private:
-	Myst3Engine *_vm;
+	Common::Point getRelativeMousePosition() const;
 
-	Common::MemoryReadStream *_movieStream;
-	Video::BinkDecoder _bink;
 	uint16 _previousframe;
 	uint16 _frameToDisplay;
 
-	uint _buttonCount;
 	Common::Rect _buttons[3];
 
-	Texture *_texture;
-
-	Common::Rect getPosition();
+	void loadButtons();
 };
 
-} /* namespace Myst3 */
-#endif /* MENU_H_ */
+class GamepadDialog : public Dialog {
+public:
+	GamepadDialog(Myst3Engine *vm, uint id);
+	virtual ~GamepadDialog();
+
+	int16 update() override;
+};
+
+} // End of namespace Myst3
+
+#endif // MENU_H_

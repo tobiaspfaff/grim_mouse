@@ -25,8 +25,9 @@
 
 #include "engines/grim/actor.h"
 #include "engines/grim/gfx_base.h"
-#include "graphics/opengles2/shader.h"
+#include "graphics/opengl/shader.h"
 #include "common/stack.h"
+#include "common/rect.h"
 
 namespace Grim {
 
@@ -50,8 +51,10 @@ public:
 	 * @return true if hw-accelerated, false otherwise
 	 */
 	virtual bool isHardwareAccelerated() override { return true; };
-	virtual void setupCamera(float fov, float nclip, float fclip, float roll) override;
+	virtual bool supportsShaders() override { return true; }
+	virtual void setupCameraFrustum(float fov, float nclip, float fclip) override;
 	virtual void positionCamera(const Math::Vector3d &pos, const Math::Vector3d &interest, float roll) override;
+	virtual void positionCamera(const Math::Vector3d &pos, const Math::Matrix4 &rot) override;
 
 	virtual Math::Matrix4 getModelView() override;
 	virtual Math::Matrix4 getProjection() override;
@@ -64,8 +67,9 @@ public:
 	 */
 	virtual void flipBuffer() override;
 
-	virtual void getBoundingBoxPos(const Mesh *mesh, int *x1, int *y1, int *x2, int *y2) override;
-	virtual void getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) override;
+	virtual void getScreenBoundingBox(const Mesh *mesh, int *x1, int *y1, int *x2, int *y2) override;
+	virtual void getScreenBoundingBox(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) override;
+	void getActorScreenBBox(const Actor *actor, Common::Point &p1, Common::Point &p2) override;
 	virtual void startActorDraw(const Actor *actor) override;
 
 	virtual void finishActorDraw() override;
@@ -76,27 +80,30 @@ public:
 	virtual bool isShadowModeActive() override;
 	virtual void setShadowColor(byte r, byte g, byte b) override;
 	virtual void getShadowColor(byte *r, byte *g, byte *b) override;
+	virtual void destroyShadow(Shadow *shadow) override;
 
 	virtual void set3DMode() override;
 
 	virtual void translateViewpointStart() override;
 	virtual void translateViewpoint(const Math::Vector3d &vec) override;
 	virtual void rotateViewpoint(const Math::Angle &angle, const Math::Vector3d &axis) override;
+	virtual void rotateViewpoint(const Math::Matrix4 &rot) override;
 	virtual void translateViewpointFinish() override;
 
 	virtual void drawEMIModelFace(const EMIModel* model, const EMIMeshFace* face) override;
 	virtual void drawModelFace(const Mesh *mesh, const MeshFace *face) override;
 	virtual void drawSprite(const Sprite *sprite) override;
 	virtual void drawMesh(const Mesh *mesh) override;
+	virtual void drawDimPlane() override;
 
 	virtual void enableLights() override;
 	virtual void disableLights() override;
 	virtual void setupLight(Light *light, int lightId) override;
 	virtual void turnOffLight(int lightId) override;
 
-	virtual void createMaterial(Texture *material, const char *data, const CMap *cmap, bool clamp) override;
-	virtual void selectMaterial(const Texture *material) override;
-	virtual void destroyMaterial(Texture *material) override;
+	virtual void createTexture(Texture *texture, const uint8 *data, const CMap *cmap, bool clamp) override;
+	virtual void selectTexture(const Texture *texture) override;
+	virtual void destroyTexture(Texture *texture) override;
 
 	/**
 	 * Prepares a bitmap for drawing
@@ -141,7 +148,7 @@ public:
 	virtual void drawTextObject(const TextObject *text) override;
 	virtual void destroyTextObject(TextObject *text) override;
 
-	virtual Bitmap *getScreenshot(int w, int h) override;
+	virtual Bitmap *getScreenshot(int w, int h, bool useStored) override;
 	virtual void storeDisplay() override;
 	virtual void copyStoredToDisplay() override;
 
@@ -196,13 +203,13 @@ public:
 	virtual void renderBitmaps(bool render) override;
 	virtual void renderZBitmaps(bool render) override;
 
-	virtual void createSpecialtyTextures() override;
-
-	virtual void createModel(Mesh *mesh) override;
+	virtual void createMesh(Mesh *mesh) override;
+	virtual void destroyMesh(const Mesh *mesh) override;
 	virtual void createEMIModel(EMIModel *model) override;
 	virtual void updateEMIModel(const EMIModel* model) override;
+	virtual void destroyEMIModel(EMIModel *model) override;
 
-	// special
+	virtual void setBlendMode(bool additive) override;
     bool worldToScreen(const Math::Vector3d &vec, int& x, int &y);
     bool raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1);
     void blackbox(int x0, int y0, int x1, int y1, float opacity);
@@ -210,29 +217,34 @@ protected:
 	void setupShaders();
 	GLuint compileShader(const char *vertex, const char *fragment);
 	GLuint compileShader(const char *shader) { return compileShader(shader, shader); }
+	void createSpecialtyTextureFromScreen(uint id, uint8 *data, int x, int y, int width, int height) override;
 
 private:
 	const Actor *_currentActor;
 	float _alpha;
 	int _maxLights;
 	GLuint _emergTexture;
-	Graphics::Shader* _emergProgram;
+	OpenGL::Shader* _emergProgram;
 
-	Graphics::Shader* _backgroundProgram;
-	Graphics::Shader* _actorProgram;
-	Graphics::Shader* _spriteProgram;
-	Graphics::Shader* _smushProgram;
+	OpenGL::Shader* _backgroundProgram;
+	OpenGL::Shader* _actorProgram;
+	OpenGL::Shader* _spriteProgram;
+	OpenGL::Shader* _dimProgram;
+	OpenGL::Shader* _dimPlaneProgram;
+	OpenGL::Shader* _dimRegionProgram;
+	OpenGL::Shader* _smushProgram;
 	GLuint _smushVBO, _quadEBO, _quadEBO99;
-	Graphics::Shader* _textProgram;
-	Graphics::Shader* _primitiveProgram;
-	Graphics::Shader* _irisProgram;
-	Graphics::Shader* _shadowPlaneProgram;
+	OpenGL::Shader* _textProgram;
+	OpenGL::Shader* _primitiveProgram;
+	OpenGL::Shader* _irisProgram;
+	OpenGL::Shader* _shadowPlaneProgram;
 	Graphics::Shader* _rotProgram;
 
 	int _smushWidth;
 	int _smushHeight;
 	GLuint _smushTexId;
 	bool _smushSwizzle;
+	bool _smushSwap;
 	void setupTexturedQuad();
 	void setupQuadEBO();
 
@@ -261,7 +273,7 @@ private:
 	 */
 	Math::Matrix4 _viewMatrix;
 	Math::Matrix4 _mvpMatrix;
-
+	Math::Matrix4 _overworldProjMatrix;
 private:
 
 	void setupTexturedCenteredQuad();
@@ -278,9 +290,11 @@ private:
 		Math::Vector4d _position;
 		Math::Vector4d _direction;
 		Math::Vector4d _color;
+		Math::Vector4d _params;
 	};
 
 	Light *_lights;
+	bool _hasAmbientLight;
 	bool _lightsEnabled;
 
 	void setupPrimitives();
@@ -289,7 +303,10 @@ private:
 	uint32 _currentPrimitive;
 	void drawGenericPrimitive(const float *vertices, uint32 numVertices, const PrimitiveObject *primitive);
 	GLuint _irisVBO;
+	GLuint _dimVBO;
+	GLuint _dimRegionVBO;
 	GLuint _blastVBO;
+	GLuint _storedDisplay;
 };
 }
 #endif

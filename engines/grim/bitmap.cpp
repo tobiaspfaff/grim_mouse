@@ -237,7 +237,10 @@ BitmapData::~BitmapData() {
 }
 
 void BitmapData::freeData() {
-	if (!_keepData) {
+	if (!_keepData && _data) {
+		for (int i = 0; i < _numImages; ++i) {
+			_data[i].free();
+		}
 		delete[] _data;
 		_data = nullptr;
 	}
@@ -291,9 +294,7 @@ bool BitmapData::loadTile(Common::SeekableReadStream *o) {
 	_texc = new float[_numCoords * 4];
 
 	for (uint32 i = 0; i < _numCoords * 4; ++i) {
-		char f[4];
-		o->read(f, 4);
-		_texc[i] = get_float(f);
+		_texc[i] = o->readFloatLE();
 	}
 
 	_layers = new Layer[_numLayers];
@@ -311,8 +312,6 @@ bool BitmapData::loadTile(Common::SeekableReadStream *o) {
 
 	o->seek(16, SEEK_CUR);
 	int numSubImages = o->readUint32LE();
-	if (numSubImages < 5)
-		error("Can not handle a tile with less than 5 sub images");
 
 	char **data = new char *[numSubImages];
 
@@ -325,32 +324,34 @@ bool BitmapData::loadTile(Common::SeekableReadStream *o) {
 	_height = o->readUint32LE();
 	o->seek(-8, SEEK_CUR);
 
-	int size = _bpp / 8 * _width * _height;
+	int size = 4 * _width * _height;
 	for (int i = 0; i < numSubImages; ++i) {
 		data[i] = new char[size];
 		o->seek(8, SEEK_CUR);
 		if (_bpp == 16) {
-			uint16 *d = (uint16 *)data[i];
+			uint32 *d = (uint32 *)data[i];
 			for (int j = 0; j < _width * _height; ++j) {
-				d[j] = o->readUint16LE();
+				uint16 p = o->readUint16LE();
+				// These values are shifted left by 3 so that they saturate the color channel
+				uint8 b = (p & 0x7C00) >> 7;
+				uint8 g = (p & 0x03E0) >> 2;
+				uint8 r = (p & 0x001F) << 3;
+				uint8 a = (p & 0x8000) ? 0xFF : 0x00;
+				// Recombine the color components into a 32 bit RGB value
+				uint32 tmp = (r << 24) | (g << 16) | (b << 8) | a;
+				WRITE_BE_UINT32(&d[j], tmp);
 			}
 		} else if (_bpp == 32) {
 			uint32 *d = (uint32 *)data[i];
 			for (int j = 0; j < _width * _height; ++j) {
-				d[j] = o->readUint32LE();
+				o->read(&(d[j]), 4);
 			}
 		}
 	}
+	_bpp = 32;
 
-	Graphics::PixelFormat pixelFormat;
-	if (_bpp == 16) {
-		_colorFormat = BM_RGB1555;
-		pixelFormat = Graphics::createPixelFormat<1555>();
-		//convertToColorFormat(0, BM_RGBA);
-	} else {
-		pixelFormat = Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24);
-		_colorFormat = BM_RGBA;
-	}
+	Graphics::PixelFormat pixelFormat = Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24);
+	_colorFormat = BM_RGBA;
 
 	_width = 256;
 	_height = 256;
@@ -454,6 +455,11 @@ int Bitmap::getNumImages() const {
 	return _data->_numImages;
 }
 
+int Bitmap::getNumLayers() const {
+	_data->load();
+	return _data->_numLayers;
+}
+
 void Bitmap::freeData() {
 	--_data->_refCount;
 	if (_data->_refCount < 1) {
@@ -476,14 +482,7 @@ void BitmapData::convertToColorFormat(int num, const Graphics::PixelFormat &form
 	}
 
 	Graphics::PixelBuffer dst(format, _width * _height, DisposeAfterUse::NO);
-
-	for (int i = 0; i < _width * _height; ++i) {
-		if (_data[num].getValueAt(i) == 0xf81f) { //transparency
-			dst.setPixelAt(i, 0xf81f);
-		} else {
-			dst.setPixelAt(i, _data[num]);
-		}
-	}
+	dst.copyBuffer(0, _width * _height, _data[num]);
 	_data[num].free();
 	_data[num] = dst;
 }

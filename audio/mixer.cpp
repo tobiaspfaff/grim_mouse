@@ -23,7 +23,6 @@
 #include "gui/EventRecorder.h"
 
 #include "common/util.h"
-#include "common/system.h"
 #include "common/textconsole.h"
 
 #include "audio/mixer_intern.h"
@@ -173,8 +172,7 @@ private:
 #pragma mark --- Mixer ---
 #pragma mark -
 
-// TODO: parameter "system" is unused
-MixerImpl::MixerImpl(OSystem *system, uint sampleRate)
+MixerImpl::MixerImpl(uint sampleRate)
 	: _mutex(), _sampleRate(sampleRate), _mixerReady(false), _handleSeed(0), _soundTypeSettings() {
 
 	assert(sampleRate > 0);
@@ -471,10 +469,7 @@ void MixerImpl::setVolumeForSoundType(SoundType type, int volume) {
 	assert(0 <= (int)type && (int)type < ARRAYSIZE(_soundTypeSettings));
 
 	// Check range
-	if (volume > kMaxMixerVolume)
-		volume = kMaxMixerVolume;
-	else if (volume < 0)
-		volume = 0;
+	volume = CLIP<int>(volume, 0, kMaxMixerVolume);
 
 	// TODO: Maybe we should do logarithmic (not linear) volume
 	// scaling? See also Player_V2::setMasterVolume

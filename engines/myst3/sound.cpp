@@ -27,15 +27,17 @@
 #include "engines/myst3/state.h"
 
 #include "audio/audiostream.h"
+#include "audio/decoders/asf.h"
 #include "audio/decoders/mp3.h"
 #include "audio/decoders/wave.h"
 
+#include "common/archive.h"
 #include "common/config-manager.h"
 
 namespace Myst3 {
 
 Sound::Sound(Myst3Engine *vm) :
-	_vm(vm) {
+		_vm(vm) {
 	for (uint i = 0; i < kNumChannels; i++)
 		_channels[i] = new SoundChannel(_vm);
 }
@@ -55,8 +57,12 @@ void Sound::playEffect(uint32 id, uint32 volume, uint16 heading, uint16 attenuat
 void Sound::playEffectLooping(uint32 id, uint32 volume, uint16 heading, uint16 attenuation) {
 	id = _vm->_state->valueOrVarValue(id);
 
-	SoundChannel *channel = getChannelForSound(id, kEffect);
-	channel->play(id, volume, heading, attenuation, true, kEffect);
+	bool alreadyPlaying;
+	SoundChannel *channel = getChannelForSound(id, kEffect, &alreadyPlaying);
+
+	if (!alreadyPlaying) {
+		channel->play(id, volume, heading, attenuation, true, kEffect);
+	}
 }
 
 void Sound::playEffectFadeInOut(uint32 id, uint32 volume, uint16 heading, uint16 attenuation,
@@ -95,6 +101,19 @@ void Sound::stopMusic(uint32 fadeDelay) {
 		SoundChannel *channel = _channels[i];
 		if (channel->_type == kMusic && channel->_playing)
 			channel->fadeOut(fadeDelay);
+	}
+}
+
+void Sound::resetSoundVars() {
+	uint32 minId = _vm->_db->getSoundIdMin();
+	uint32 maxId = _vm->_db->getSoundIdMax();
+
+	if (minId == 0 || maxId == 0) {
+		return;
+	}
+
+	for (uint32 id = minId; id <= maxId; id++) {
+		_vm->_state->setVar(id, 0);
 	}
 }
 
@@ -253,6 +272,12 @@ int32 Sound::playedFrames(uint32 id) {
 	return channel->playedFrames();
 }
 
+bool Sound::isPlaying(uint32 id) {
+	bool soundPlaying;
+	getChannelForSound(id, kAny, &soundPlaying);
+	return soundPlaying;
+}
+
 void Sound::setupNextSound(SoundNextCommand command, int16 controlVar, int16 startSoundId, int16 soundCount,
 		int32 soundMinDelay, int32 soundMaxDelay, int32 controlSoundId, int32 controlSoundMaxPosition) {
 
@@ -263,11 +288,11 @@ void Sound::setupNextSound(SoundNextCommand command, int16 controlVar, int16 sta
 	_vm->_state->setSoundNextId(0);
 	_vm->_state->setSoundNextIsLast(false);
 
-	uint32 controlLastFrame = _vm->_state->getVar(controlVar);
+	uint32 controlLastTick = _vm->_state->getVar(controlVar);
 	int32 playingSoundId = _vm->_state->getVar(controlVar + 1) >> 16;
 	int32 soundDelay = _vm->_state->getVar(controlVar + 1) & 0xFFFF;
 
-	if (!controlLastFrame) {
+	if (!controlLastTick) {
 		if (!playSeveralSounds) {
 			for (int16 i = startSoundId; i < startSoundId + soundCount; i++) {
 				int16 soundVarValue = _vm->_state->getVar(i);
@@ -283,17 +308,17 @@ void Sound::setupNextSound(SoundNextCommand command, int16 controlVar, int16 sta
 		return;
 	}
 
-	uint currentFrame = _vm->_state->getFrameCount();
-	if (currentFrame == controlLastFrame) {
+	uint currentTick = _vm->_state->getTickCount();
+	if (currentTick == controlLastTick) {
 		return;
 	}
 
-	if (currentFrame < controlLastFrame) {
+	if (currentTick < controlLastTick) {
 		soundDelay = 0;
-	} else if (currentFrame > controlLastFrame + 10) {
+	} else if (currentTick > controlLastTick + 10) {
 		soundDelay -= 10;
 	} else {
-		soundDelay -= currentFrame - controlLastFrame;
+		soundDelay -= currentTick - controlLastTick;
 	}
 
 	if (soundDelay < 0) {
@@ -301,7 +326,7 @@ void Sound::setupNextSound(SoundNextCommand command, int16 controlVar, int16 sta
 	}
 
 	if (soundDelay) {
-		_vm->_state->setVar(controlVar, currentFrame);
+		_vm->_state->setVar(controlVar, currentTick);
 		_vm->_state->setVar(controlVar + 1, soundDelay | (playingSoundId << 16));
 		return;
 	}
@@ -361,28 +386,29 @@ void Sound::setupNextSound(SoundNextCommand command, int16 controlVar, int16 sta
 }
 
 SoundChannel::SoundChannel(Myst3Engine *vm) :
-	_vm(vm),
-	_playing(false),
-	_fading(false),
-	_id(0),
-	_stream(0),
-	_age(0),
-	_ambientFadeOutDelay(0),
-	_volume(0),
-	_heading(0),
-	_headingAngle(0),
-	_fadeDuration(0),
-	_fadeTargetVolume(0),
-	_fadeSourceVolume(0),
-	_fadeTargetAttenuation(0),
-	_fadeSourceAttenuation(0),
-	_fadeTargetHeading(0),
-	_fadeSourceHeading(0),
-	_stopWhenSilent(true),
-	_hasFadeArray(false),
-	_fadeArrayPosition(0),
-	_fadePosition(0),
-	_type(kAny) {
+		_vm(vm),
+		_playing(false),
+		_fading(false),
+		_id(0),
+		_stream(0),
+		_age(0),
+		_ambientFadeOutDelay(0),
+		_volume(0),
+		_heading(0),
+		_headingAngle(0),
+		_fadeLastTick(0),
+		_fadeDuration(0),
+		_fadeTargetVolume(0),
+		_fadeSourceVolume(0),
+		_fadeTargetAttenuation(0),
+		_fadeSourceAttenuation(0),
+		_fadeTargetHeading(0),
+		_fadeSourceHeading(0),
+		_stopWhenSilent(true),
+		_hasFadeArray(false),
+		_fadeArrayPosition(0),
+		_fadePosition(0),
+		_type(kAny) {
 }
 
 SoundChannel::~SoundChannel() {
@@ -428,6 +454,7 @@ void SoundChannel::play(uint32 id, uint32 volume, uint16 heading, uint16 attenua
 	_id = id;
 	_age = 0;
 	_playing = true;
+	_stopWhenSilent = false;
 	_vm->_state->setVar(id, 1);
 }
 
@@ -458,13 +485,19 @@ Audio::RewindableAudioStream *SoundChannel::makeAudioStream(const Common::String
 	Common::SeekableReadStream *s = SearchMan.createReadStreamForMember(filename);
 
 	bool isMP3 = false;
+	bool isWMA = false;
 
 	if (!s)
 		s = SearchMan.createReadStreamForMember(filename + ".wav");
 
 	if (!s) {
 		s = SearchMan.createReadStreamForMember(filename + ".mp3");
-		isMP3 = true;
+		if (s) isMP3 = true;
+	}
+
+	if (!s) {
+		s = SearchMan.createReadStreamForMember(filename + ".wma");
+		if (s) isWMA = true;
 	}
 
 	if (!s)
@@ -476,8 +509,10 @@ Audio::RewindableAudioStream *SoundChannel::makeAudioStream(const Common::String
 #else
 		warning("Unable to play sound '%s', MP3 support is not compiled in.", filename.c_str());
 		delete s;
-		return 0;
+		return NULL;
 #endif
+	} else if (isWMA) {
+		return Audio::makeASFStream(s, DisposeAfterUse::YES);
 	} else {
 		return Audio::makeWAVStream(s, DisposeAfterUse::YES);
 	}
@@ -545,6 +580,7 @@ void SoundChannel::fade(uint32 targetVolume, int32 targetHeading, int32 targetAt
 	_hasFadeArray = false;
 	_fadeDuration = fadeDelay;
 	_fadePosition = 0;
+	_fadeLastTick = 0;
 
 	_fadeSourceVolume = _volume;
 	_fadeTargetVolume = targetVolume;
@@ -577,57 +613,67 @@ void SoundChannel::age(uint32 maxAge) {
 }
 
 void SoundChannel::updateFading() {
-	if (_fading) {
-		_fadePosition++;
+	uint tick = _vm->_state->getTickCount();
+	if (tick == _fadeLastTick) {
+		return; // We already updated fading this tick
+	}
 
-		if (_fadePosition <= _fadeDuration) {
-			// Fading in progress, compute the new channel parameters
-			_volume = _fadeSourceVolume + _fadePosition * (_fadeTargetVolume - _fadeSourceVolume) / _fadeDuration;
-			_heading = _fadeSourceHeading + _fadePosition * (_fadeTargetHeading - _fadeSourceHeading) / _fadeDuration;
-			_headingAngle = _fadeSourceAttenuation + _fadePosition * (_fadeTargetAttenuation - _fadeSourceAttenuation) / _fadeDuration;
+	_fadeLastTick = tick;
+	_fadePosition++;
+
+	if (_fadePosition <= _fadeDuration) {
+		// Fading in progress, compute the new channel parameters
+		_volume = _fadeSourceVolume + _fadePosition * (_fadeTargetVolume - _fadeSourceVolume) / _fadeDuration;
+		_heading = _fadeSourceHeading + _fadePosition * (_fadeTargetHeading - _fadeSourceHeading) / _fadeDuration;
+		_headingAngle = _fadeSourceAttenuation + _fadePosition * (_fadeTargetAttenuation - _fadeSourceAttenuation) / _fadeDuration;
+	} else {
+		if (!_hasFadeArray) {
+			// The fading is complete
+			_fading = false;
 		} else {
-			if (!_hasFadeArray) {
-				// The fading is complete
-				_fading = false;
-			} else {
-				// This step of the fade array is complete, find the next one
-				do {
-					_fadeArrayPosition++;
-				} while (_fadeArrayPosition < 4 && !_fadeDurations[_fadeArrayPosition]);
+			// This step of the fade array is complete, find the next one
+			do {
+				_fadeArrayPosition++;
+			} while (_fadeArrayPosition < 4 && !_fadeDurations[_fadeArrayPosition]);
 
-				if (_fadeArrayPosition < 4) {
-					// Setup the new fading step
-					_fadePosition = 0;
-					_fadeDuration = _fadeDurations[_fadeArrayPosition];
+			if (_fadeArrayPosition < 4) {
+				// Setup the new fading step
+				_fadePosition = 0;
+				_fadeDuration = _fadeDurations[_fadeArrayPosition];
 
-					_fadeSourceVolume = _volume;
-					_fadeTargetVolume = _fadeVolumes[_fadeArrayPosition];
+				_fadeSourceVolume = _volume;
+				_fadeTargetVolume = _fadeVolumes[_fadeArrayPosition];
 
-					if (!_fadeTargetVolume) {
-						_stopWhenSilent = true;
-					}
-				} else {
-					// No more steps
-					_hasFadeArray = false;
-					_fading = false;
+				if (!_fadeTargetVolume) {
 					_stopWhenSilent = true;
-					_volume = 0;
 				}
+			} else {
+				// No more steps
+				_hasFadeArray = false;
+				_fading = false;
+				_stopWhenSilent = true;
+				_volume = 0;
 			}
 		}
-		setVolume3D(_volume, _heading, _headingAngle);
 	}
+	setVolume3D(_volume, _heading, _headingAngle);
 }
 
 uint32 SoundChannel::playedFrames() {
-	Audio::Timestamp elapsed = g_system->getMixer()->getElapsedTime(_handle);
-
-	// Don't count completed loops in
-	while (elapsed > _length) {
-		elapsed = elapsed - _length;
+	uint32 length = _length.msecs();
+	if (!length) {
+		warning("Unable to retrieve length for sound %d", _id);
+		return 0;
 	}
 
-	return elapsed.msecs() * 30 / 1000;
+	uint32 elapsed = g_system->getMixer()->getSoundElapsedTime(_handle);
+
+	// Don't count completed loops in
+	while (elapsed > length) {
+		elapsed -= length;
+	}
+
+	return elapsed * 30 / 1000;
 }
 
-} /* namespace Myst3 */
+} // End of namespace Myst3

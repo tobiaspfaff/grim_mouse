@@ -33,14 +33,28 @@ namespace Grim {
 Localizer *g_localizer = nullptr;
 
 Localizer::Localizer() {
-	if (g_grim->getGameType() == GType_GRIM && g_grim->getGameFlags() & ADGF_DEMO)
+	// To avoid too wide lines further below, we just name these here.
+	bool isAnyDemo = g_grim->getGameFlags() & ADGF_DEMO;
+	bool isGrimDemo = g_grim->getGameType() == GType_GRIM && isAnyDemo;
+	bool isGerman = g_grim->getGameLanguage() == Common::DE_DEU;
+	bool isFrench = g_grim->getGameLanguage() == Common::FR_FRA;
+	bool isItalian = g_grim->getGameLanguage() == Common::IT_ITA;
+	bool isSpanish = g_grim->getGameLanguage() == Common::ES_ESP;
+	bool isTranslatedGrimDemo = (isGerman || isFrench || isItalian || isSpanish) && isGrimDemo;
+	bool isPS2 = g_grim->getGamePlatform() == Common::kPlatformPS2;
+
+	if (isGrimDemo && !isTranslatedGrimDemo)
 		return;
 
 	Common::String filename;
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		filename = "script.tab";
 	} else {
-		filename = "grim.tab";
+		if (isTranslatedGrimDemo) {
+			filename = "language.tab";
+		} else {
+			filename = "grim.tab";
+		}
 	}
 
 	Common::SeekableReadStream *f = g_resourceloader->openNewStreamFile(filename);
@@ -57,7 +71,8 @@ Localizer::Localizer() {
 	data[filesize] = '\0';
 	delete f;
 
-	if (!(g_grim->getGameFlags() & ADGF_DEMO) && g_grim->getGamePlatform() != Common::kPlatformPS2) {
+	// Explicitly white-list german demo, as it has a .tab-file
+	if ((isTranslatedGrimDemo) || (!isAnyDemo && !isPS2)) {
 		if (filesize < 4)
 			error("%s to short: %i", filename.c_str(), filesize);
 		switch (READ_BE_UINT32(data)) {

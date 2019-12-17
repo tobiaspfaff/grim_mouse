@@ -34,7 +34,7 @@ namespace Grim {
 Font::Font() :
 		_userData(nullptr),
 		_fontData(nullptr), _charHeaders(nullptr), _charIndex(nullptr),
-		_numChars(0), _dataSize(0), _height(0), _baseOffsetY(0),
+		_numChars(0), _dataSize(0), _kernedHeight(0), _baseOffsetY(0),
 		_firstChar(0), _lastChar(0) {
 
 }
@@ -50,12 +50,11 @@ void Font::load(const Common::String &filename, Common::SeekableReadStream *data
 	_filename = filename;
 	_numChars = data->readUint32LE();
 	_dataSize = data->readUint32LE();
-	_height = data->readUint32LE();
+	_kernedHeight = data->readUint32LE();
 	_baseOffsetY = data->readUint32LE();
 	data->seek(24, SEEK_SET);
 	_firstChar = data->readUint32LE();
 	_lastChar = data->readUint32LE();
-	int8 available_height = _height - _baseOffsetY;
 
 	// Read character indexes - are the key/value reversed?
 	_charIndex = new uint16[_numChars];
@@ -66,18 +65,14 @@ void Font::load(const Common::String &filename, Common::SeekableReadStream *data
 	_charHeaders = new CharHeader[_numChars];
 	for (uint i = 0; i < _numChars; ++i) {
 		_charHeaders[i].offset = data->readUint32LE();
-		_charHeaders[i].width = data->readSByte();
+		// Kerned character size
+		_charHeaders[i].kernedWidth = data->readSByte();
 		_charHeaders[i].startingCol = data->readSByte();
 		_charHeaders[i].startingLine = data->readSByte();
 		data->seek(1, SEEK_CUR);
-		_charHeaders[i].dataWidth = data->readUint32LE();
-		_charHeaders[i].dataHeight = data->readUint32LE();
-		int8 overflow = (_charHeaders[i].dataHeight + _charHeaders[i].startingLine) - available_height;
-		if (overflow > 0) {
-			warning("Font %s, char 0x%02x exceeds font height by %d, increasing font height", _filename.c_str(), i, overflow);
-			available_height += overflow;
-			_height += overflow;
-		}
+		// Character bitmap size
+		_charHeaders[i].bitmapWidth = data->readUint32LE();
+		_charHeaders[i].bitmapHeight = data->readUint32LE();
 	}
 	// Read font data
 	_fontData = new byte[_dataSize];
@@ -117,10 +112,29 @@ uint16 Font::getCharIndex(unsigned char c) const {
 	return 0;
 }
 
-int Font::getStringLength(const Common::String &text) const {
+int Font::getKernedStringLength(const Common::String &text) const {
 	int result = 0;
 	for (uint32 i = 0; i < text.size(); ++i) {
-		result += MAX(getCharDataWidth(text[i]), getCharWidth(text[i]));
+		result += getCharKernedWidth(text[i]);
+	}
+	return result;
+}
+
+int Font::getBitmapStringLength(const Common::String &text) const {
+	int result = 0;
+	for (uint32 i = 0; i < text.size(); ++i) {
+		result += getCharKernedWidth(text[i]) + getCharStartingCol(text[i]);
+	}
+	return result;
+}
+
+int Font::getStringHeight(const Common::String &text) const {
+	int result = 0;
+	for (uint32 i = 0; i < text.size(); ++i) {
+		int verticalOffset = getCharStartingLine(text[i]) + getBaseOffsetY();
+		int charHeight = verticalOffset + getCharBitmapHeight(text[i]);
+		if (charHeight > result)
+			result = charHeight;
 	}
 	return result;
 }

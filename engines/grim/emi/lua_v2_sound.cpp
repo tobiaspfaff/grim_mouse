@@ -25,8 +25,7 @@
 #include "common/system.h"
 #include "engines/grim/set.h"
 
-#include "engines/grim/emi/sound/aifftrack.h"
-#include "engines/grim/emi/sound/scxtrack.h"
+#include "engines/grim/emi/sound/emisound.h"
 #include "engines/grim/emi/lua_v2.h"
 #include "engines/grim/emi/poolsound.h"
 #include "engines/grim/lua/lua.h"
@@ -35,9 +34,24 @@
 #include "engines/grim/sound.h"
 #include "engines/grim/grim.h"
 #include "engines/grim/resource.h"
-#include "audio/decoders/aiff.h"
 
 namespace Grim {
+
+// Helper function, not called from LUA directly
+uint Lua_V2::convertEmiVolumeToMixer(uint emiVolume) {
+	// EmiVolume range: 0 .. 100
+	// Mixer range: 0 .. kMaxChannelVolume
+	float vol = float(emiVolume) / MAX_EMI_VOLUME * Audio::Mixer::kMaxChannelVolume;
+	return CLIP<uint>(uint(vol), 0, Audio::Mixer::kMaxChannelVolume);
+}
+
+// Helper function, not called from LUA directly
+uint Lua_V2::convertMixerVolumeToEmi(uint volume) {
+	float vol = float(volume) * MAX_EMI_VOLUME / Audio::Mixer::kMaxChannelVolume;
+	return CLIP<uint>(uint(vol), 0, MAX_EMI_VOLUME);
+}
+
+// Note: debug output for volume values uses the engine's mixer range
 
 void Lua_V2::ImGetMillisecondPosition() {
 	lua_Object soundObj = lua_getparam(1);
@@ -49,7 +63,7 @@ void Lua_V2::ImGetMillisecondPosition() {
 		// push -1 for now
 		// Currently a bit of guesswork, and probably wrong, as the stateId
 		// is ignored by emisound (which only has one music-track now).
-		uint32 msPos = g_sound->getMsPos(sound);
+		uint32 msPos = g_emiSound->getMsPos(sound);
 		Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImGetMillisecondPosition: sound: %d ms: %d", sound, msPos);
 		lua_pushnumber(msPos);
 	}
@@ -113,8 +127,7 @@ void Lua_V2::ImStateHasEnded() {
 
 	int state = (int)lua_getnumber(stateObj);
 
-	// FIXME: Make sure this logic is correct.
-	pushbool(g_imuseState != state);
+	pushbool(g_emiSound->stateHasEnded(state));
 
 	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImStateHasEnded: state %d.", state);
 }
@@ -127,7 +140,7 @@ void Lua_V2::ImStateHasLooped() {
 
 	int state = (int)lua_getnumber(stateObj);
 
-	pushbool(g_sound->stateHasLooped(state));
+	pushbool(g_emiSound->stateHasLooped(state));
 }
 
 void Lua_V2::EnableVoiceFX() {
@@ -149,15 +162,14 @@ void Lua_V2::SetGroupVolume() {
 		return;
 	int group = (int)lua_getnumber(groupObj);
 
-	int volume = 100;
+	int volume = Audio::Mixer::kMaxChannelVolume;
 	if (lua_isnumber(volumeObj))
-		volume = (int)lua_getnumber(volumeObj);
-
-	volume = (volume * Audio::Mixer::kMaxMixerVolume) / 100;
+		volume = convertEmiVolumeToMixer((int)lua_getnumber(volumeObj));
 
 	switch (group) {
 		case 1: // SFX
 			g_system->getMixer()->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, volume);
+			g_system->getMixer()->setVolumeForSoundType(Audio::Mixer::kPlainSoundType, volume);
 			break;
 		case 2: // Voice
 			g_system->getMixer()->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, volume);
@@ -188,6 +200,7 @@ void Lua_V2::EnableAudioGroup() {
 	switch (group) {
 		case 1: // SFX
 			g_system->getMixer()->muteSoundType(Audio::Mixer::kSFXSoundType, !state);
+			g_system->getMixer()->muteSoundType(Audio::Mixer::kPlainSoundType, !state);
 			break;
 		case 2: // Voice
 			g_system->getMixer()->muteSoundType(Audio::Mixer::kSpeechSoundType, !state);
@@ -208,7 +221,7 @@ void Lua_V2::ImSelectSet() {
 	if (lua_isnumber(qualityObj)) {
 		int quality = (int)lua_getnumber(qualityObj);
 		// FIXME: func(quality);
-		g_sound->selectMusicSet(quality);
+		g_emiSound->selectMusicSet(quality);
 		Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSelectSet: quality mode: %d", quality);
 	}
 }
@@ -216,12 +229,12 @@ void Lua_V2::ImSelectSet() {
 void Lua_V2::ImFlushStack() {
 	// FIXME
 	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImFlushStack: currently guesswork");
-	g_sound->flushStack();
+	g_emiSound->flushStack();
 }
 
 static Common::String addSoundSuffix(const char *fname) {
 	Common::String filename = fname;
-	if (g_grim->getGameFlags() != ADGF_DEMO) {
+	if (!(g_grim->getGameFlags() & ADGF_DEMO)) {
 		if (g_grim->getGamePlatform() == Common::kPlatformPS2) {
 			filename += ".scx";
 		} else {
@@ -264,7 +277,11 @@ void Lua_V2::PlayLoadedSound() {
 	/*lua_Object bool2Obj =*/ lua_getparam(4);
 
 	if (!lua_isuserdata(idObj) || lua_tag(idObj) != MKTAG('A', 'I', 'F', 'F')) {
-		error("Lua_V2::PlayLoadedSound - ERROR: Unknown parameters");
+		// can't use error since it actually may happen:
+		// when entering the bait shop after the termites were already put on Mandrill's cane,
+		// the LUA code will not load the termite sound files but the script which starts
+		// the sounds is running anyway
+		warning("Lua_V2::PlayLoadedSound - ERROR: Unknown parameters");
 		return;
 	}
 
@@ -276,7 +293,7 @@ void Lua_V2::PlayLoadedSound() {
 		return;
 	}
 
-	int volume = 100;
+	int volume = MAX_EMI_VOLUME;
 	if (!lua_isnumber(volumeObj)) {
 		// In the demo when the dart hits the balloon in the scumm bar, nil is passed
 		// to the volume parameter.
@@ -284,7 +301,7 @@ void Lua_V2::PlayLoadedSound() {
 	} else {
 		volume = (int)lua_getnumber(volumeObj);
 	}
-	sound->setVolume(volume);
+	sound->setVolume(convertEmiVolumeToMixer(volume));
 	sound->play(looping);
 }
 
@@ -297,7 +314,7 @@ void Lua_V2::PlayLoadedSoundFrom() {
 	lua_Object volumeObj = lua_getparam(6);
 
 	if (!lua_isuserdata(idObj) || lua_tag(idObj) != MKTAG('A', 'I', 'F', 'F')) {
-		error("Lua_V2::PlayLoadedSoundFrom - ERROR: Unknown parameters");
+		warning("Lua_V2::PlayLoadedSoundFrom - ERROR: Unknown parameters");
 		return;
 	}
 
@@ -311,7 +328,7 @@ void Lua_V2::PlayLoadedSoundFrom() {
 	float y = lua_getnumber(yObj);
 	float z = lua_getnumber(zObj);
 
-	int volume = 100;
+	int volume = MAX_EMI_VOLUME;
 	bool looping = false;
 
 	if (lua_isnumber(volumeOrLoopingObj)) {
@@ -331,13 +348,9 @@ void Lua_V2::PlayLoadedSoundFrom() {
 		warning("Lua_V2::PlayLoadedSoundFrom: can't find requested sound object");
 		return;
 	}
-	int newvolume = volume;
-	int newbalance = 64;
 	Math::Vector3d pos(x, y, z);
-	g_grim->getCurrSet()->calculateSoundPosition(pos, 30, volume, newvolume, newbalance);
-	sound->setBalance(newbalance * 2 - 127);
-	sound->setVolume(newvolume);
-	sound->play(looping);
+	sound->setVolume(convertEmiVolumeToMixer(volume));
+	sound->playFrom(pos, looping);
 }
 
 void Lua_V2::StopSound() {
@@ -367,8 +380,8 @@ void Lua_V2::IsSoundPlaying() {
 	}
 
 	PoolSound *sound = PoolSound::getPool().getObject(lua_getuserdata(idObj));
-	if (sound && sound->_track) {
-		if (sound->_track->isPlaying()) {
+	if (sound) {
+		if (sound->isPlaying()) {
 			pushbool(true);
 			return;
 		}
@@ -388,7 +401,7 @@ void Lua_V2::PlaySound() {
 	}
 	const char *str = lua_getstring(strObj);
 
-	int volume = 100;
+	int volume = MAX_EMI_VOLUME;
 	if (!lua_isnumber(volumeObj)) {
 		warning("Lua_V2::PlaySound - Unexpected parameter(s) found, using default volume for %s", str);
 	} else {
@@ -397,25 +410,9 @@ void Lua_V2::PlaySound() {
 
 	Common::String filename = addSoundSuffix(str);
 
-	SoundTrack *track;
-
-	Common::SeekableReadStream *stream = g_resourceloader->openNewStreamFile(filename, true);
-	if (!stream) {
-		Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::PlaySound: Could not find sound '%s'", filename.c_str());
-		return;
+	if (!g_emiSound->startSfx(filename, convertEmiVolumeToMixer(volume))) {
+		Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::PlaySound: Could not open sound '%s'", filename.c_str());
 	}
-
-	if (g_grim->getGamePlatform() != Common::kPlatformPS2) {
-		track = new AIFFTrack(Audio::Mixer::kSFXSoundType);
-	} else {
-		track = new SCXTrack(Audio::Mixer::kSFXSoundType);
-	}
-
-	track->openSound(filename, stream);
-	if (g_grim->getGameFlags() != ADGF_DEMO) {
-		track->setVolume(volume);
-	}
-	track->play();
 }
 
 void Lua_V2::PlaySoundFrom() {
@@ -427,7 +424,7 @@ void Lua_V2::PlaySoundFrom() {
 	lua_Object volumeOrUnknownObj = lua_getparam(5);
 	lua_Object volumeObj = lua_getparam(6);
 
-	int volume = 100;
+	int volume = MAX_EMI_VOLUME;
 
 	if (!lua_isstring(strObj)) {
 		error("Lua_V2::PlaySoundFrom - ERROR: Unknown parameters");
@@ -455,29 +452,11 @@ void Lua_V2::PlaySoundFrom() {
 	const char *str = lua_getstring(strObj);
 	Common::String filename = addSoundSuffix(str);
 
-	SoundTrack *track;
-
-	Common::SeekableReadStream *stream = g_resourceloader->openNewStreamFile(filename, true);
-	if (!stream) {
-		warning("Lua_V2::PlaySoundFrom: Could not find sound '%s'", filename.c_str());
-		return;
-	}
-
-	if (g_grim->getGamePlatform() != Common::kPlatformPS2) {
-		track = new AIFFTrack(Audio::Mixer::kSFXSoundType);
-	} else {
-		track = new SCXTrack(Audio::Mixer::kSFXSoundType);
-	}
-
-	track->openSound(filename, stream);
-
-	int newvolume = volume;
-	int newbalance = 64;
 	Math::Vector3d pos(x, y, z);
-	g_grim->getCurrSet()->calculateSoundPosition(pos, 30, volume, newvolume, newbalance);
-	track->setBalance(newbalance * 2 - 127);
-	track->setVolume(newvolume);
-	track->play();
+
+	if (!g_emiSound->startSfxFrom(filename.c_str(), pos, convertEmiVolumeToMixer(volume))) {
+		Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::PlaySoundFrom: Could not open sound '%s'", filename.c_str());
+	}
 }
 
 void Lua_V2::GetSoundVolume() {
@@ -487,11 +466,11 @@ void Lua_V2::GetSoundVolume() {
 		return;
 	}
 	PoolSound *sound = PoolSound::getPool().getObject(lua_getuserdata(idObj));
-	if (sound && sound->_track) {
-		lua_pushnumber(sound->_track->getVolume());
+	if (sound) {
+		lua_pushnumber(convertMixerVolumeToEmi(sound->getVolume()));
 	} else {
 		warning("Lua_V2::GetSoundVolume: can't find sound track");
-		lua_pushnumber(Audio::Mixer::kMaxMixerVolume);
+		lua_pushnumber(convertMixerVolumeToEmi(Audio::Mixer::kMaxChannelVolume));
 	}
 }
 
@@ -511,7 +490,7 @@ void Lua_V2::SetSoundVolume() {
 	PoolSound *sound = PoolSound::getPool().getObject(lua_getuserdata(idObj));
 
 	if (sound) {
-		sound->setVolume(volume);
+		sound->setVolume(convertEmiVolumeToMixer(volume));
 	} else {
 		warning("Lua_V2:SetSoundVolume: can't find sound track");
 	}
@@ -535,13 +514,8 @@ void Lua_V2::UpdateSoundPosition() {
 	PoolSound *sound = PoolSound::getPool().getObject(lua_getuserdata(idObj));
 	if (!sound)
 		return;
-	/* FIXME: store the original maximum volume in the PoolSound object */
-	int newvolume = 100;
-	int newbalance = 64;
 	Math::Vector3d pos(x, y, z);
-	g_grim->getCurrSet()->calculateSoundPosition(pos, 30, 100, newvolume, newbalance);
-	sound->setBalance(newbalance * 2 - 127);
-	sound->setVolume(newvolume);
+	sound->setPosition(pos);
 }
 
 void Lua_V2::ImSetMusicVol() {
@@ -551,7 +525,7 @@ void Lua_V2::ImSetMusicVol() {
 	if (!lua_isnumber(volumeObj))
 		return;
 	int volume = (int)lua_getnumber(volumeObj);
-	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetMusicVol: implement opcode, wants volume %d", volume);
+	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetMusicVol: implement opcode, wants volume %d", convertEmiVolumeToMixer(volume));
 }
 
 void Lua_V2::ImSetSfxVol() {
@@ -561,7 +535,7 @@ void Lua_V2::ImSetSfxVol() {
 	if (!lua_isnumber(volumeObj))
 		return;
 	int volume = (int)lua_getnumber(volumeObj);
-	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetSfxVol: implement opcode, wants volume %d", volume);
+	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetSfxVol: implement opcode, wants volume %d", convertEmiVolumeToMixer(volume));
 }
 
 void Lua_V2::ImSetVoiceVol() {
@@ -571,7 +545,7 @@ void Lua_V2::ImSetVoiceVol() {
 	if (!lua_isnumber(volumeObj))
 		return;
 	int volume = (int)lua_getnumber(volumeObj);
-	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetVoiceVol: implement opcode, wants volume %d", volume);
+	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImSetVoiceVol: implement opcode, wants volume %d", convertEmiVolumeToMixer(volume));
 }
 
 void Lua_V2::ImSetVoiceEffect() {
@@ -590,12 +564,31 @@ void Lua_V2::StopAllSounds() {
 }
 
 void Lua_V2::ImPushState() {
-	g_sound->pushState();
+	lua_Object stateObj = lua_getparam(1);
+	//lua_Object unknownBoolObj = lua_getparam(2);
+
+	g_emiSound->pushStateToStack();
+
+	if (lua_isnumber(stateObj)) {
+		int state = (int)lua_getnumber(stateObj);
+		g_imuseState = state;
+	}
+
 	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImPushState: currently guesswork");
 }
 void Lua_V2::ImPopState() {
-	g_sound->popState();
+	g_emiSound->popStateFromStack();
 	Debug::debug(Debug::Sound | Debug::Scripts, "Lua_V2::ImPopState: currently guesswork");
+}
+
+// Used in the demo only.
+void Lua_V2::ImPause() {
+	g_emiSound->pause(true);
+}
+
+// Used in the demo only.
+void Lua_V2::ImResume() {
+	g_emiSound->pause(false);
 }
 
 } // end of namespace Grim

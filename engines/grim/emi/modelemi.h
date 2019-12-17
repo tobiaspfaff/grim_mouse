@@ -24,6 +24,7 @@
 #define GRIM_MODELEMI_H
 
 #include "engines/grim/object.h"
+#include "engines/grim/actor.h"
 #include "math/matrix4.h"
 #include "math/vector2d.h"
 #include "math/vector3d.h"
@@ -62,6 +63,12 @@ public:
 	uint32 _flags;
 	EMIModel *_parent;
 
+	enum MeshFaceFlags {
+		kNoLighting = 0x20, // guessed, but distinctive for screen actors
+		kAlphaBlend = 0x10000,
+		kUnknownBlend = 0x40000 // used only in intro screen actors
+	};
+
 	EMIMeshFace() : _faceLength(0), _numFaces(0), _hasTexture(0), _texID(0), _flags(0), _indexes(NULL), _parent(NULL), _indicesEBO(0) { }
 	~EMIMeshFace();
 	void loadFace(Common::SeekableReadStream *data);
@@ -74,6 +81,14 @@ public:
  */
 class EMIModel : public Object {
 public:
+	enum TextureFlags {
+		BlendAdditive = 0x400
+		// There are more flags, but their purpose is currently unknown.
+	};
+
+	Common::String _meshName;
+	Actor::AlphaMode _meshAlphaMode;
+	float _meshAlpha;
 	int _numVertices;
 	Math::Vector3d *_vertices;
 	Math::Vector3d *_drawVertices;
@@ -87,6 +102,7 @@ public:
 	EMIMeshFace *_faces;
 	uint32 _numTextures;
 	Common::String *_texNames;
+	uint32 *_texFlags;
 	Material **_mats;
 
 	Skeleton *_skeleton;

@@ -43,9 +43,7 @@ void AnimationEmi::loadAnimation(Common::SeekableReadStream *data) {
 	_name = inString;
 	delete[] inString;
 
-	char temp[4];
-	data->read(temp, 4);
-	_duration = 1000 * get_float(temp);
+	_duration = 1000 * data->readFloatLE();
 	_numBones = data->readUint32LE();
 
 	_bones = new Bone[_numBones];
@@ -70,20 +68,17 @@ void Bone::loadBinary(Common::SeekableReadStream *data) {
 	_c = data->readUint32LE();
 	_count = data->readUint32LE();
 
-	char temp[4];
 	if (_operation == 3) { // Translation
 		_translations = new AnimTranslation[_count];
 		for (int j = 0; j < _count; j++) {
 			_translations[j]._vec.readFromStream(data);
-			data->read(temp, 4);
-			_translations[j]._time = 1000 * get_float(temp);
+			_translations[j]._time = 1000 * data->readFloatLE();
 		}
 	} else if (_operation == 4) { // Rotation
 		_rotations = new AnimRotation[_count];
 		for (int j = 0; j < _count; j++) {
 			_rotations[j]._quat.readFromStream(data);
-			data->read(temp, 4);
-			_rotations[j]._time = 1000 * get_float(temp);
+			_rotations[j]._time = 1000 * data->readFloatLE();
 		}
 	} else {
 		error("Unknown animation-operation %d", _operation);
@@ -99,8 +94,8 @@ Bone::~Bone() {
 }
 
 AnimationStateEmi::AnimationStateEmi(const Common::String &anim) :
-		_skel(nullptr), _looping(false), _active(false),
-		_fadeMode(Animation::None), _fade(1.0f), _fadeLength(0), _time(0.0f), _startFade(1.0f),
+		_skel(nullptr), _looping(false), _active(false), _paused(false),
+		_fadeMode(Animation::None), _fade(1.0f), _fadeLength(0), _time(-1), _startFade(1.0f),
 		_boneJoints(nullptr) {
 	_anim = g_resourceloader->getAnimationEmi(anim);
 	if (_anim)
@@ -138,15 +133,20 @@ void AnimationStateEmi::update(uint time) {
 	}
 
 	if (!_paused) {
-		if (_time > _anim->_duration) {
+		int durationMs = (int)_anim->_duration;
+		if (_time >= durationMs) {
 			if (_looping) {
-				_time = 0.0f;
+				_time = _time % durationMs;
 			} else {
 				if (_fadeMode != Animation::FadeOut)
 					deactivate();
 			}
 		}
-		_time += time;
+		if (_time < 0) {
+			_time = 0;
+		} else {
+			_time += time;
+		}
 	}
 
 	if (_fadeMode != Animation::None) {
@@ -194,6 +194,9 @@ void AnimationStateEmi::computeWeights() {
 
 void AnimationStateEmi::animate() {
 	if (_fade <= 0.0f)
+		return;
+
+	if (_time < 0)
 		return;
 
 	for (int bone = 0; bone < _anim->_numBones; ++bone) {
@@ -249,7 +252,7 @@ void AnimationStateEmi::animate() {
 
 			// Normalize the weight so that the sum of applied weights will equal 1.
 			float normalizedTransWeight = _fade;
-			if (jointAnim._rotWeight > 1.0f) {
+			if (jointAnim._transWeight > 1.0f) {
 				// Note: Division by unnormalized sum of weights.
 				normalizedTransWeight = _fade / jointAnim._transWeight;
 			}
@@ -284,7 +287,7 @@ void AnimationStateEmi::animate() {
 
 void AnimationStateEmi::play() {
 	if (!_active) {
-		_time = 0.f;
+		_time = -1;
 		if (_fadeMode == Animation::FadeOut)
 			_fadeMode = Animation::None;
 		if (_fadeMode == Animation::FadeIn || _fade > 0.f)
@@ -295,7 +298,7 @@ void AnimationStateEmi::play() {
 
 void AnimationStateEmi::stop() {
 	_fadeMode = Animation::None;
-	_time = 0.f;
+	_time = -1;
 	deactivate();
 }
 
@@ -335,14 +338,18 @@ void AnimationStateEmi::fade(Animation::FadeMode mode, int fadeLength) {
 }
 
 void AnimationStateEmi::advance(uint msecs) {
-	_time += msecs;
+	if (_time >= 0) {
+		_time += msecs;
+	} else {
+		_time = msecs;
+	}
 }
 
 void AnimationStateEmi::saveState(SaveGame *state) {
 	state->writeBool(_looping);
 	state->writeBool(_active);
 	state->writeBool(_paused);
-	state->writeFloat(_time);
+	state->writeLESint32(_time);
 	state->writeFloat(_fade);
 	state->writeFloat(_startFade);
 	state->writeLESint32((int)_fadeMode);
@@ -354,7 +361,11 @@ void AnimationStateEmi::restoreState(SaveGame *state) {
 		_looping = state->readBool();
 		bool active = state->readBool();
 		_paused = state->readBool();
-		_time = state->readFloat();
+		if (state->saveMinorVersion() < 22) {
+			_time = (uint)state->readFloat();
+		} else {
+			_time = state->readLESint32();
+		}
 		_fade = state->readFloat();
 		_startFade = state->readFloat();
 		_fadeMode = (Animation::FadeMode)state->readLESint32();

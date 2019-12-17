@@ -92,8 +92,10 @@ EMIMeshFace::~EMIMeshFace() {
 }
 
 void EMIModel::setTex(uint32 index) {
-	if (index < _numTextures && _mats[index])
+	if (index < _numTextures && _mats[index]) {
 		_mats[index]->select();
+		g_driver->setBlendMode(_texFlags[index] & BlendAdditive);
+	}
 }
 
 void EMIModel::loadMesh(Common::SeekableReadStream *data) {
@@ -101,9 +103,13 @@ void EMIModel::loadMesh(Common::SeekableReadStream *data) {
 
 	Common::String nameString = readLAString(data);
 
-	char f[4];
-	data->read(f, 4);
-	_radius = get_float(f);
+	for (uint l = 0; l < nameString.size(); ++l) {
+		if (nameString[l] == '\\') {
+			nameString.setChar('/', l);
+		}
+	}
+	_meshName = nameString;
+	_radius = data->readFloatLE();
 	_center->readFromStream(data);
 
 	_boxData->readFromStream(data);
@@ -114,12 +120,14 @@ void EMIModel::loadMesh(Common::SeekableReadStream *data) {
 	_numTextures = data->readUint32LE();
 
 	_texNames = new Common::String[_numTextures];
+	_texFlags = new uint32[_numTextures];
 
 	for (uint32 i = 0; i < _numTextures; i++) {
 		_texNames[i] = readLAString(data);
-		// Every texname seems to be followed by 4 0-bytes (Ref mk1.mesh,
-		// this is intentional)
-		data->skip(4);
+		_texFlags[i] = data->readUint32LE();
+		if (_texFlags[i] & ~(BlendAdditive)) {
+			Debug::debug(Debug::Models, "Model %s has unknown flags (%d) for texture %s", nameString.c_str(), _texFlags[i], _texNames[i].c_str());
+		}
 	}
 
 	prepareTextures();
@@ -197,8 +205,7 @@ void EMIModel::loadMesh(Common::SeekableReadStream *data) {
 		for (int i = 0; i < _numBoneInfos; i++) {
 			_boneInfos[i]._incFac = data->readUint32LE();
 			_boneInfos[i]._joint = data->readUint32LE();
-			data->read(f, 4);
-			_boneInfos[i]._weight = get_float(f);
+			_boneInfos[i]._weight = data->readFloatLE();
 		}
 	} else {
 		_numBones = 0;
@@ -263,11 +270,7 @@ void EMIModel::prepareForRender() {
 void EMIModel::prepareTextures() {
 	_mats = new Material*[_numTextures];
 	for (uint32 i = 0; i < _numTextures; i++) {
-		// HACK: As we dont know what specialty-textures are yet, we skip loading them
-		if (!_texNames[i].contains("specialty"))
-			_mats[i] = _costume->loadMaterial(_texNames[i], false);
-		else
-			_mats[i] = g_driver->getSpecialtyTexture(_texNames[i][9] - '0');
+		_mats[i] = _costume->loadMaterial(_texNames[i], false);
 	}
 }
 
@@ -283,22 +286,32 @@ void EMIModel::draw() {
 			return;
 	}
 
-	Actor::LightMode lightMode = actor->getLightMode();
-	if (lightMode != Actor::LightNone) {
-		if (lightMode != Actor::LightStatic)
-			_lightingDirty = true;
+	if (!g_driver->supportsShaders()) {
+		// If shaders are not available, we calculate lighting in software.
+		Actor::LightMode lightMode = actor->getLightMode();
+		if (lightMode != Actor::LightNone) {
+			if (lightMode != Actor::LightStatic)
+				_lightingDirty = true;
 
-		if (_lightingDirty) {
-			updateLighting(modelToWorld);
-			_lightingDirty = false;
+			if (_lightingDirty) {
+				updateLighting(modelToWorld);
+				_lightingDirty = false;
+			}
+		}
+	} else {
+		if (actor->getLightMode() == Actor::LightNone) {
+			g_driver->disableLights();
 		}
 	}
-
 	// We will need to add a call to the skeleton, to get the modified vertices, but for now,
 	// I'll be happy with just static drawing
 	for (uint32 i = 0; i < _numFaces; i++) {
 		setTex(_faces[i]._texID);
 		g_driver->drawEMIModelFace(this, &_faces[i]);
+	}
+
+	if (g_driver->supportsShaders() && actor->getLightMode() == Actor::LightNone) {
+		g_driver->enableLights();
 	}
 }
 
@@ -310,7 +323,9 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 	Common::Array<Grim::Light *> activeLights;
 	bool hasAmbient = false;
 
-	foreach(Light *l, g_grim->getCurrSet()->getLights()) {
+	Actor *actor = _costume->getOwner();
+
+	foreach(Light *l, g_grim->getCurrSet()->getLights(actor->isInOverworld())) {
 		if (l->_enabled) {
 			activeLights.push_back(l);
 			if (l->_type == Light::Ambient)
@@ -392,7 +407,7 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 
 void EMIModel::getBoundingBox(int *x1, int *y1, int *x2, int *y2) const {
 	int winX1, winY1, winX2, winY2;
-	g_driver->getBoundingBoxPos(this, &winX1, &winY1, &winX2, &winY2);
+	g_driver->getScreenBoundingBox(this, &winX1, &winY1, &winX2, &winY2);
 	if (winX1 != -1 && winY1 != -1 && winX2 != -1 && winY2 != -1) {
 		*x1 = MIN(*x1, winX1);
 		*y1 = MIN(*y1, winY1);
@@ -412,6 +427,8 @@ Math::AABB EMIModel::calculateWorldBounds(const Math::Matrix4 &matrix) const {
 
 EMIModel::EMIModel(const Common::String &filename, Common::SeekableReadStream *data, EMICostume *costume) :
 		_fname(filename), _costume(costume) {
+	_meshAlphaMode = Actor::AlphaOff;
+	_meshAlpha = 1.0;
 	_numVertices = 0;
 	_vertices = nullptr;
 	_drawVertices = nullptr;
@@ -438,12 +455,15 @@ EMIModel::EMIModel(const Common::String &filename, Common::SeekableReadStream *d
 	_boneNames = nullptr;
 	_lighting = nullptr;
 	_lightingDirty = true;
+	_texFlags = nullptr;
 
 	loadMesh(data);
 	g_driver->createEMIModel(this);
 }
 
 EMIModel::~EMIModel() {
+	g_driver->destroyEMIModel(this);
+
 	delete[] _vertices;
 	delete[] _drawVertices;
 	delete[] _normals;
@@ -457,6 +477,7 @@ EMIModel::~EMIModel() {
 	delete[] _vertexBoneInfo;
 	delete[] _boneNames;
 	delete[] _lighting;
+	delete[] _texFlags;
 	delete _center;
 	delete _boxData;
 	delete _boxData2;

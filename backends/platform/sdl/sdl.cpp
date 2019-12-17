@@ -22,33 +22,35 @@
 
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
 
-#ifdef WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#undef ARRAYSIZE // winnt.h defines ARRAYSIZE, but we want our own one...
-#endif
-
 #include "backends/platform/sdl/sdl.h"
 #include "common/config-manager.h"
 #include "gui/EventRecorder.h"
 #include "common/taskbar.h"
 #include "common/textconsole.h"
+#include "common/translation.h"
 
 #include "backends/saves/default/default-saves.h"
 
-// Audio CD support was removed with SDL 1.3
-#if SDL_VERSION_ATLEAST(1, 3, 0)
+// Audio CD support was removed with SDL 2.0
+#if SDL_VERSION_ATLEAST(2, 0, 0)
 #include "backends/audiocd/default/default-audiocd.h"
 #else
 #include "backends/audiocd/sdl/sdl-audiocd.h"
 #endif
-
-#include "backends/events/sdl/sdl-events.h"
+#include "backends/events/default/default-events.h"
+// ResidualVM:
+// #include "backends/events/sdl/sdl-events.h"
+#include "backends/events/sdl/resvm-sdl-events.h"
 #include "backends/mutex/sdl/sdl-mutex.h"
 #include "backends/timer/sdl/sdl-timer.h"
 #include "backends/graphics/surfacesdl/surfacesdl-graphics.h"
 
-#include "icons/residualvm.xpm"
+#ifdef USE_OPENGL
+#include "backends/graphics/openglsdl/openglsdl-graphics.h"
+//#include "graphics/cursorman.h" // ResidualVM
+#include "graphics/opengl/context.h" // ResidualVM specific
+#endif
+#include "graphics/renderer.h" // ResidualVM specific
 
 #include <time.h>	// for getTimeAndDate()
 
@@ -58,14 +60,28 @@
 #endif // !WIN32
 #endif
 
+#ifdef USE_SDL_NET
+#include <SDL_net.h>
+#endif
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+#include <SDL_clipboard.h>
+#endif
+
 OSystem_SDL::OSystem_SDL()
 	:
 	_inited(false),
 	_initedSDL(false),
+#ifdef USE_SDL_NET
+	_initedSDLnet(false),
+#endif
 	_logger(0),
 	_mixerManager(0),
-	_eventSource(0) {
+	_eventSource(0),
+	_window(0) {
 
+	ConfMan.registerDefault("kbdmouse_speed", 3);
+	ConfMan.registerDefault("joystick_deadzone", 3);
 }
 
 OSystem_SDL::~OSystem_SDL() {
@@ -82,6 +98,8 @@ OSystem_SDL::~OSystem_SDL() {
 	}
 	delete _graphicsManager;
 	_graphicsManager = 0;
+	delete _window;
+	_window = 0;
 	delete _eventManager;
 	_eventManager = 0;
 	delete _eventSource;
@@ -106,6 +124,10 @@ OSystem_SDL::~OSystem_SDL() {
 	delete _logger;
 	_logger = 0;
 
+#ifdef USE_SDL_NET
+	if (_initedSDLnet) SDLNet_Quit();
+#endif
+
 	SDL_Quit();
 }
 
@@ -113,8 +135,10 @@ void OSystem_SDL::init() {
 	// Initialize SDL
 	initSDL();
 
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
 	// Enable unicode support if possible
 	SDL_EnableUNICODE(1);
+#endif
 
 	// Disable OS cursor
 	SDL_ShowCursor(SDL_DISABLE);
@@ -134,6 +158,9 @@ void OSystem_SDL::init() {
 	if (_mutexManager == 0)
 		_mutexManager = new SdlMutexManager();
 
+	if (_window == 0)
+		_window = new SdlWindow();
+
 #if defined(USE_TASKBAR)
 	if (_taskbarManager == 0)
 		_taskbarManager = new Common::TaskbarManager();
@@ -141,26 +168,56 @@ void OSystem_SDL::init() {
 
 }
 
+bool OSystem_SDL::hasFeature(Feature f) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	if (f == kFeatureClipboardSupport) return true;
+#endif
+	if (f == kFeatureJoystickDeadzone || f == kFeatureKbdMouseSpeed) {
+		bool joystickSupportEnabled = ConfMan.getInt("joystick_num") >= 0;
+		return joystickSupportEnabled;
+	}
+	return ModularBackend::hasFeature(f);
+}
+
 void OSystem_SDL::initBackend() {
 	// Check if backend has not been initialized
 	assert(!_inited);
 
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	const char *sdlDriverName = SDL_GetCurrentVideoDriver();
+#else
 	const int maxNameLen = 20;
 	char sdlDriverName[maxNameLen];
 	sdlDriverName[0] = '\0';
 	SDL_VideoDriverName(sdlDriverName, maxNameLen);
-	// Using printf rather than debug() here as debug()/logging
-	// is not active by this point.
+#endif
 	debug(1, "Using SDL Video Driver \"%s\"", sdlDriverName);
+
+// ResidualVM specific code start
+	detectDesktopResolution();
+#ifdef USE_OPENGL
+	detectFramebufferSupport();
+	detectAntiAliasingSupport();
+#endif
+// ResidualVM specific code end
 
 	// Create the default event source, in case a custom backend
 	// manager didn't provide one yet.
 	if (_eventSource == 0)
-		_eventSource = new SdlEventSource();
+		_eventSource = new ResVmSdlEventSource(); // ResidualVm: was SdlEventSource
+
+	if (_eventManager == nullptr) {
+		DefaultEventManager *eventManager = new DefaultEventManager(_eventSource);
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		// SDL 2 generates its own keyboard repeat events.
+		eventManager->setGenerateKeyRepeatEvents(false);
+#endif
+		_eventManager = eventManager;
+	}
 
 	if (_graphicsManager == 0) {
 		if (_graphicsManager == 0) {
-			_graphicsManager = new SurfaceSdlGraphicsManager(_eventSource);
+			_graphicsManager = new SurfaceSdlGraphicsManager(_eventSource, _window, _capabilities);
 		}
 	}
 
@@ -182,18 +239,10 @@ void OSystem_SDL::initBackend() {
 		_timerManager = new SdlTimerManager();
 #endif
 
-	if (_audiocdManager == 0) {
-		// Audio CD support was removed with SDL 1.3
-#if SDL_VERSION_ATLEAST(1, 3, 0)
-		_audiocdManager = new DefaultAudioCDManager();
-#else
-		_audiocdManager = new SdlAudioCDManager();
-#endif
-
-	}
+	_audiocdManager = createAudioCDManager();
 
 	// Setup a custom program icon.
-	setupIcon();
+	_window->setupIcon();
 
 	_inited = true;
 
@@ -206,20 +255,120 @@ void OSystem_SDL::initBackend() {
 	dynamic_cast<SdlGraphicsManager *>(_graphicsManager)->activateManager();
 }
 
-#if defined(USE_TASKBAR)
+// ResidualVM specific code
+void OSystem_SDL::detectDesktopResolution() {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_DisplayMode displayMode;
+	if (!SDL_GetDesktopDisplayMode(0, &displayMode)) {
+		_capabilities.desktopWidth = displayMode.w;
+		_capabilities.desktopHeight = displayMode.h;
+	}
+#else
+	// Query the desktop resolution. We simply hope nothing tried to change
+	// the resolution so far.
+	const SDL_VideoInfo *videoInfo = SDL_GetVideoInfo();
+	if (videoInfo && videoInfo->current_w > 0 && videoInfo->current_h > 0) {
+		_capabilities.desktopWidth = videoInfo->current_w;
+		_capabilities.desktopHeight = videoInfo->current_h;
+	}
+#endif
+}
+
+#ifdef USE_OPENGL
+void OSystem_SDL::detectFramebufferSupport() {
+	_capabilities.openGLFrameBuffer = false;
+#if defined(USE_GLES2)
+	// Framebuffers are always available with GLES2
+	_capabilities.openGLFrameBuffer = true;
+#elif !defined(AMIGAOS)
+	// Spawn a 32x32 window off-screen with a GL context to test if framebuffers are supported
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_Window *window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 32, 32, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+	if (window) {
+		SDL_GLContext glContext = SDL_GL_CreateContext(window);
+		if (glContext) {
+			OpenGLContext.initialize(OpenGL::kContextGL);
+			_capabilities.openGLFrameBuffer = OpenGLContext.framebufferObjectSupported;
+			OpenGLContext.reset();
+			SDL_GL_DeleteContext(glContext);
+		}
+		SDL_DestroyWindow(window);
+	}
+#else
+	SDL_putenv(const_cast<char *>("SDL_VIDEO_WINDOW_POS=9000,9000"));
+	SDL_SetVideoMode(32, 32, 0, SDL_OPENGL);
+	SDL_putenv(const_cast<char *>("SDL_VIDEO_WINDOW_POS=center"));
+	OpenGLContext.initialize(OpenGL::kContextGL);
+	_capabilities.openGLFrameBuffer = OpenGLContext.framebufferObjectSupported;
+	OpenGLContext.reset();
+#endif
+#endif
+}
+
+void OSystem_SDL::detectAntiAliasingSupport() {
+	_capabilities.openGLAntiAliasLevels.clear();
+
+	int requestedSamples = 2;
+	while (requestedSamples <= 32) {
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, requestedSamples);
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		SDL_Window *window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 32, 32, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+		if (window) {
+			SDL_GLContext glContext = SDL_GL_CreateContext(window);
+			if (glContext) {
+				int actualSamples = 0;
+				SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &actualSamples);
+
+				if (actualSamples == requestedSamples) {
+					_capabilities.openGLAntiAliasLevels.push_back(requestedSamples);
+				}
+
+				SDL_GL_DeleteContext(glContext);
+			}
+
+			SDL_DestroyWindow(window);
+		}
+#else
+		SDL_putenv(const_cast<char *>("SDL_VIDEO_WINDOW_POS=9000,9000"));
+		SDL_SetVideoMode(32, 32, 0, SDL_OPENGL);
+		SDL_putenv(const_cast<char *>("SDL_VIDEO_WINDOW_POS=center"));
+
+		int actualSamples = 0;
+		SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &actualSamples);
+
+		if (actualSamples == requestedSamples) {
+			_capabilities.openGLAntiAliasLevels.push_back(requestedSamples);
+		}
+#endif
+
+		requestedSamples *= 2;
+	}
+
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+}
+
+#endif // USE_OPENGL
+// End of ResidualVM specific code
+
 void OSystem_SDL::engineInit() {
+#ifdef USE_TASKBAR
 	// Add the started engine to the list of recent tasks
 	_taskbarManager->addRecent(ConfMan.getActiveDomainName(), ConfMan.get("description"));
 
 	// Set the overlay icon the current running engine
 	_taskbarManager->setOverlayIcon(ConfMan.getActiveDomainName(), ConfMan.get("description"));
+#endif
 }
 
 void OSystem_SDL::engineDone() {
+#ifdef USE_TASKBAR
 	// Remove overlay icon
 	_taskbarManager->setOverlayIcon("", "");
-}
 #endif
+}
 
 void OSystem_SDL::initSDL() {
 	// Check if SDL has not been initialized
@@ -233,12 +382,23 @@ void OSystem_SDL::initSDL() {
 		if (ConfMan.hasKey("disable_sdl_parachute"))
 			sdlFlags |= SDL_INIT_NOPARACHUTE;
 
-		// Initialize SDL (SDL Subsystems are initiliazed in the corresponding sdl managers)
+		// Initialize SDL (SDL Subsystems are initialized in the corresponding sdl managers)
 		if (SDL_Init(sdlFlags) == -1)
 			error("Could not initialize SDL: %s", SDL_GetError());
 
 		_initedSDL = true;
 	}
+
+#ifdef USE_SDL_NET
+	// Check if SDL_net has not been initialized
+	if (!_initedSDLnet) {
+		// Initialize SDL_net
+		if (SDLNet_Init() == -1)
+			error("Could not initialize SDL_net: %s", SDLNet_GetError());
+
+		_initedSDLnet = true;
+	}
+#endif
 }
 
 void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, int priority) {
@@ -269,16 +429,58 @@ void OSystem_SDL::setWindowCaption(const char *caption) {
 		}
 	}
 
-	SDL_WM_SetCaption(cap.c_str(), cap.c_str());
+	_window->setWindowCaption(cap);
 }
 
+// ResidualVM specific code
+void OSystem_SDL::setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d) {
+#ifdef USE_OPENGL
+	bool switchedManager = false;
+	if (accel3d && !dynamic_cast<OpenGLSdlGraphicsManager *>(_graphicsManager)) {
+		switchedManager = true;
+	} else if (!accel3d && !dynamic_cast<SurfaceSdlGraphicsManager *>(_graphicsManager)) {
+		switchedManager = true;
+	}
+
+	if (switchedManager) {
+		SdlGraphicsManager *sdlGraphicsManager = dynamic_cast<SdlGraphicsManager *>(_graphicsManager);
+		sdlGraphicsManager->deactivateManager();
+		delete _graphicsManager;
+
+		if (accel3d) {
+			_graphicsManager = sdlGraphicsManager = new OpenGLSdlGraphicsManager(_eventSource, _window, _capabilities);
+		} else {
+			_graphicsManager = sdlGraphicsManager = new SurfaceSdlGraphicsManager(_eventSource, _window, _capabilities);
+		}
+		sdlGraphicsManager->activateManager();
+	}
+#endif
+
+	ModularBackend::setupScreen(screenW, screenH, fullscreen, accel3d);
+}
+
+void OSystem_SDL::launcherInitSize(uint w, uint h) {
+	Common::String rendererConfig = ConfMan.get("renderer");
+	Graphics::RendererType desiredRendererType = Graphics::parseRendererTypeCode(rendererConfig);
+	Graphics::RendererType matchingRendererType = Graphics::getBestMatchingAvailableRendererType(desiredRendererType);
+
+	bool fullscreen = ConfMan.getBool("fullscreen");
+
+	setupScreen(w, h, fullscreen, matchingRendererType != Graphics::kRendererTypeTinyGL);
+}
+
+Common::Array<uint> OSystem_SDL::getSupportedAntiAliasingLevels() const {
+	return _capabilities.openGLAntiAliasLevels;
+}
+// End of ResidualVM specific code
+
 void OSystem_SDL::quit() {
-	delete this;
+	destroy();
 	exit(0);
 }
 
 void OSystem_SDL::fatalError() {
-	delete this;
+	destroy();
 	exit(1);
 }
 
@@ -298,54 +500,29 @@ void OSystem_SDL::logMessage(LogMessageType::Type type, const char *message) {
 	// Then log into file (via the logger)
 	if (_logger)
 		_logger->print(message);
+}
 
-	// Finally, some Windows / WinCE specific logging code.
-#if defined( USE_WINDBG )
-#if defined( _WIN32_WCE )
-	TCHAR buf_unicode[1024];
-	MultiByteToWideChar(CP_ACP, 0, message, strlen(message) + 1, buf_unicode, sizeof(buf_unicode));
-	OutputDebugString(buf_unicode);
+Common::WriteStream *OSystem_SDL::createLogFile() {
+	// Start out by resetting _logFilePath, so that in case
+	// of a failure, we know that no log file is open.
+	_logFilePath.clear();
 
-	if (type == LogMessageType::kError) {
-#ifndef DEBUG
-		drawError(message);
-#else
-		int cmon_break_into_the_debugger_if_you_please = *(int *)(message + 1);	// bus error
-		printf("%d", cmon_break_into_the_debugger_if_you_please);			// don't optimize the int out
-#endif
-	}
+	Common::String logFile = getDefaultLogFileName();
+	if (logFile.empty())
+		return nullptr;
 
-#else
-	OutputDebugString(message);
-#endif
-#endif
+	Common::FSNode file(logFile);
+	Common::WriteStream *stream = file.createWriteStream();
+	if (stream)
+		_logFilePath = logFile;
+	return stream;
 }
 
 Common::String OSystem_SDL::getSystemLanguage() const {
-#if defined(USE_DETECTLANG) && !defined(_WIN32_WCE)
-#ifdef WIN32
-	// We can not use "setlocale" (at least not for MSVC builds), since it
-	// will return locales like: "English_USA.1252", thus we need a special
-	// way to determine the locale string for Win32.
-	char langName[9];
-	char ctryName[9];
-
-	const LCID languageIdentifier = GetThreadLocale();
-
-	if (GetLocaleInfo(languageIdentifier, LOCALE_SISO639LANGNAME, langName, sizeof(langName)) != 0 &&
-		GetLocaleInfo(languageIdentifier, LOCALE_SISO3166CTRYNAME, ctryName, sizeof(ctryName)) != 0) {
-		Common::String localeName = langName;
-		localeName += "_";
-		localeName += ctryName;
-
-		return localeName;
-	} else {
-		return ModularBackend::getSystemLanguage();
-	}
-#else // WIN32
+#if defined(USE_DETECTLANG) && !defined(WIN32)
 	// Activating current locale settings
 	const Common::String locale = setlocale(LC_ALL, "");
- 
+
 	// Restore default C locale to prevent issues with
 	// portability of sscanf(), atof(), etc.
 	// See bug #3615148
@@ -370,73 +547,53 @@ Common::String OSystem_SDL::getSystemLanguage() const {
 
 		return Common::String(locale.c_str(), length);
 	}
-#endif // WIN32
 #else // USE_DETECTLANG
 	return ModularBackend::getSystemLanguage();
 #endif // USE_DETECTLANG
 }
 
-void OSystem_SDL::setupIcon() {
-	int x, y, w, h, ncols, nbytes, i;
-	unsigned int rgba[256];
-	unsigned int *icon;
-
-	if (sscanf(scummvm_icon[0], "%d %d %d %d", &w, &h, &ncols, &nbytes) != 4) {
-		warning("Wrong format of scummvm_icon[0] (%s)", scummvm_icon[0]);
-
-		return;
-	}
-	if ((w > 512) || (h > 512) || (ncols > 255) || (nbytes > 1)) {
-		warning("Could not load the built-in icon (%d %d %d %d)", w, h, ncols, nbytes);
-		return;
-	}
-	icon = (unsigned int*)malloc(w*h*sizeof(unsigned int));
-	if (!icon) {
-		warning("Could not allocate temp storage for the built-in icon");
-		return;
-	}
-
-	for (i = 0; i < ncols; i++) {
-		unsigned char code;
-		char color[32];
-		memset(color, 0, sizeof(color));
-		unsigned int col;
-		if (sscanf(scummvm_icon[1 + i], "%c c %s", &code, color) != 2) {
-			warning("Wrong format of scummvm_icon[%d] (%s)", 1 + i, scummvm_icon[1 + i]);
-		}
-		if (!strcmp(color, "None"))
-			col = 0x00000000;
-		else if (!strcmp(color, "black"))
-			col = 0xFF000000;
-		else if (color[0] == '#') {
-			if (sscanf(color + 1, "%06x", &col) != 1) {
-				warning("Wrong format of color (%s)", color + 1);
-			}
-			col |= 0xFF000000;
-		} else {
-			warning("Could not load the built-in icon (%d %s - %s) ", code, color, scummvm_icon[1 + i]);
-			free(icon);
-			return;
-		}
-
-		rgba[code] = col;
-	}
-	for (y = 0; y < h; y++) {
-		const char *line = scummvm_icon[1 + ncols + y];
-		for (x = 0; x < w; x++) {
-			icon[x + w * y] = rgba[(int)line[x]];
-		}
-	}
-
-	SDL_Surface *sdl_surf = SDL_CreateRGBSurfaceFrom(icon, w, h, 32, w * 4, 0xFF0000, 0x00FF00, 0x0000FF, 0xFF000000);
-	if (!sdl_surf) {
-		warning("SDL_CreateRGBSurfaceFrom(icon) failed");
-	}
-	SDL_WM_SetIcon(sdl_surf, NULL);
-	SDL_FreeSurface(sdl_surf);
-	free(icon);
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+bool OSystem_SDL::hasTextInClipboard() {
+	return SDL_HasClipboardText() == SDL_TRUE;
 }
 
+Common::String OSystem_SDL::getTextFromClipboard() {
+	if (!hasTextInClipboard()) return "";
+
+	char *text = SDL_GetClipboardText();
+	// The string returned by SDL is in UTF-8. Convert to the
+	// current TranslationManager encoding or ISO-8859-1.
+#ifdef USE_TRANSLATION
+	char *conv_text = SDL_iconv_string(TransMan.getCurrentCharset().c_str(), "UTF-8", text, SDL_strlen(text) + 1);
+#else
+	char *conv_text = SDL_iconv_string("ISO-8859-1", "UTF-8", text, SDL_strlen(text) + 1);
+#endif
+	if (conv_text) {
+		SDL_free(text);
+		text = conv_text;
+	}
+	Common::String strText = text;
+	SDL_free(text);
+
+	return strText;
+}
+
+bool OSystem_SDL::setTextInClipboard(const Common::String &text) {
+	// The encoding we need to use is UTF-8. Assume we currently have the
+	// current TranslationManager encoding or ISO-8859-1.
+#ifdef USE_TRANSLATION
+	char *utf8_text = SDL_iconv_string("UTF-8", TransMan.getCurrentCharset().c_str(), text.c_str(), text.size() + 1);
+#else
+	char *utf8_text = SDL_iconv_string("UTF-8", "ISO-8859-1", text.c_str(), text.size() + 1);
+#endif
+	if (utf8_text) {
+		int status = SDL_SetClipboardText(utf8_text);
+		SDL_free(utf8_text);
+		return status == 0;
+	}
+	return SDL_SetClipboardText(text.c_str()) == 0;
+}
+#endif
 
 uint32 OSystem_SDL::getMillis(bool skipRecord) {
 	uint32 millis = SDL_GetTicks();
@@ -488,4 +645,29 @@ Common::TimerManager *OSystem_SDL::getTimerManager() {
 #else
 	return _timerManager;
 #endif
+}
+
+AudioCDManager *OSystem_SDL::createAudioCDManager() {
+	// Audio CD support was removed with SDL 2.0
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	return new DefaultAudioCDManager();
+#else
+	return new SdlAudioCDManager();
+#endif
+}
+
+Common::SaveFileManager *OSystem_SDL::getSavefileManager() {
+#ifdef ENABLE_EVENTRECORDER
+    return g_eventRec.getSaveManager(_savefileManager);
+#else
+    return _savefileManager;
+#endif
+}
+
+//Not specified in base class
+Common::String OSystem_SDL::getScreenshotsPath() {
+	Common::String path = ConfMan.get("screenshotpath");
+	if (!path.empty() && !path.hasSuffix("/"))
+		path += "/";
+	return path;
 }

@@ -82,8 +82,7 @@ public:
 	 * those cases gracefully.
 	 * @note Must not be called if this file already is open (i.e. if isOpen returns true).
 	 *
-	 * @param	filename	the name of the file to open
-	 * @param	archive		the archive in which to search for the file
+	 * @param   node        the node to consider.
 	 * @return	true if file was opened successfully, false otherwise
 	 */
 	virtual bool open(const FSNode &node);
@@ -135,7 +134,7 @@ public:
  * Some design ideas:
  *  - automatically drop all files into dumps/ dir? Might not be desired in all cases
  */
-class DumpFile : public WriteStream, public NonCopyable {
+class DumpFile : public SeekableWriteStream, public NonCopyable {
 protected:
 	/** File handle to the actual file; 0 if no file is open. */
 	WriteStream *_handle;
@@ -144,7 +143,7 @@ public:
 	DumpFile();
 	virtual ~DumpFile();
 
-	virtual bool open(const String &filename);
+	virtual bool open(const String &filename, bool createPath = false);
 	virtual bool open(const FSNode &node);
 
 	virtual void close();
@@ -159,9 +158,14 @@ public:
 	bool err() const;
 	void clearErr();
 
-	virtual uint32 write(const void *dataPtr, uint32 dataSize);
+	virtual uint32 write(const void *dataPtr, uint32 dataSize) override;
 
-	virtual bool flush();
+	virtual bool flush() override;
+
+	virtual int32 pos() const override;
+
+	virtual bool seek(int32 offset, int whence = SEEK_SET) override;
+	virtual int32 size() const override;
 };
 
 } // End of namespace Common

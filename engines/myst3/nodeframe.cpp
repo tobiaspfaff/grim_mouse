@@ -29,21 +29,20 @@
 namespace Myst3 {
 
 NodeFrame::NodeFrame(Myst3Engine *vm, uint16 id) :
-	Node(vm, id) {
-	const DirectorySubEntry *jpegDesc = _vm->getFileDescription(0, id, 1, DirectorySubEntry::kLocalizedFrame);
+		Node(vm, id) {
+	const DirectorySubEntry *jpegDesc = _vm->getFileDescription("", id, 1, DirectorySubEntry::kLocalizedFrame);
 
 	if (!jpegDesc)
-		jpegDesc = _vm->getFileDescription(0, id, 0, DirectorySubEntry::kFrame);
+		jpegDesc = _vm->getFileDescription("", id, 0, DirectorySubEntry::kFrame);
 
 	if (!jpegDesc)
-		jpegDesc = _vm->getFileDescription(0, id, 1, DirectorySubEntry::kFrame);
+		jpegDesc = _vm->getFileDescription("", id, 1, DirectorySubEntry::kFrame);
 
 	if (!jpegDesc)
 		error("Frame %d does not exist", id);
 
 	_faces[0] = new Face(_vm);
 	_faces[0]->setTextureFromJPEG(jpegDesc);
-	_faces[0]->markTextureDirty();
 }
 
 NodeFrame::~NodeFrame() {
@@ -57,7 +56,6 @@ void NodeFrame::draw() {
 		screenRect = Common::Rect(Renderer::kOriginalWidth, Renderer::kOriginalHeight);
 	} else {
 		screenRect = Common::Rect(Renderer::kOriginalWidth, Renderer::kFrameHeight);
-		screenRect.translate(0, Renderer::kTopBorderHeight);
 	}
 
 	// Used fragment of texture
@@ -70,4 +68,4 @@ void NodeFrame::draw() {
 	_vm->_gfx->drawTexturedRect2D(screenRect, textureRect, _faces[0]->_texture);
 }
 
-} /* namespace Myst3 */
+} // End of namespace Myst3

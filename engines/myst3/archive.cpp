@@ -56,10 +56,10 @@ void Archive::_decryptHeader(Common::SeekableReadStream &inStream, Common::Write
 void Archive::_readDirectory() {
 	Common::MemoryWriteStreamDynamic buf(DisposeAfterUse::YES);
 	_decryptHeader(_file, buf);
-	
+
 	Common::MemoryReadStream directory(buf.getData(), buf.size());
 	directory.skip(sizeof(uint32));
-	
+
 	while (directory.pos() + 4 < directory.size()) {
 		DirectoryEntry entry(this);
 		
@@ -67,7 +67,7 @@ void Archive::_readDirectory() {
 			entry.readFromStream(directory, 0);
 		else
 			entry.readFromStream(directory, _roomName);
-		
+
 		_directory.push_back(entry);
 	}
 }
@@ -83,15 +83,26 @@ Common::MemoryReadStream *Archive::dumpToMemory(uint32 offset, uint32 size) {
 	return static_cast<Common::MemoryReadStream *>(_file.readStream(size));
 }
 
-const DirectorySubEntry *Archive::getDescription(const char *room, uint32 index, uint16 face, DirectorySubEntry::ResourceType type) {
+const DirectorySubEntry *Archive::getDescription(const Common::String &room, uint32 index, uint16 face,
+                                                 DirectorySubEntry::ResourceType type) {
 	for (uint i = 0; i < _directory.size(); i++) {
-		if (_directory[i].getIndex() == index
-				&& !strcmp(_directory[i].getRoom(), room)) {
+		if (_directory[i].getIndex() == index && _directory[i].getRoom() == room) {
 			return _directory[i].getItemDescription(face, type);
 		}
 	}
-	
+
 	return 0;
+}
+
+DirectorySubEntryList Archive::listFilesMatching(const Common::String &room, uint32 index, uint16 face,
+                                                 DirectorySubEntry::ResourceType type) {
+	for (uint i = 0; i < _directory.size(); i++) {
+		if (_directory[i].getIndex() == index && _directory[i].getRoom() == room) {
+			return _directory[i].listItemsMatching(face, type);
+		}
+	}
+
+	return DirectorySubEntryList();
 }
 
 bool Archive::open(const char *fileName, const char *room) {
@@ -115,4 +126,11 @@ void Archive::close() {
 	_file.close();
 }
 
-} // end of namespace Myst3
+Common::String Archive::getRoomName() const {
+	if (_multipleRoom) {
+		error("'%s' is a multi-room archive", _file.getName());
+	}
+
+	return _roomName;
+}
+} // End of namespace Myst3

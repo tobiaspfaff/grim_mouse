@@ -2,18 +2,15 @@ MODULE := audio
 
 MODULE_OBJS := \
 	audiostream.o \
-	fmopl.o \
 	mididrv.o \
-	midiparser.o \
-	midiparser_qt.o \
 	mixer.o \
-	mpu401.o \
 	musicplugin.o \
-	null.o \
 	timestamp.o \
+	decoders/3do.o \
 	decoders/aac.o \
 	decoders/adpcm.o \
 	decoders/aiff.o \
+	decoders/asf.o \
 	decoders/flac.o \
 	decoders/iff_sound.o \
 	decoders/mac_snd.o \
@@ -24,14 +21,13 @@ MODULE_OBJS := \
 	decoders/voc.o \
 	decoders/vorbis.o \
 	decoders/wave.o \
-	decoders/xa.o \
-	softsynth/adlib.o \
-	softsynth/cms.o \
-	softsynth/opl/dbopl.o \
-	softsynth/opl/dosbox.o \
-	softsynth/opl/mame.o \
-	softsynth/fluidsynth.o \
-	softsynth/mt32.o
+	decoders/wma.o \
+	decoders/xa.o
+
+ifdef USE_A52
+MODULE_OBJS += \
+	decoders/ac3.o
+endif
 
 ifndef USE_ARM_SOUND_ASM
 MODULE_OBJS += \

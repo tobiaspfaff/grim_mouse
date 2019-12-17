@@ -28,32 +28,42 @@
 
 #if defined(WIN32) && defined(USE_TASKBAR)
 
+// HACK: To get __MINGW64_VERSION_foo defines we need to manually include
+// _mingw.h in this file because we do not include any system headers at this
+// point on purpose. The defines are required to detect whether this is a
+// classic MinGW toolchain or a MinGW-w64 based one.
+#if defined(__MINGW32__)
+#include <_mingw.h>
+#endif
+
 // Needed for taskbar functions
-#if defined(__GNUC__) && defined(__MINGW32__) && !defined(__MINGW64__)
+// HACK: MinGW-w64 based toolchains include the symbols we require in their
+// headers. The 32 bit incarnation only defines __MINGW32__. This leads to
+// build breakage due to clashes with our compat header. Luckily MinGW-w64
+// based toolchains define __MINGW64_VERSION_foo macros inside _mingw.h,
+// which is included from all system headers. Thus we abuse that to detect
+// them.
+#if defined(__GNUC__) && defined(__MINGW32__) && !defined(__MINGW64_VERSION_MAJOR)
 	#include "backends/taskbar/win32/mingw-compat.h"
 #else
-	// We need certain functions that are excluded by default
-	#undef NONLS
-	#undef NOICONS
-	#include <windows.h>
-	#if defined(ARRAYSIZE)
-		#undef ARRAYSIZE
-	#endif
+	// We use functionality introduced with Win7 in this file.
+	// To assure that including the respective system headers gives us all
+	// required definitions we set Win7 as minimum version we target.
+	// See: https://msdn.microsoft.com/en-us/library/windows/desktop/aa383745%28v=vs.85%29.aspx#macros_for_conditional_declarations
+	#include <sdkddkver.h>
+	#undef _WIN32_WINNT
+	#define _WIN32_WINNT _WIN32_WINNT_WIN7
 
-	#if defined(_MSC_VER)
-		// Default MSVC headers for ITaskbarList3 and IShellLink
-		#include <SDKDDKVer.h>
-	#endif
+	#include <windows.h>
 #endif
 
 #include <shlobj.h>
 
-// For HWND
-#include <SDL_syswm.h>
-
 #include "common/scummsys.h"
 
 #include "backends/taskbar/win32/win32-taskbar.h"
+#include "backends/platform/sdl/win32/win32-window.h"
+#include "backends/platform/sdl/win32/win32_wrapper.h"
 
 #include "common/config-manager.h"
 #include "common/textconsole.h"
@@ -62,9 +72,9 @@
 // System.Title property key, values taken from http://msdn.microsoft.com/en-us/library/bb787584.aspx
 const PROPERTYKEY PKEY_Title = { /* fmtid = */ { 0xF29F85E0, 0x4FF9, 0x1068, { 0xAB, 0x91, 0x08, 0x00, 0x2B, 0x27, 0xB3, 0xD9 } }, /* propID = */ 2 };
 
-Win32TaskbarManager::Win32TaskbarManager() : _taskbar(NULL), _count(0), _icon(NULL) {
+Win32TaskbarManager::Win32TaskbarManager(SdlWindow_Win32 *window) : _window(window), _taskbar(NULL), _count(0), _icon(NULL) {
 	// Do nothing if not running on Windows 7 or later
-	if (!isWin7OrLater())
+	if (!Win32::confirmWindowsVersion(6, 1))
 		return;
 
 	CoInitialize(NULL);
@@ -105,7 +115,7 @@ void Win32TaskbarManager::setOverlayIcon(const Common::String &name, const Commo
 		return;
 
 	if (name.empty()) {
-		_taskbar->SetOverlayIcon(getHwnd(), NULL, L"");
+		_taskbar->SetOverlayIcon(_window->getHwnd(), NULL, L"");
 		return;
 	}
 
@@ -121,8 +131,8 @@ void Win32TaskbarManager::setOverlayIcon(const Common::String &name, const Commo
 	}
 
 	// Sets the overlay icon
-	LPWSTR desc = ansiToUnicode(description.c_str());
-	_taskbar->SetOverlayIcon(getHwnd(), pIcon, desc);
+	LPWSTR desc = Win32::ansiToUnicode(description.c_str());
+	_taskbar->SetOverlayIcon(_window->getHwnd(), pIcon, desc);
 
 	DestroyIcon(pIcon);
 
@@ -133,14 +143,14 @@ void Win32TaskbarManager::setProgressValue(int completed, int total) {
 	if (_taskbar == NULL)
 		return;
 
-	_taskbar->SetProgressValue(getHwnd(), completed, total);
+	_taskbar->SetProgressValue(_window->getHwnd(), completed, total);
 }
 
 void Win32TaskbarManager::setProgressState(TaskbarProgressState state) {
 	if (_taskbar == NULL)
 		return;
 
-	_taskbar->SetProgressState(getHwnd(), (TBPFLAG)state);
+	_taskbar->SetProgressState(_window->getHwnd(), (TBPFLAG)state);
 }
 
 void Win32TaskbarManager::setCount(int count) {
@@ -148,7 +158,7 @@ void Win32TaskbarManager::setCount(int count) {
 		return;
 
 	if (count == 0) {
-		_taskbar->SetOverlayIcon(getHwnd(), NULL, L"");
+		_taskbar->SetOverlayIcon(_window->getHwnd(), NULL, L"");
 		return;
 	}
 
@@ -255,8 +265,8 @@ void Win32TaskbarManager::setCount(int count) {
 	}
 
 	// Sets the overlay icon
-	LPWSTR desc = ansiToUnicode(Common::String::format("Found games: %d", count).c_str());
-	_taskbar->SetOverlayIcon(getHwnd(), _icon, desc);
+	LPWSTR desc = Win32::ansiToUnicode(Common::String::format("Found games: %d", count).c_str());
+	_taskbar->SetOverlayIcon(_window->getHwnd(), _icon, desc);
 	delete[] desc;
 }
 
@@ -276,8 +286,8 @@ void Win32TaskbarManager::addRecent(const Common::String &name, const Common::St
 	// Create a shell link.
 	if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC, IID_IShellLinkW, reinterpret_cast<void **> (&link)))) {
 		// Convert game name and description to Unicode.
-		LPWSTR game = ansiToUnicode(name.c_str());
-		LPWSTR desc = ansiToUnicode(description.c_str());
+		LPWSTR game = Win32::ansiToUnicode(name.c_str());
+		LPWSTR desc = Win32::ansiToUnicode(description.c_str());
 
 		// Set link properties.
 		link->SetPath(path);
@@ -287,7 +297,7 @@ void Win32TaskbarManager::addRecent(const Common::String &name, const Common::St
 		if (iconPath.empty()) {
 			link->SetIconLocation(path, 0); // No game-specific icon available
 		} else {
-			LPWSTR icon = ansiToUnicode(iconPath.c_str());
+			LPWSTR icon = Win32::ansiToUnicode(iconPath.c_str());
 
 			link->SetIconLocation(icon, 0);
 
@@ -355,65 +365,6 @@ Common::String Win32TaskbarManager::getIconPath(Common::String target) {
 	}
 
 	return "";
-}
-
-// VerSetConditionMask and VerifyVersionInfo didn't appear until Windows 2000,
-// so we need to check for them at runtime
-LONGLONG VerSetConditionMaskFunc(ULONGLONG dwlConditionMask, DWORD dwTypeMask, BYTE dwConditionMask) {
-	typedef BOOL (WINAPI *VerSetConditionMaskFunction)(ULONGLONG conditionMask, DWORD typeMask, BYTE conditionOperator);
-
-	VerSetConditionMaskFunction verSetConditionMask = (VerSetConditionMaskFunction)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "VerSetConditionMask");
-	if (verSetConditionMask == NULL)
-		return 0;
-
-	return verSetConditionMask(dwlConditionMask, dwTypeMask, dwConditionMask);
-}
-
-BOOL VerifyVersionInfoFunc(LPOSVERSIONINFOEXA lpVersionInformation, DWORD dwTypeMask, DWORDLONG dwlConditionMask) {
-   typedef BOOL (WINAPI *VerifyVersionInfoFunction)(LPOSVERSIONINFOEXA versionInformation, DWORD typeMask, DWORDLONG conditionMask);
-
-   VerifyVersionInfoFunction verifyVersionInfo = (VerifyVersionInfoFunction)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "VerifyVersionInfoA");
-   if (verifyVersionInfo == NULL)
-      return FALSE;
-
-   return verifyVersionInfo(lpVersionInformation, dwTypeMask, dwlConditionMask);
-}
-
-bool Win32TaskbarManager::isWin7OrLater() {
-	OSVERSIONINFOEX versionInfo;
-	DWORDLONG conditionMask = 0;
-
-	ZeroMemory(&versionInfo, sizeof(OSVERSIONINFOEX));
-	versionInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-	versionInfo.dwMajorVersion = 6;
-	versionInfo.dwMinorVersion = 1;
-
-	conditionMask = VerSetConditionMaskFunc(conditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
-	conditionMask = VerSetConditionMaskFunc(conditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-	return VerifyVersionInfoFunc(&versionInfo, VER_MAJORVERSION | VER_MINORVERSION, conditionMask);
-}
-
-LPWSTR Win32TaskbarManager::ansiToUnicode(const char *s) {
-	DWORD size = MultiByteToWideChar(0, 0, s, -1, NULL, 0);
-
-	if (size > 0) {
-		LPWSTR result = new WCHAR[size];
-		if (MultiByteToWideChar(0, 0, s, -1, result, size) != 0)
-			return result;
-	}
-
-	return NULL;
-}
-
-HWND Win32TaskbarManager::getHwnd() {
-	SDL_SysWMinfo wmi;
-	SDL_VERSION(&wmi.version);
-
-	if(!SDL_GetWMInfo(&wmi))
-		return NULL;
-
-	return wmi.window;
 }
 
 #endif

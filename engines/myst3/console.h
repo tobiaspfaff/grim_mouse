@@ -23,6 +23,8 @@
 #ifndef CONSOLE_H_
 #define CONSOLE_H_
 
+#include "common/debug.h"
+
 #include "gui/debugger.h"
 
 #include "engines/myst3/myst3.h"
@@ -57,5 +59,6 @@ private:
 	bool Cmd_FillInventory(int argc, const char **argv);
 };
 
-} /* namespace Myst3 */
-#endif /* CONSOLE_H_ */
+} // End of namespace Myst3
+
+#endif // CONSOLE_H_

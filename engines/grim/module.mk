@@ -17,6 +17,7 @@ MODULE_OBJS := \
 	costume/anim_component.o \
 	emi/costume/emianim_component.o \
 	emi/costume/emichore.o \
+	emi/costume/emihead.o \
 	emi/costume/emiluavar_component.o \
 	emi/costume/emiluacode_component.o \
 	emi/costume/emimesh_component.o \
@@ -72,6 +73,7 @@ MODULE_OBJS := \
 	lua/lundump.o \
 	lua/lvm.o \
 	lua/lzio.o \
+	movie/codecs/codec48.o \
 	movie/codecs/blocky8.o \
 	movie/codecs/blocky16.o \
 	movie/codecs/vima.o \
@@ -79,6 +81,7 @@ MODULE_OBJS := \
 	movie/bink.o \
 	movie/mpeg.o \
 	movie/movie.o \
+	movie/quicktime.o \
 	movie/smush.o \
 	update/packfile.o \
 	update/mscab.o \

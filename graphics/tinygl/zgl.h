@@ -1,12 +1,44 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
+
 #ifndef _tgl_zgl_h_
 #define _tgl_zgl_h_
 
 #include "common/util.h"
 #include "common/textconsole.h"
+#include "common/array.h"
+#include "common/list.h"
 
 #include "graphics/tinygl/gl.h"
 #include "graphics/tinygl/zbuffer.h"
 #include "graphics/tinygl/zmath.h"
+#include "graphics/tinygl/zblit.h"
+#include "graphics/tinygl/zdirtyrect.h"
 
 namespace TinyGL {
 
@@ -28,7 +60,6 @@ enum {
 #define SPECULAR_BUFFER_SIZE 1024
 // specular buffer granularity
 #define SPECULAR_BUFFER_RESOLUTION 1024
-
 
 #define MAX_MODELVIEW_STACK_DEPTH   35
 #define MAX_PROJECTION_STACK_DEPTH  8
@@ -57,6 +88,7 @@ struct GLLight {
 	Vector4 ambient;
 	Vector4 diffuse;
 	Vector4 specular;
+	bool has_specular;
 	Vector4 position;
 	Vector3 spot_direction;
 	float spot_exponent;
@@ -76,6 +108,7 @@ struct GLMaterial {
 	Vector4 ambient;
 	Vector4 diffuse;
 	Vector4 specular;
+	bool has_specular;
 	float shininess;
 
 	// computed values
@@ -121,6 +154,22 @@ struct GLVertex {
 	Vector4 pc;                // coordinates in the normalized volume
 	int clip_code;        // clip code
 	ZBufferPoint zp;      // integer coordinates for the rasterization
+
+	bool operator==(const GLVertex &other) const {
+		return	edge_flag == other.edge_flag &&
+				normal == other.normal &&
+				coord == other.coord && 
+				tex_coord == other.tex_coord && 
+				color == other.color &&
+				ec == other.ec &&
+				pc == other.pc && 
+				clip_code == other.clip_code &&
+				zp == other.zp;
+	}
+
+	bool operator!=(const GLVertex &other) const {
+		return !(*this == other);
+	}
 };
 
 struct GLImage {
@@ -134,8 +183,10 @@ struct GLImage {
 
 struct GLTexture {
 	GLImage images[MAX_TEXTURE_LEVELS];
-	int handle;
+	unsigned int handle;
+	int versionNumber;
 	struct GLTexture *next, *prev;
+	bool disposed;
 };
 
 
@@ -144,6 +195,56 @@ struct GLTexture {
 struct GLSharedState {
 	GLList **lists;
 	GLTexture **texture_hash_table;
+};
+
+/**
+ * A linear allocator implementation.
+ * The allocator can be initialized to a specific buffer size only once.
+ * The allocation scheme is pretty simple: pointers are returned relative to a current memory position,
+ * the allocator starts with an offset of 0 and increases its offset by the allocated amount every time.
+ * Memory is released through the method free(), care has to be taken to call the destructors of the deallocated objects either manually (for complex struct arrays) or
+ * by overriding the delete operator (with an empty implementation).
+ */
+class LinearAllocator {
+public:
+	LinearAllocator() {
+		_memoryBuffer = nullptr;
+		_memorySize = 0;
+		_memoryPosition = 0;
+	}
+
+	void initialize(size_t newSize) {
+		assert(_memoryBuffer == nullptr);
+		void *newBuffer = gl_malloc(newSize);
+		if (newBuffer == nullptr) {
+			error("Couldn't allocate memory for linear allocator.");
+		}
+		_memoryBuffer = newBuffer;
+		_memorySize = newSize;
+	}
+
+	~LinearAllocator() {
+		if (_memoryBuffer != nullptr) {
+			gl_free(_memoryBuffer);
+		}
+	}
+
+	void *allocate(size_t size) {
+		if (_memoryPosition + size >= _memorySize) {
+			error("Allocator out of memory: couldn't allocate more memory from linear allocator.");
+		}
+		size_t returnPos = _memoryPosition;
+		_memoryPosition += size;
+		return ((char *)_memoryBuffer) + returnPos;
+	}
+
+	void reset() {
+		_memoryPosition = 0;
+	}
+private:
+	void *_memoryBuffer;
+	size_t _memorySize;
+	size_t _memoryPosition;
 };
 
 struct GLContext;
@@ -155,6 +256,10 @@ typedef void (*gl_draw_triangle_func)(GLContext *c, GLVertex *p0, GLVertex *p1, 
 struct GLContext {
 	// Z buffer
 	FrameBuffer *fb;
+	Common::Rect renderRect;
+
+	// Internal texture size
+	int _textureSize;
 
 	// lights
 	GLLight lights[T_MAX_LIGHTS];
@@ -226,7 +331,6 @@ struct GLContext {
 
 	// current vertex state
 	Vector4 current_color;
-	unsigned int longcurrent_color[3]; // precomputed integer color
 	Vector4 current_normal;
 	Vector4 current_tex_coord;
 	int current_edge_flag;
@@ -272,8 +376,20 @@ struct GLContext {
 
 	// depth test
 	int depth_test;
-
 	int color_mask;
+
+	Common::Rect _scissorRect;
+
+	bool _enableDirtyRectangles;
+
+	// blit test
+	Common::List<Graphics::BlitImage *> _blitImages;
+
+	// Draw call queue
+	Common::List<Graphics::DrawCall *> _drawCallsQueue;
+	Common::List<Graphics::DrawCall *> _previousFrameDrawCallsQueue;
+	int _currentAllocatorIndex;
+	LinearAllocator _drawCallAllocator[2];
 };
 
 extern GLContext *gl_ctx;
@@ -303,6 +419,7 @@ void glInitTextures(GLContext *c);
 void glEndTextures(GLContext *c);
 GLTexture *alloc_texture(GLContext *c, int h);
 void free_texture(GLContext *c, int h);
+void free_texture(GLContext *c, GLTexture *t);
 
 // image_util.c
 void gl_resizeImage(unsigned char *dest, int xsize_dest, int ysize_dest,
@@ -310,13 +427,19 @@ void gl_resizeImage(unsigned char *dest, int xsize_dest, int ysize_dest,
 void gl_resizeImageNoInterpolate(unsigned char *dest, int xsize_dest, int ysize_dest,
 								 unsigned char *src, int xsize_src, int ysize_src);
 
+void tglIssueDrawCall(Graphics::DrawCall *drawCall);
+
+// zdirtyrect.cpp
+void tglDisposeResources(GLContext *c);
+void tglDisposeDrawCallLists(TinyGL::GLContext *c);
+
 GLContext *gl_get_context();
 
 // specular buffer "api"
 GLSpecBuf *specbuf_get_buffer(GLContext *c, const int shininess_i, const float shininess);
 void specbuf_cleanup(GLContext *c); // free all memory used
 
-void glInit(void *zbuffer);
+void glInit(void *zbuffer, int textureSize);
 void glClose();
 
 #ifdef DEBUG

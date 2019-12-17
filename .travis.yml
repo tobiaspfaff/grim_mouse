@@ -1,0 +1,139 @@
+language:
+  - cpp
+
+sudo: required
+
+branches:
+ only:
+   - master
+
+compiler:
+  - clang
+
+matrix:
+  include:
+    - os: linux
+      dist: xenial
+      services:
+        - docker
+      before_install:
+        - docker pull scummvm/buildbot-windows
+      env:
+        - CROSS_HOST=i686-w64-mingw32
+      script:
+        - mkdir -m 777 build
+        - >-
+          docker run -v $(pwd)/build:/buildbot/build -v $(pwd):/buildbot/code scummvm/buildbot-windows
+          /bin/bash -c
+          "export PATH=/usr/$CROSS_HOST/bin:$PATH;
+           cd /buildbot/build &&
+           ../code/configure --host=$CROSS_HOST &&
+           make -j4"
+      before_deploy:
+        - mkdir artifacts && cp -r build/residualvm.exe artifacts
+    - os: linux
+      dist: xenial
+      addons:
+        apt:
+          packages:
+          - debhelper
+          - dpkg-dev
+          - fakeroot
+          - g++
+          - make
+          - libsdl2-dev
+          - libjpeg-turbo8-dev
+          - libmpeg2-4-dev
+          - libogg-dev
+          - libvorbis-dev
+          - libgl1-mesa-dev
+          - libmad0-dev
+          - libpng-dev
+          - libglew-dev
+          - libfreetype6-dev
+          - zlib1g-dev
+      script:
+        - dists/debian/prepare
+        - dpkg-buildpackage -b -nc -uc
+      before_deploy:
+        - mkdir artifacts && cp ../*deb artifacts
+    - os: osx
+      addons:
+        homebrew:
+          update: true
+          packages:
+            - sdl2
+            - sdl2_net
+            - libvorbis
+            - jpeg-turbo
+            - mad
+            - libmpeg2
+            - glew
+            - bzip2
+            - zlib
+            - libiconv
+            - freetype
+      install:
+        - cp -v /usr/local/Cellar/{bzip2,libiconv,zlib}/*/lib/*.a /usr/local/lib
+      script:
+        - ./configure --enable-all-engines && make -j4
+      before_deploy:
+        - make osxsnap
+        - mkdir artifacts && cp -r ResidualVM-snapshot.dmg artifacts
+    - os: linux
+      name: "Android ARM64"
+      language: android
+      android: &android
+        components:
+          - tools
+          - platform-tools
+          - build-tools
+          - android-26
+      env:
+        - ANDROID_TARGET=android-arm64-v8a
+        - ANDROID_ABI=arm64-v8a
+        - CROSS_HOST=aarch64-linux-android
+        - ANDROID_LEVEL=26
+        - ANDROID_SDK=${ANDROID_HOME}
+        - ANDROID_NDK=${ANDROID_HOME}/ndk-bundle
+      before_install: &android-before-install
+        - mkdir -p $ANDROID_HOME/licenses
+        - echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
+      install: &android-install
+        - echo y | $ANDROID_HOME/tools/bin/sdkmanager ndk-bundle >/dev/null 2>&1
+        - ./.travis/android-build-deps
+      before_cache: &android-before-cache
+        - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+        - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+      cache: &android-cache
+        directories:
+          - $HOME/.gradle/caches/
+          - $HOME/.gradle/wrapper/
+          - $TRAVIS_BUILD_DIR/dependencies
+      script: &android-script .travis/android-build
+      before_deploy: &android-before-deploy
+        - mkdir artifacts && cp build-*/android/build/outputs/apk/release/ResidualVM-release-unsigned.apk artifacts
+    - os: linux
+      name: "Android ARM"
+      language: android
+      android: *android
+      env:
+        - ANDROID_TARGET=android-arm-v7a
+        - ANDROID_ABI=armeabi-v7a
+        - CROSS_HOST=armv7a-linux-androideabi
+        - ANDROID_LEVEL=26
+        - ANDROID_SDK=${ANDROID_HOME}
+        - ANDROID_NDK=${ANDROID_HOME}/ndk-bundle
+      before_install: *android-before-install
+      install: *android-install
+      before_cache: *android-before-cache
+      cache: *android-cache
+      script: *android-script
+      before_deploy: *android-before-deploy
+
+deploy:
+  provider: script
+  script: .travis/deploy.sh
+  skip_cleanup: true
+  on:
+    branch: master

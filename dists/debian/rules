@@ -1,14 +1,28 @@
 #!/usr/bin/make -f
 
-%:
-	dh $@
+DEB_HOST_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
 
-override_dh_auto_configure:
+%:
+	dh $@ --parallel --max-parallel=`nproc` --with autotools_dev
+
+ifeq ($(DEB_BUILD_ARCH_OS),hurd)
+ARCH_OPTS:= --disable-alsa
+endif
 ifeq ($(DEB_BUILD_ARCH_OS),kfreebsd)
-	./configure --prefix=/usr --bindir=/usr/games --datadir=/usr/share/games/residualvm --enable-release --disable-alsa
-else
-	./configure --prefix=/usr --bindir=/usr/games --datadir=/usr/share/games/residualvm --enable-release
+ARCH_OPTS:= --disable-alsa
 endif
 
-override_dh_auto_build:
-	$(MAKE)
+override_dh_auto_configure:
+	./configure \
+            --host=$(DEB_HOST_GNU_TYPE) \
+            --prefix=/usr \
+            --bindir=/usr/games \
+            --datadir=/usr/share/residualvm \
+            --enable-release \
+            ${ARCH_OPTS}
+
+override_dh_auto_test:
+
+override_dh_builddeb:
+	dh_builddeb -- -Zxz
+

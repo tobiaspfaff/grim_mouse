@@ -28,20 +28,20 @@
 
 namespace Common {
 
-static OutputFormatter s_errorOutputFormatter = 0;
+static OutputFormatter s_errorOutputFormatter = nullptr;
 
 void setErrorOutputFormatter(OutputFormatter f) {
 	s_errorOutputFormatter = f;
 }
 
-static ErrorHandler s_errorHandler = 0;
+static ErrorHandler s_errorHandler = nullptr;
 
 void setErrorHandler(ErrorHandler handler) {
 	s_errorHandler = handler;
 }
 
 
-}	// End of namespace Common
+} // End of namespace Common
 
 
 #ifndef DISABLE_TEXT_CONSOLE

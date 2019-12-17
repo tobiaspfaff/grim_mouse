@@ -25,25 +25,35 @@
 
 #include "common/rect.h"
 
+#include "engines/myst3/gfx.h"
+
 namespace Myst3 {
 
 class Myst3Engine;
 class SunSpot;
 
-class Scene {
-	private:
-		Myst3Engine *_vm;
+class Scene : public Window {
+private:
+	Myst3Engine *_vm;
 
-		Common::Point _mouseOld;
+	uint _mouseSpeed;
 
-	public:
-		Scene(Myst3Engine *vm);
+public:
+	Scene(Myst3Engine *vm);
 
-		void updateCamera(Common::Point &mouse);
+	// Window API
+	Common::Rect getPosition() const override;
+	Common::Rect getOriginalPosition() const override;
 
-		void drawBlackBorders();
-		void drawSunspotFlare(const SunSpot &s);
-		float distanceToZone(float spotHeading, float spotPitch, float spotRadius, float heading, float pitch);
+	void updateCamera(Common::Point &mouse);
+
+	void updateMouseSpeed();
+
+	void screenPosToDirection(const Common::Point &screen, float &pitch, float &heading) const;
+	static Math::Vector3d directionToVector(float pitch, float heading);
+
+	void drawSunspotFlare(const SunSpot &s);
+	float distanceToZone(float spotHeading, float spotPitch, float spotRadius, float heading, float pitch);
 };
 
 } // end of namespace Myst3

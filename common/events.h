@@ -72,21 +72,28 @@ enum EventType {
 	 * use events to ask for the save game dialog or to pause the engine.
 	 * An associated enumerated type can accomplish this.
 	 **/
-	EVENT_PREDICTIVE_DIALOG = 12
+	EVENT_PREDICTIVE_DIALOG = 12,
 
 #ifdef ENABLE_KEYMAPPER
-	,
 	// IMPORTANT NOTE: This is part of the WIP Keymapper. If you plan to use
 	// this, please talk to tsoliman and/or LordHoto.
 	EVENT_CUSTOM_BACKEND_ACTION = 18,
 	EVENT_CUSTOM_BACKEND_HARDWARE = 21,
 	EVENT_GUI_REMAP_COMPLETE_ACTION = 22,
-	EVENT_KEYMAPPER_REMAP = 19
+	EVENT_KEYMAPPER_REMAP = 19,
 #endif
 #ifdef ENABLE_VKEYBD
-	,
-	EVENT_VIRTUAL_KEYBOARD = 20
+	EVENT_VIRTUAL_KEYBOARD = 20,
 #endif
+
+	EVENT_DROP_FILE = 23,
+	EVENT_CLIPBOARD_UPDATE = 27
+
+/* START of ResidualVM-specific code */
+	,
+	EVENT_JOYAXIS_MOTION = 24,
+	EVENT_JOYBUTTON_DOWN = 25,
+	EVENT_JOYBUTTON_UP = 26
 	,
 	// special events for touch interaction
 	EVENT_DOUBLETAP = 100,
@@ -95,23 +102,76 @@ enum EventType {
 	EVENT_SCROLL_MOVE = 103
 };
 
+const int16 JOYAXIS_MIN = -32768;
+const int16 JOYAXIS_MAX = 32767;
+
+/**
+ * Data structure for joystick events
+ */
+struct JoystickState {
+	/** The axis for EVENT_JOYAXIS_MOTION events */
+	byte axis;
+	/** The new axis position for EVENT_JOYAXIS_MOTION events */
+	int16 position;
+	/**
+	 * The button index for EVENT_JOYBUTTON_DOWN/UP events
+	 *
+	 * Some of the button indices match well-known game controller
+	 * buttons. See JoystickButton.
+	 */
+	byte button;
+};
+
+/**
+ *  The list named buttons available from a joystick
+ */
+enum JoystickButton {
+	JOYSTICK_BUTTON_A,
+	JOYSTICK_BUTTON_B,
+	JOYSTICK_BUTTON_X,
+	JOYSTICK_BUTTON_Y,
+	JOYSTICK_BUTTON_BACK,
+	JOYSTICK_BUTTON_GUIDE,
+	JOYSTICK_BUTTON_START,
+	JOYSTICK_BUTTON_LEFT_STICK,
+	JOYSTICK_BUTTON_RIGHT_STICK,
+	JOYSTICK_BUTTON_LEFT_SHOULDER,
+	JOYSTICK_BUTTON_RIGHT_SHOULDER,
+	JOYSTICK_BUTTON_DPAD_UP,
+	JOYSTICK_BUTTON_DPAD_DOWN,
+	JOYSTICK_BUTTON_DPAD_LEFT,
+	JOYSTICK_BUTTON_DPAD_RIGHT,
+	// Left and right trigger button events are generated in place of the axis events for now
+	JOYSTICK_BUTTON_LEFT_TRIGGER,
+	JOYSTICK_BUTTON_RIGHT_TRIGGER
+};
+
+/* END of ResidualVM-specific code */
+
 typedef uint32 CustomEventType;
+
 /**
  * Data structure for an event. A pointer to an instance of Event
  * can be passed to pollEvent.
  */
 struct Event {
+
 	/** The type of the event. */
 	EventType type;
-	/** Flag to indicate if the event is real or synthetic. E.g. keyboard
-	  * repeat events are synthetic.
-	  */
-	bool synthetic;
+
+	/**
+	 * True if this is a key down repeat event.
+	 *
+	 * Only valid for EVENT_KEYDOWN events.
+	 */
+	bool kbdRepeat;
+
 	/**
 	  * Keyboard data; only valid for keyboard events (EVENT_KEYDOWN and
 	  * EVENT_KEYUP). For all other event types, content is undefined.
 	  */
 	KeyState kbd;
+
 	/**
 	 * The mouse coordinates, in virtual screen coordinates. Only valid
 	 * for mouse events.
@@ -126,6 +186,9 @@ struct Event {
 	CustomEventType customType;
 #endif
 
+	/* The path of the file or directory dragged to the ScummVM window */
+	Common::String path;
+
 	/**
 	 * Mouse movement since the last mouse movement event.
 	 *
@@ -134,7 +197,15 @@ struct Event {
 	Common::Point relMouse;
 	Common::Point origin;
 
-	Event() : type(EVENT_INVALID), synthetic(false) {
+	/**
+	 * Joystick data; only valid for joystick events (EVENT_JOYAXIS_MOTION,
+	 * EVENT_JOYBUTTON_DOWN and EVENT_JOYBUTTON_UP).
+	 *
+	 * This field is ResidualVM specific
+	 */
+	JoystickState joystick;
+
+	Event() : type(EVENT_INVALID), kbdRepeat(false) {
 #ifdef ENABLE_KEYMAPPER
 		customType = 0;
 #endif
@@ -296,6 +367,12 @@ public:
 	void dispatch();
 
 	/**
+	 * Clear all events currently in the event queue.
+	 * The cleared events are not dispatched and are simply discarded.
+	 */
+	void clearEvents();
+
+	/**
 	 * Registers an event mapper with the dispatcher.
 	 *
 	 * The ownership of the "mapper" variable will pass
@@ -331,7 +408,7 @@ public:
 	/**
 	 * Registers a new EventObserver with the Dispatcher.
 	 *
-	 * @param listenPools if set, then all pollEvent() calls are passed to observer
+	 * @param listenPolls if set, then all pollEvent() calls are passed to observer
 	 *                    currently it is used by keyMapper
 	 */
 	void registerObserver(EventObserver *obs, uint priority, bool autoFree, bool listenPolls = false);
@@ -391,6 +468,7 @@ public:
 	 * @note	called after graphics system has been set up
 	 */
 	virtual void init() {}
+
 	/**
 	 * Get the next event in the event queue.
 	 * @param event	point to an Event struct, which will be filled with the event data.
@@ -402,6 +480,11 @@ public:
 	 * Pushes a "fake" event into the event queue
 	 */
 	virtual void pushEvent(const Event &event) = 0;
+
+	/**
+	 * Purges all unprocessed mouse events already in the event queue.
+	 */
+	virtual void purgeMouseEvents() = 0;
 
 	/** Return the current mouse position */
 	virtual Point getMousePos() const = 0;

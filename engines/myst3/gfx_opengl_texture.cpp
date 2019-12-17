@@ -20,29 +20,45 @@
  *
  */
 
+#include "common/scummsys.h"
+
+#if defined(USE_OPENGL) || defined(USE_GLES2) || defined(USE_OPENGL_SHADERS)
+
 #include "engines/myst3/gfx_opengl_texture.h"
+
+#include "graphics/opengl/context.h"
 
 namespace Myst3 {
 
 // From Bit Twiddling Hacks
 static uint32 upperPowerOfTwo(uint32 v) {
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-    return v;
+	v--;
+	v |= v >> 1;
+	v |= v >> 2;
+	v |= v >> 4;
+	v |= v >> 8;
+	v |= v >> 16;
+	v++;
+	return v;
 }
 
-OpenGLTexture::OpenGLTexture(const Graphics::Surface *surface, bool nonPoTSupport) {
+OpenGLTexture::OpenGLTexture() :
+		internalFormat(0),
+		sourceFormat(0),
+		internalWidth(0),
+		internalHeight(0),
+		upsideDown(false) {
+	glGenTextures(1, &id);
+}
+
+OpenGLTexture::OpenGLTexture(const Graphics::Surface *surface) {
 	width = surface->w;
 	height = surface->h;
 	format = surface->format;
+	upsideDown = false;
 
 	// Pad the textures if non power of two support is unavailable
-	if (nonPoTSupport) {
+	if (OpenGLContext.NPOTSupported) {
 		internalHeight = height;
 		internalWidth = width;
 	} else {
@@ -51,6 +67,8 @@ OpenGLTexture::OpenGLTexture(const Graphics::Surface *surface, bool nonPoTSuppor
 	}
 
 	if (format.bytesPerPixel == 4) {
+		assert(surface->format == getRGBAPixelFormat());
+
 		internalFormat = GL_RGBA;
 		sourceFormat = GL_UNSIGNED_BYTE;
 	} else if (format.bytesPerPixel == 2) {
@@ -71,6 +89,7 @@ OpenGLTexture::OpenGLTexture(const Graphics::Surface *surface, bool nonPoTSuppor
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 	update(surface);
+
 }
 
 OpenGLTexture::~OpenGLTexture() {
@@ -78,8 +97,52 @@ OpenGLTexture::~OpenGLTexture() {
 }
 
 void OpenGLTexture::update(const Graphics::Surface *surface) {
-	glBindTexture(GL_TEXTURE_2D, id);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->w, surface->h, internalFormat, sourceFormat, surface->getPixels());
+	updatePartial(surface, Common::Rect(surface->w, surface->h));
 }
 
-} // end of namespace Myst3
+void OpenGLTexture::updateTexture(const Graphics::Surface *surface, const Common::Rect &rect) {
+	assert(surface->format == format);
+
+	glBindTexture(GL_TEXTURE_2D, id);
+
+	if (OpenGLContext.unpackSubImageSupported) {
+		const Graphics::Surface subArea = surface->getSubArea(rect);
+
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, surface->pitch / surface->format.bytesPerPixel);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, rect.left, rect.top, subArea.w, subArea.h, internalFormat, sourceFormat, subArea.getPixels());
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	} else {
+		// GL_UNPACK_ROW_LENGTH is not supported, don't bother and do a full texture update
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->w, surface->h, internalFormat, sourceFormat, surface->getPixels());
+	}
+}
+
+void OpenGLTexture::updatePartial(const Graphics::Surface *surface, const Common::Rect &rect) {
+	updateTexture(surface, rect);
+}
+
+void OpenGLTexture::copyFromFramebuffer(const Common::Rect &screen) {
+	internalFormat = GL_RGB;
+	width  = screen.width();
+	height = screen.height();
+	upsideDown = true;
+
+	// Pad the textures if non power of two support is unavailable
+	if (OpenGLContext.NPOTSupported) {
+		internalHeight = height;
+		internalWidth = width;
+	} else {
+		internalHeight = upperPowerOfTwo(height);
+		internalWidth = upperPowerOfTwo(width);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, id);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glCopyTexImage2D(GL_TEXTURE_2D, 0, internalFormat, screen.left, screen.top, internalWidth, internalHeight, 0);
+}
+
+} // End of namespace Myst3
+
+#endif

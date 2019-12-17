@@ -26,6 +26,7 @@
 #include "common/config-manager.h"
 
 #include "graphics/pixelbuffer.h"
+#include "graphics/renderer.h"
 #include "graphics/colormasks.h"
 
 #include "math/matrix3.h"
@@ -39,6 +40,7 @@
 #include "engines/grim/bitmap.h"
 #include "engines/grim/font.h"
 #include "engines/grim/gfx_base.h"
+#include "engines/grim/localize.h"
 
 #include "engines/grim/lua/lauxlib.h"
 #include "engines/grim/lua/luadebug.h"
@@ -177,7 +179,10 @@ void Lua_V1::MakeColor() {
 		b = clamp_color((int)lua_getnumber(bObj));
 
 	Color c(r, g, b);
-	lua_pushusertag(c.toEncodedValue(), MKTAG('C','O','L','R'));
+	int32 cTag = c.toEncodedValue();
+	if (g_grim->getGameType() == GType_MONKEY4)
+		cTag |= (0xFF << 24);
+	lua_pushusertag(cTag, MKTAG('C','O','L','R'));
 }
 
 void Lua_V1::GetColorComponents() {
@@ -285,7 +290,11 @@ void Lua_V1::Is3DHardwareEnabled() {
 void Lua_V1::SetHardwareState() {
 	// changing only in config setup (software/hardware rendering)
 	bool accel = getbool(1);
-	ConfMan.setBool("soft_renderer", !accel);
+
+	Graphics::RendererType renderer = accel ? Graphics::kRendererTypeOpenGL : Graphics::kRendererTypeTinyGL;
+	renderer = Graphics::getBestMatchingAvailableRendererType(renderer);
+	ConfMan.set("renderer", Graphics::getRendererTypeCode(renderer));
+
 	g_grim->changeHardwareState();
 }
 
@@ -363,7 +372,7 @@ void Lua_V1::RotateVector() {
 	Math::Angle roll = lua_getnumber(lua_gettable());
 
 	Math::Matrix3 mat;
-	mat.buildFromXYZ(yaw, pitch, roll, Math::EO_ZXY);
+	mat.buildFromEuler(yaw, pitch, roll, Math::EO_ZXY);
 	mat.transformVector(&vec);
 
 	lua_Object resObj = lua_createtable();
@@ -410,7 +419,7 @@ void Lua_V1::FileFindFirst() {
 	const char *extension = lua_getstring(extObj);
 	Common::String searchString = extension;
 	if (searchString == "*.gsv") {
-		searchString = "grim*.gsv";
+		searchString = "grim##.gsv";
 	}
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
 	g_grim->_listFiles = saveFileMan->listSavefiles(searchString);
@@ -494,8 +503,9 @@ void Lua_V1::GetSpeechMode() {
 }
 
 void Lua_V1::GetDiskFreeSpace() {
-	// amount of free space in MB, used for creating saves
-	lua_pushnumber(50);
+	//the ps2 version of emi wants more than 600 KB
+	//grim: amount of free space in MB, used for creating saves
+	lua_pushnumber(700);
 }
 
 void Lua_V1::GetCurrentScript() {
@@ -550,6 +560,7 @@ void Lua_V1::SubmitSaveGameData() {
 		error("Cannot obtain saved game");
 	savedState->beginSection('SUBS');
 	int count = 0;
+	Common::String localized;
 	for (;;) {
 		lua_pushobject(table);
 		lua_pushnumber(count);
@@ -558,18 +569,37 @@ void Lua_V1::SubmitSaveGameData() {
 		if (lua_isnil(table2))
 			break;
 		str = lua_getstring(table2);
+		if (g_grim->getGameType() == GType_MONKEY4 &&
+			g_grim->getGamePlatform() == Common::kPlatformPS2) {
+			if (count == 1) {
+				localized = g_localizer->localize(str);
+			}
+		}
 		int32 len = strlen(str) + 1;
 		savedState->writeLESint32(len);
 		savedState->write(str, len);
 	}
 	savedState->endSection();
+	
+	//give ps2 saves a human-readable name
+	if (g_grim->getGameType() == GType_MONKEY4 &&
+		g_grim->getGamePlatform() == Common::kPlatformPS2) {
+		savedState->beginSection('PS2S');
+		savedState->writeLESint32(localized.size() + 1);
+		savedState->write(localized.c_str(), localized.size() + 1);
+		savedState->endSection();
+	}
 }
 
 void Lua_V1::GetSaveGameData() {
 	lua_Object param = lua_getparam(1);
 	if (!lua_isstring(param))
 		return;
-	const char *filename = lua_getstring(param);
+	Common::String filename(lua_getstring(param));
+	if (g_grim->getGameType() == GType_MONKEY4 &&
+		g_grim->getGamePlatform() == Common::kPlatformPS2) {
+		filename += ".ps2";
+	}
 	SaveGame *savedState = SaveGame::openForLoading(filename);
 	lua_Object result = lua_createtable();
 
@@ -581,10 +611,10 @@ void Lua_V1::GetSaveGameData() {
 		lua_pushobject(result);
 
 		if (!savedState) {
-			warning("Savegame %s is invalid", filename);
+			warning("Savegame %s is invalid", filename.c_str());
 		} else {
 			warning("Savegame %s is incompatible with this ResidualVM build. Save version: %d.%d; current version: %d.%d",
-					filename, savedState->saveMajorVersion(), savedState->saveMinorVersion(),
+					filename.c_str(), savedState->saveMajorVersion(), savedState->saveMinorVersion(),
 					SaveGame::SAVEGAME_MAJOR_VERSION, SaveGame::SAVEGAME_MINOR_VERSION);
 		}
 		delete savedState;
@@ -616,11 +646,16 @@ void Lua_V1::GetSaveGameData() {
 }
 
 void Lua_V1::Load() {
-	lua_Object fileName = lua_getparam(1);
-	if (lua_isnil(fileName)) {
+	lua_Object fileNameObj = lua_getparam(1);
+	if (lua_isnil(fileNameObj)) {
 		g_grim->loadGame("");
-	} else if (lua_isstring(fileName)) {
-		g_grim->loadGame(lua_getstring(fileName));
+	} else if (lua_isstring(fileNameObj)) {
+		Common::String fileName(lua_getstring(fileNameObj));
+		if (g_grim->getGameType() == GType_MONKEY4 &&
+			g_grim->getGamePlatform() == Common::kPlatformPS2) {
+			fileName += ".ps2";
+		}
+		g_grim->loadGame(fileName);
 	} else {
 		warning("Load() fileName is wrong");
 		return;
@@ -628,11 +663,16 @@ void Lua_V1::Load() {
 }
 
 void Lua_V1::Save() {
-	lua_Object fileName = lua_getparam(1);
-	if (lua_isnil(fileName)) {
+	lua_Object fileNameObj = lua_getparam(1);
+	if (lua_isnil(fileNameObj)) {
 		g_grim->saveGame("");
-	} else if (lua_isstring(fileName)) {
-		g_grim->saveGame(lua_getstring(fileName));
+	} else if (lua_isstring(fileNameObj)) {
+		Common::String fileName(lua_getstring(fileNameObj));
+		if (g_grim->getGameType() == GType_MONKEY4 &&
+			g_grim->getGamePlatform() == Common::kPlatformPS2) {
+			fileName += ".ps2";
+		}
+		g_grim->saveGame(fileName);
 	} else {
 		warning("Save() fileName is wrong");
 		return;
@@ -1017,9 +1057,9 @@ void Lua_V1::boot() {
 }
 
 void Lua_V1::postRestoreHandle() {
-	lua_beginblock();
 
 	if (g_grim->getGameType() == GType_GRIM) {
+		lua_beginblock();
 		// Set the developerMode, since the save contains the value of
 		// the installation it was made with.
 		lua_pushobject(lua_getglobal("developerMode"));

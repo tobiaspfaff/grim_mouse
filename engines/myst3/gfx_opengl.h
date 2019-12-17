@@ -31,41 +31,36 @@
 
 namespace Myst3 {
 
-class OpenGLRenderer : public BaseRenderer {
+class OpenGLRenderer : public Renderer {
 public:
 	OpenGLRenderer(OSystem *_system);
 	virtual ~OpenGLRenderer();
 
-	virtual void init();
+	virtual void init() override;
 
-	virtual void clear();
-	virtual void setupCameraOrtho2D();
-	virtual void setupCameraPerspective(float pitch, float heading, float fov);
+	virtual void clear() override;
+	virtual void selectTargetWindow(Window *window, bool is3D, bool scaled) override;
 
-	Texture *createTexture(const Graphics::Surface *surface);
-	void freeTexture(Texture *texture);
+	Texture *createTexture(const Graphics::Surface *surface) override;
+	void freeTexture(Texture *texture) override;
 
-	virtual void drawRect2D(const Common::Rect &rect, uint32 color);
-	virtual void drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect, Texture *texture, float transparency = -1.0);
+	virtual void drawRect2D(const Common::Rect &rect, uint32 color) override;
+	virtual void drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect, Texture *texture,
+	                                float transparency = -1.0, bool additiveBlending = false) override;
 	virtual void drawTexturedRect3D(const Math::Vector3d &topLeft, const Math::Vector3d &bottomLeft,
 	                                const Math::Vector3d &topRight, const Math::Vector3d &bottomRight,
-	                                Texture *texture);
+	                                Texture *texture) override;
 
-	virtual void drawCube(Texture **textures);
-	virtual void draw2DText(const Common::String &text, const Common::Point &position);
+	virtual void drawCube(Texture **textures) override;
+	virtual void draw2DText(const Common::String &text, const Common::Point &position) override;
 
-	virtual Graphics::Surface *getScreenshot();
-
-	virtual void screenPosToDirection(const Common::Point screen, float &pitch, float &heading);
+	virtual Graphics::Surface *getScreenshot() override;
+	Texture *copyScreenshotToTexture() override;
 
 private:
-	int _cubeViewport[4];
-	double _cubeProjectionMatrix[16];
-	double _cubeModelViewMatrix[16];
-
-	bool _nonPowerOfTwoTexSupport;
+	void drawFace(uint face, Texture *texture);
 };
 
-} // end of namespace Myst3
+} // End of namespace Myst3
 
-#endif /* GFX_H_ */
+#endif // GFX_H_

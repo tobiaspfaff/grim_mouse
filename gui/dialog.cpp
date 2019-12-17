@@ -21,10 +21,7 @@
  */
 
 #include "common/rect.h"
-
-#ifdef ENABLE_KEYMAPPER
 #include "common/events.h"
-#endif
 
 #include "gui/gui-manager.h"
 #include "gui/dialog.h"
@@ -51,6 +48,8 @@ Dialog::Dialog(int x, int y, int w, int h)
 	// will for example crash after returning to the launcher when the user
 	// started a 640x480 game with a non 1x scaler.
 	g_gui.checkScreenChange();
+
+	_result = -1;
 }
 
 Dialog::Dialog(const Common::String &name)
@@ -66,6 +65,8 @@ Dialog::Dialog(const Common::String &name)
 	// Fixes bug #1590596: "HE: When 3x graphics are choosen, F5 crashes game"
 	// and bug #1595627: "SCUMM: F5 crashes game (640x480)"
 	g_gui.checkScreenChange();
+
+	_result = -1;
 }
 
 int Dialog::runModal() {
@@ -84,13 +85,7 @@ void Dialog::open() {
 	_visible = true;
 	g_gui.openDialog(this);
 
-	Widget *w = _firstWidget;
-	// Search for the first objects that wantsFocus() (if any) and give it the focus
-	while (w && !w->wantsFocus()) {
-		w = w->_next;
-	}
-
-	setFocusWidget(w);
+	setDefaultFocusedWidget();
 }
 
 void Dialog::close() {
@@ -109,16 +104,18 @@ void Dialog::reflowLayout() {
 	// changed, so any cached image may be invalid. The subsequent redraw
 	// should be treated as the very first draw.
 
+	GuiObject::reflowLayout();
+
 	Widget *w = _firstWidget;
 	while (w) {
 		w->reflowLayout();
 		w = w->_next;
 	}
-
-	GuiObject::reflowLayout();
 }
 
 void Dialog::lostFocus() {
+	_dragWidget = NULL;
+
 	if (_tickleWidget) {
 		_tickleWidget->lostFocus();
 	}
@@ -136,6 +133,16 @@ void Dialog::setFocusWidget(Widget *widget) {
 	_focusedWidget = widget;
 }
 
+void Dialog::setDefaultFocusedWidget() {
+	Widget *w = _firstWidget;
+	// Search for the first objects that wantsFocus() (if any) and give it the focus
+	while (w && !w->wantsFocus()) {
+		w = w->_next;
+	}
+
+	setFocusWidget(w);
+}
+
 void Dialog::releaseFocus() {
 	if (_focusedWidget) {
 		_focusedWidget->lostFocus();
@@ -143,20 +150,31 @@ void Dialog::releaseFocus() {
 	}
 }
 
-void Dialog::draw() {
-	//TANOKU - FIXME when is this enabled? what does this do?
-	// Update: called on tab drawing, mainly...
-	// we can pass this as open a new dialog or something
-//	g_gui._needRedraw = true;
-	g_gui._redrawStatus = GUI::GuiManager::kRedrawTopDialog;
+void Dialog::markWidgetsAsDirty() {
+	Widget *w = _firstWidget;
+	while (w) {
+		w->markAsDirty();
+		w = w->_next;
+	}
 }
 
-void Dialog::drawDialog() {
+void Dialog::drawDialog(DrawLayer layerToDraw) {
 
 	if (!isVisible())
 		return;
 
-	g_gui.theme()->drawDialogBackground(Common::Rect(_x, _y, _x+_w, _y+_h), _backgroundType);
+	g_gui.theme()->disableClipRect();
+	g_gui.theme()->_layerToDraw = layerToDraw;
+	g_gui.theme()->drawDialogBackground(Common::Rect(_x, _y, _x + _w, _y + _h), _backgroundType);
+
+	markWidgetsAsDirty();
+	drawWidgets();
+}
+
+void Dialog::drawWidgets() {
+
+	if (!isVisible())
+		return;
 
 	// Draw all children
 	Widget *w = _firstWidget;
@@ -219,7 +237,7 @@ void Dialog::handleMouseWheel(int x, int y, int direction) {
 	if (!w)
 		w = _focusedWidget;
 	if (w)
-		w->handleMouseWheel(x, y, direction);
+		w->handleMouseWheel(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y), direction);
 }
 
 void Dialog::handleKeyDown(Common::KeyState state) {
@@ -339,9 +357,8 @@ void Dialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
 	}
 }
 
-#ifdef ENABLE_KEYMAPPER
 void Dialog::handleOtherEvent(Common::Event evt) { }
-#endif
+
 /*
  * Determine the widget at location (x,y) if any. Assumes the coordinates are
  * in the local coordinate system, i.e. relative to the top left of the dialog.
@@ -355,11 +372,11 @@ Widget *Dialog::findWidget(const char *name) {
 }
 
 void Dialog::removeWidget(Widget *del) {
-	if (del == _mouseWidget)
+	if (del == _mouseWidget || del->containsWidget(_mouseWidget))
 		_mouseWidget = NULL;
-	if (del == _focusedWidget)
+	if (del == _focusedWidget || del->containsWidget(_focusedWidget))
 		_focusedWidget = NULL;
-	if (del == _dragWidget)
+	if (del == _dragWidget || del->containsWidget(_dragWidget))
 		_dragWidget = NULL;
 
 	GuiObject::removeWidget(del);

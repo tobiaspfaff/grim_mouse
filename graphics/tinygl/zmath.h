@@ -1,3 +1,31 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
+
 #ifndef GRAPHICS_TINYGL_ZMATH_H
 #define GRAPHICS_TINYGL_ZMATH_H
 
@@ -198,7 +226,7 @@ public:
 	Matrix4 inverseOrtho() const;
 	Matrix4 inverse() const;
 
-	static Matrix4 frustrum(float left, float right, float bottom, float top, float nearp, float farp);
+	static Matrix4 frustum(float left, float right, float bottom, float top, float nearp, float farp);
 
 	inline void transform(const Vector3 &vector, Vector3 &out) const {
 		out.X = vector.X * _m[0][0] + vector.Y * _m[0][1] + vector.Z * _m[0][2] + _m[0][3];

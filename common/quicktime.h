@@ -74,12 +74,12 @@ public:
 	/**
 	 * Set the beginning offset of the video so we can modify the offsets in the stco
 	 * atom of videos inside the Mohawk archives
-	 * @param the beginning offset of the video
+	 * @param offset the beginning offset of the video
 	 */
 	void setChunkBeginOffset(uint32 offset) { _beginOffset = offset; }
 
 	/** Find out if this parser has an open file handle */
-	bool isOpen() const { return _fd != 0; }
+	bool isOpen() const { return _fd != nullptr; }
 
 protected:
 	// This is the file handle from which data is read from. It can be the actual file handle or a decompressed stream.
@@ -150,8 +150,7 @@ protected:
 
 		Array<SampleDesc *> sampleDescs;
 
-		uint32 editCount;
-		EditListEntry *editList;
+		Common::Array<EditListEntry> editList;
 
 		uint32 frameCount;
 		uint32 duration;

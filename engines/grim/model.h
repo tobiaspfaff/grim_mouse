@@ -25,6 +25,7 @@
 
 #include "engines/grim/object.h"
 #include "math/matrix4.h"
+#include "math/quat.h"
 
 namespace Common {
 class SeekableReadStream;
@@ -168,7 +169,8 @@ public:
 	void addSprite(Sprite *sprite);
 	void removeSprite(const Sprite *sprite);
 	void translateViewpoint() const;
-	void translateViewpointBack() const;
+	void translateViewpointStart() const;
+	void translateViewpointFinish() const;
 
 	char _name[64];
 	Mesh *_mesh;
@@ -186,12 +188,13 @@ public:
 	int _type;
 	int _depth, _numChildren;
 	ModelNode *_parent, *_child, *_sibling;
+	// Specifies the bind pose for this node. This data is read from the model file and never altered
+	// (could be const).
 	Math::Vector3d _pos, _pivot;
-	// Specifies the bind pose YPR values for this node. This data
-	// is read from the model file and never altered (could be const).
-	Math::Angle _pitch, _yaw, _roll;
+	Math::Quaternion _rot;
+	// Specifies the animated pose for this node.
 	Math::Vector3d _animPos;
-	Math::Angle _animPitch, _animYaw, _animRoll;
+	Math::Quaternion _animRot;
 	bool _meshVisible, _hierVisible;
 	bool _initialized;
 	bool _needsUpdate;

@@ -48,6 +48,7 @@ class TextObject;
 class PrimitiveObject;
 class Debugger;
 class LuaBase;
+class GfxBase;
 class Cursor;
 class HotspotMan;
 
@@ -57,8 +58,6 @@ enum GrimGameType {
 };
 
 struct GrimGameDescription;
-
-typedef Common::HashMap<Common::String, const char *>StringPtrHashMap;
 
 struct ControlDescriptor {
 	const char *name;
@@ -70,6 +69,7 @@ class GrimEngine : public Engine {
 protected:
 	// Engine APIs
 	virtual Common::Error run() override;
+	virtual GUI::Debugger *getDebugger() override { return (GUI::Debugger *)_debugger; }
 
 public:
 	enum EngineMode {
@@ -98,11 +98,6 @@ public:
 	bool canLoadGameStateCurrently() override { return true; }
 	Common::Error loadGameState(int slot) override;
 
-	bool loadSaveDirectory(void);
-	void makeSystemMenu(void);
-	int modifyGameSpeed(int speedChange);
-	int getTimerDelay() const;
-
 	void setMode(EngineMode mode);
 	EngineMode getMode() { return _mode; }
 	void setPreviousMode(EngineMode mode) { _previousMode = mode; }
@@ -118,7 +113,6 @@ public:
 	void setFlipEnable(bool state) { _flipEnable = state; }
 	bool getFlipEnable() { return _flipEnable; }
 	virtual void drawTextObjects();
-	void drawPrimitives();
 	void drawCursor();
 	void playIrisAnimation(Iris::Direction dir, int x, int y, int time);
 
@@ -189,9 +183,10 @@ public:
 
 	TextObjectDefaults _sayLineDefaults, _printLineDefaults, _blastTextDefaults;
 
-	virtual void openMainMenuDialog() override;
 	void debugLua(const Common::String &str);
     
+	void setSideTextures(const Common::String &setup);
+
     inline HotspotMan* getHotspotMan() { return _hotspotManager; }
     inline Cursor* getCursor() { return _cursor; }
 
@@ -200,6 +195,8 @@ protected:
 
 	void handleControls(Common::EventType type, const Common::KeyState &key);
 	void handleChars(Common::EventType type, const Common::KeyState &key);
+	void handleJoyAxis(byte axis, int16 position);
+	void handleJoyButton(Common::EventType type, byte button);
 	void handleExit();
 	void handlePause();
 	void handleUserPaint();
@@ -207,7 +204,8 @@ protected:
 	void cameraPostChangeHandle(int num);
 	void buildActiveActorsList();
 	void savegameCallback();
-	void createRenderer();
+	GfxBase *createRenderer(int screenW, int screenH, bool fullscreen);
+	void playAspyrLogo();
 	virtual LuaBase *createLua();
 	virtual void updateNormalMode();
 	virtual void updateDrawMode();
@@ -219,7 +217,7 @@ protected:
 	void savegameRestore();
 	void restoreGRIM();
 
-	void storeSaveGameImage(SaveGame *savedState);
+	virtual void storeSaveGameImage(SaveGame *savedState);
 
 	bool _savegameLoadRequest;
 	bool _savegameSaveRequest;
@@ -249,6 +247,7 @@ protected:
 
 	bool *_controlsEnabled;
 	bool *_controlsState;
+	float *_joyAxisPosition;
 
 	bool _changeHardwareState;
 	bool _changeFullscreenState;
@@ -281,19 +280,23 @@ extern int g_imuseState;
 // Fake KEYCODE_* values for joystick and mouse events
 
 enum {
-	KEYCODE_JOY1_B1 = 512,
-	KEYCODE_JOY1_B2,
-	KEYCODE_JOY1_B3,
-	KEYCODE_JOY1_B4,
-	KEYCODE_JOY1_B5,
-	KEYCODE_JOY1_B6,
-	KEYCODE_JOY1_B7,
-	KEYCODE_JOY1_B8,
-	KEYCODE_JOY1_B9,
-	KEYCODE_JOY1_B10,
-	KEYCODE_JOY1_B11,
-	KEYCODE_JOY1_B12,
-	KEYCODE_JOY1_B13,
+	KEYCODE_JOY1_A = 512,
+	KEYCODE_JOY1_B,
+	KEYCODE_JOY1_X,
+	KEYCODE_JOY1_Y,
+	KEYCODE_JOY1_BACK,
+	KEYCODE_JOY1_GUIDE,
+	KEYCODE_JOY1_START,
+	KEYCODE_JOY1_LEFTSTICK,
+	KEYCODE_JOY1_RIGHTSTICK,
+	KEYCODE_JOY1_L1,
+	KEYCODE_JOY1_R1,
+	KEYCODE_JOY1_HUP,
+	KEYCODE_JOY1_HDOWN,
+	KEYCODE_JOY1_HLEFT,
+	KEYCODE_JOY1_HRIGHT,
+	KEYCODE_JOY1_L2,
+	KEYCODE_JOY1_R2,
 	KEYCODE_JOY1_B14,
 	KEYCODE_JOY1_B15,
 	KEYCODE_JOY1_B16,
@@ -301,30 +304,23 @@ enum {
 	KEYCODE_JOY1_B18,
 	KEYCODE_JOY1_B19,
 	KEYCODE_JOY1_B20,
-	KEYCODE_JOY1_HLEFT,
-	KEYCODE_JOY1_HUP,
-	KEYCODE_JOY1_HRIGHT,
-	KEYCODE_JOY1_HDOWN,
-	KEYCODE_JOY2_B1,
-	KEYCODE_JOY2_B2,
-	KEYCODE_JOY2_B3,
-	KEYCODE_JOY2_B4,
-	KEYCODE_JOY2_B5,
-	KEYCODE_JOY2_B6,
-	KEYCODE_JOY2_B7,
-	KEYCODE_JOY2_B8,
-	KEYCODE_JOY2_B9,
-	KEYCODE_JOY2_B10,
-	KEYCODE_JOY2_B11,
-	KEYCODE_JOY2_B12,
-	KEYCODE_JOY2_B13,
-	KEYCODE_JOY2_B14,
-	KEYCODE_JOY2_B15,
-	KEYCODE_JOY2_B16,
-	KEYCODE_JOY2_HLEFT,
+	KEYCODE_JOY2_A,
+	KEYCODE_JOY2_B,
+	KEYCODE_JOY2_X,
+	KEYCODE_JOY2_Y,
+	KEYCODE_JOY2_BACK,
+	KEYCODE_JOY2_GUIDE,
+	KEYCODE_JOY2_START,
+	KEYCODE_JOY2_LEFTSTICK,
+	KEYCODE_JOY2_RIGHTSTICK,
+	KEYCODE_JOY2_L1,
+	KEYCODE_JOY2_R1,
 	KEYCODE_JOY2_HUP,
-	KEYCODE_JOY2_HRIGHT,
 	KEYCODE_JOY2_HDOWN,
+	KEYCODE_JOY2_HLEFT,
+	KEYCODE_JOY2_HRIGHT,
+	KEYCODE_JOY2_L2,
+	KEYCODE_JOY2_R2,
 	KEYCODE_MOUSE_B1,
 	KEYCODE_MOUSE_B2,
 	KEYCODE_MOUSE_B3,
@@ -346,6 +342,9 @@ enum {
 	KEYCODE_AXIS_MOUSE_Z,
 	KEYCODE_EXTRA_LAST
 };
+
+#define NUM_JOY_AXES (KEYCODE_AXIS_JOY1_V - KEYCODE_AXIS_JOY1_X + 1)
+#define NUM_JOY_BUTTONS (KEYCODE_JOY1_R2 - KEYCODE_JOY1_A + 1)
 
 extern const ControlDescriptor controls[];
 

@@ -17,6 +17,7 @@ import javax.microedition.khronos.egl.EGLSurface;
 import java.io.File;
 import java.util.LinkedHashMap;
 
+@SuppressWarnings("JniMissingFunction")
 public abstract class ResidualVM implements SurfaceHolder.Callback, Runnable {
 	final protected static String LOG_TAG = "ResidualVM";
 	final private AssetManager _asset_manager;
@@ -49,10 +50,16 @@ public abstract class ResidualVM implements SurfaceHolder.Callback, Runnable {
 	// Feed an event to ResidualVM.  Safe to call from other threads.
 	final public native void pushEvent(int type, int arg1, int arg2, int arg3,
 										int arg4, int arg5, int arg6);
+	final public native String getCurrentCharset();
 
 	// Callbacks from C++ peer instance
 	abstract protected void getDPI(float[] values);
 	abstract protected void displayMessageOnOSD(String msg);
+	abstract protected void openUrl(String url);
+	abstract protected boolean hasTextInClipboard();
+	abstract protected byte[] getTextFromClipboard();
+	abstract protected boolean setTextInClipboard(byte[] text);
+	abstract protected boolean isConnectionLimited();
 	abstract protected void setWindowCaption(String caption);
 	abstract protected void showVirtualKeyboard(boolean enable);
 	abstract protected String[] getSysArchives();
@@ -242,6 +249,9 @@ public abstract class ResidualVM implements SurfaceHolder.Callback, Runnable {
 	final private void initAudio() throws Exception {
 		_sample_rate = AudioTrack.getNativeOutputSampleRate(
 									AudioManager.STREAM_MUSIC);
+		// Maximum supported resampler rate (see LinearRateConverter)
+		if (_sample_rate >= 131072)
+			_sample_rate = 131071;
 		_buffer_size = AudioTrack.getMinBufferSize(_sample_rate,
 									AudioFormat.CHANNEL_CONFIGURATION_STEREO,
 									AudioFormat.ENCODING_PCM_16BIT);

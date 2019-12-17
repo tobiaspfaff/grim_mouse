@@ -33,6 +33,7 @@
 #include "common/array.h"
 #include "common/fs.h"
 #include "common/str.h"
+#include "common/str-array.h"
 
 #ifndef COMMON_MACRESMAN_H
 #define COMMON_MACRESMAN_H
@@ -58,7 +59,7 @@ public:
 	 * This uses SearchMan to find the data/resource forks. This should only be used
 	 * from inside an engine.
 	 *
-	 * @param filename The base file name of the file
+	 * @param fileName The base file name of the file
 	 * @note This will check for the raw resource fork, MacBinary, and AppleDouble formats.
 	 * @return True on success
 	 */
@@ -68,7 +69,7 @@ public:
 	 * Open a Mac data/resource fork pair.
 	 *
 	 * @param path The path that holds the forks
-	 * @param filename The base file name of the file
+	 * @param fileName The base file name of the file
 	 * @note This will check for the raw resource fork, MacBinary, and AppleDouble formats.
 	 * @return True on success
 	 */
@@ -76,10 +77,20 @@ public:
 
 	/**
 	 * See if a Mac data/resource fork pair exists.
-	 * @param filename The base file name of the file
+	 * @param fileName The base file name of the file
 	 * @return True if either a data fork or resource fork with this name exists
 	 */
 	static bool exists(const String &fileName);
+
+	/**
+	 * List all filenames matching pattern for opening with open().
+	 *
+	 * @param files Array containing all matching filenames discovered. Only
+	 *              adds to the list.
+	 * @param pattern Pattern to match against. Taking String::matchPattern's
+	 *                format.
+	 */
+	static void listFiles(StringArray &files, const String &pattern);
 
 	/**
 	 * Close the Mac data/resource fork pair.
@@ -165,6 +176,11 @@ public:
 	 */
 	MacResTagArray getResTagArray();
 
+	/**
+	 * Load from stream in MacBinary format
+	 */
+	bool loadFromMacBinary(SeekableReadStream &stream);
+
 private:
 	SeekableReadStream *_stream;
 	String _baseFileName;
@@ -172,16 +188,23 @@ private:
 	bool load(SeekableReadStream &stream);
 
 	bool loadFromRawFork(SeekableReadStream &stream);
-	bool loadFromMacBinary(SeekableReadStream &stream);
 	bool loadFromAppleDouble(SeekableReadStream &stream);
 
 	static String constructAppleDoubleName(String name);
+	static String disassembleAppleDoubleName(String name, bool *isAppleDouble);
 
 	/**
 	 * Check if the given stream is in the MacBinary format.
 	 * @param stream The stream we're checking
 	 */
 	static bool isMacBinary(SeekableReadStream &stream);
+
+	/**
+	 * Do a sanity check whether the given stream is a raw resource fork.
+	 *
+	 * @param stream Stream object to check. Will not preserve its position.
+	 */
+	static bool isRawFork(SeekableReadStream &stream);
 
 	enum {
 		kResForkNone = 0,

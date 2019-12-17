@@ -21,26 +21,30 @@
  */
 
 #include "engines/myst3/inventory.h"
+
 #include "engines/myst3/cursor.h"
+#include "engines/myst3/database.h"
+#include "engines/myst3/scene.h"
 #include "engines/myst3/state.h"
 
 namespace Myst3 {
 
 const Inventory::ItemData Inventory::_availableItems[8] = {
-		{   0, 41, 47, 481 },
-		{  41, 38, 50, 480 },
-		{  79, 38, 49, 279 },
-		{ 117, 34, 48, 277 },
-		{ 151, 35, 44, 345 },
-		{ 186, 35, 44, 398 },
-		{ 221, 35, 44, 447 },
-		{   0,  0,  0,   0 }
+	{   0, 41, 47, 481 },
+	{  41, 38, 50, 480 },
+	{  79, 38, 49, 279 },
+	{ 117, 34, 48, 277 },
+	{ 151, 35, 44, 345 },
+	{ 186, 35, 44, 398 },
+	{ 221, 35, 44, 447 },
+	{   0,  0,  0,   0 }
 };
 
 Inventory::Inventory(Myst3Engine *vm) :
-	_vm(vm),
-	_texture(0) {
-
+		Window(),
+		_vm(vm),
+		_texture(0) {
+	_scaled = !_vm->isWideScreenModEnabled();
 	initializeTexture();
 }
 
@@ -57,8 +61,19 @@ void Inventory::initializeTexture() {
 	delete s;
 }
 
+bool Inventory::isMouseInside() {
+	Common::Point mouse = _vm->_cursor->getPosition(false);
+	return getPosition().contains(mouse);
+}
+
 void Inventory::draw() {
-	Common::Point mouse = _vm->_cursor->getPosition();
+	if (_vm->isWideScreenModEnabled()) {
+		// Draw a black background to cover the main game frame
+		Common::Rect screen = _vm->_gfx->viewport();
+		_vm->_gfx->drawRect2D(Common::Rect(screen.width(), Renderer::kBottomBorderHeight), 0xFF000000);
+	}
+
+	uint16 hoveredItemVar = hoveredItem();
 
 	for (ItemList::const_iterator it = _inventory.begin(); it != _inventory.end(); it++) {
 		int32 state = _vm->_state->getVar(it->var);
@@ -73,7 +88,7 @@ void Inventory::draw() {
 				item.textureHeight);
 		textureRect.translate(item.textureX, 0);
 
-		bool itemHighlighted = it->rect.contains(mouse) || state == 2;
+		bool itemHighlighted = it->var == hoveredItemVar || state == 2;
 
 		if (itemHighlighted)
 			textureRect.translate(0, _texture->height / 2);
@@ -158,16 +173,20 @@ void Inventory::reflow() {
 	if (itemCount >= 2)
 		totalWidth += 9 * (itemCount - 1);
 
-	uint16 left = (Renderer::kOriginalWidth - totalWidth) / 2;
+	uint16 left;
+	if (_vm->isWideScreenModEnabled()) {
+		Common::Rect screen = _vm->_gfx->viewport();
+		left = (screen.width() - totalWidth) / 2;
+	} else {
+		left = (Renderer::kOriginalWidth - totalWidth) / 2;
+	}
 
 	for (ItemList::iterator it = _inventory.begin(); it != _inventory.end(); it++) {
 		const ItemData &item = getData(it->var);
 
-		uint16 top = Renderer::kTopBorderHeight + Renderer::kFrameHeight
-				+ (Renderer::kBottomBorderHeight - item.textureHeight) / 2;
+		uint16 top = (Renderer::kBottomBorderHeight - item.textureHeight) / 2;
 
-		it->rect = Common::Rect(item.textureWidth,
-				item.textureHeight);
+		it->rect = Common::Rect(item.textureWidth, item.textureHeight);
 		it->rect.translate(left, top);
 
 		left += item.textureWidth;
@@ -178,7 +197,8 @@ void Inventory::reflow() {
 }
 
 uint16 Inventory::hoveredItem() {
-	Common::Point mouse = _vm->_cursor->getPosition();
+	Common::Point mouse = _vm->_cursor->getPosition(false);
+	mouse = scalePoint(mouse);
 
 	for (ItemList::const_iterator it = _inventory.begin(); it != _inventory.end(); it++) {
 		if(it->rect.contains(mouse))
@@ -193,22 +213,22 @@ void Inventory::useItem(uint16 var) {
 	case 277: // Atrus
 		closeAllBooks();
 		_vm->_state->setJournalAtrusState(2);
-		openBook(9, 902, 100);
+		openBook(9, kRoomJournals, 100);
 		break;
 	case 279: // Saavedro
 		closeAllBooks();
 		_vm->_state->setJournalSaavedroState(2);
-		openBook(9, 902, 200);
+		openBook(9, kRoomJournals, 200);
 		break;
 	case 480: // Tomahna
 		closeAllBooks();
 		_vm->_state->setBookStateTomahna(2);
-		openBook(8, 801, 220);
+		openBook(8, kRoomNarayan, 220);
 		break;
 	case 481: // Releeshahn
 		closeAllBooks();
 		_vm->_state->setBookStateReleeshahn(2);
-		openBook(9, 902, 300);
+		openBook(9, kRoomJournals, 300);
 		break;
 	case 345:
 		_vm->dragSymbol(345, 1002);
@@ -244,7 +264,7 @@ void Inventory::openBook(uint16 age, uint16 room, uint16 node) {
 
 	_vm->_state->setLocationNextAge(age);
 	_vm->_state->setLocationNextRoom(room);
-	_vm->goToNode(node, 1);
+	_vm->goToNode(node, kTransitionFade);
 }
 
 void Inventory::addSaavedroChapter(uint16 var) {
@@ -252,7 +272,7 @@ void Inventory::addSaavedroChapter(uint16 var) {
 	_vm->_state->setJournalSaavedroState(2);
 	_vm->_state->setJournalSaavedroChapter(var - 285);
 	_vm->_state->setJournalSaavedroPageInChapter(0);
-	openBook(9, 902, 200);
+	openBook(9, kRoomJournals, 200);
 }
 
 void Inventory::loadFromState() {
@@ -271,10 +291,48 @@ void Inventory::updateState() {
 	_vm->_state->updateInventory(items);
 }
 
+Common::Rect Inventory::getPosition() const {
+	Common::Rect screen = _vm->_gfx->viewport();
+
+	Common::Rect frame;
+	if (_vm->isWideScreenModEnabled()) {
+		frame = Common::Rect(screen.width(), Renderer::kBottomBorderHeight);
+
+		Common::Rect scenePosition = _vm->_scene->getPosition();
+		int16 top = CLIP<int16>(screen.height() - frame.height(), 0, scenePosition.bottom);
+
+		frame.translate(0, top);
+	} else {
+		frame = Common::Rect(screen.width(), screen.height() * Renderer::kBottomBorderHeight / Renderer::kOriginalHeight);
+		frame.translate(screen.left, screen.top + screen.height() * (Renderer::kTopBorderHeight + Renderer::kFrameHeight) / Renderer::kOriginalHeight);
+	}
+
+	return frame;
+}
+
+Common::Rect Inventory::getOriginalPosition() const {
+	Common::Rect originalPosition = Common::Rect(Renderer::kOriginalWidth, Renderer::kBottomBorderHeight);
+	originalPosition.translate(0, Renderer::kTopBorderHeight + Renderer::kFrameHeight);
+	return originalPosition;
+}
+
+void Inventory::updateCursor() {
+	uint16 item = hoveredItem();
+	if (item > 0) {
+		_vm->_cursor->changeCursor(1);
+	} else {
+		_vm->_cursor->changeCursor(8);
+	}
+}
+
 DragItem::DragItem(Myst3Engine *vm, uint id):
-	_vm(vm),
-	_texture(0),
-	_frame(1) {
+		_vm(vm),
+		_texture(0),
+		_frame(1) {
+	// Draw on the whole screen
+	_isConstrainedToWindow = false;
+	_scaled = !_vm->isWideScreenModEnabled();
+
 	const DirectorySubEntry *movieDesc = _vm->getFileDescription("DRAG", id, 0, DirectorySubEntry::kStillMovie);
 
 	if (!movieDesc)
@@ -282,7 +340,7 @@ DragItem::DragItem(Myst3Engine *vm, uint id):
 
 	// Load the movie
 	_movieStream = movieDesc->getData();
-	_bink.setDefaultHighColorFormat(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	_bink.loadStream(_movieStream);
 	_bink.start();
 
@@ -309,12 +367,22 @@ void DragItem::setFrame(uint16 frame) {
 }
 
 Common::Rect DragItem::getPosition() {
-	Common::Point mouse = _vm->_cursor->getPosition();
-	uint posX = CLIP<uint>(mouse.x, _texture->width / 2, Renderer::kOriginalWidth - _texture->width / 2);
-	uint posY = CLIP<uint>(mouse.y, _texture->height / 2, Renderer::kOriginalHeight - _texture->height / 2);
+	Common::Rect viewport;
+	Common::Point mouse;
+
+	if (_scaled) {
+		viewport = Common::Rect(Renderer::kOriginalWidth, Renderer::kOriginalHeight);
+		mouse = _vm->_cursor->getPosition(true);
+	} else {
+		viewport = _vm->_gfx->viewport();
+		mouse = _vm->_cursor->getPosition(false);
+	}
+
+	uint posX = CLIP<uint>(mouse.x, _texture->width / 2, viewport.width() - _texture->width / 2);
+	uint posY = CLIP<uint>(mouse.y, _texture->height / 2, viewport.height() - _texture->height / 2);
 
 	Common::Rect screenRect = Common::Rect::center(posX, posY, _texture->width, _texture->height);
 	return screenRect;
 }
 
-} /* namespace Myst3 */
+} // End of namespace Myst3

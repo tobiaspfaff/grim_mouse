@@ -51,19 +51,22 @@
  * header file, analog to internal_version.h, maybe called svn_rev.h or so.)
  *
  * Drawback: This only works on systems which can run suitable scripts as part
- * of the build proces (so I guess Visual C++ would be out of the game here?
+ * of the build process (so I guess Visual C++ would be out of the game here?
  * I don't know VC enough to be sure). And of course it must be robust enough
  * to properly work in exports (i.e. release tar balls etc.).
  */
-const char *gScummVMVersion = SCUMMVM_VERSION;
+const char *gScummVMVersion = SCUMMVM_VERSION SCUMMVM_REVISION;
+#ifdef __amigaos4__
+static const char *version_cookie __attribute__((used)) = "$VER: ResidualVM " SCUMMVM_VERSION SCUMMVM_REVISION " (" AMIGA_DATE ")";
+#endif
 #ifdef __PLAYSTATION2__
 const char *gScummVMBuildDate = "Git Master"; /* ScummVM Git Master */
-const char *gScummVMVersionDate = SCUMMVM_VERSION " - PlayStation2";
-const char *gScummVMFullVersion = "ResidualVM " SCUMMVM_VERSION " - PlayStation2";
+const char *gScummVMVersionDate = SCUMMVM_VERSION SCUMMVM_REVISION " - PlayStation2";
+const char *gScummVMFullVersion = "ResidualVM " SCUMMVM_VERSION SCUMMVM_REVISION " - PlayStation2";
 #else
 const char *gScummVMBuildDate = __DATE__ " " __TIME__;
-const char *gScummVMVersionDate = SCUMMVM_VERSION " (" __DATE__ " " __TIME__ ")";
-const char *gScummVMFullVersion = "ResidualVM " SCUMMVM_VERSION " (" __DATE__ " " __TIME__ ")";
+const char *gScummVMVersionDate = SCUMMVM_VERSION SCUMMVM_REVISION " (" __DATE__ " " __TIME__ ")";
+const char *gScummVMFullVersion = "ResidualVM " SCUMMVM_VERSION SCUMMVM_REVISION " (" __DATE__ " " __TIME__ ")";
 #endif
 const char *gScummVMFeatures = ""
 #ifdef TAINTED_BUILD
@@ -132,6 +135,10 @@ const char *gScummVMFeatures = ""
 	"AAC "
 #endif
 
+#ifdef USE_A52
+	"A/52 "
+#endif
+
 #ifdef USE_FREETYPE2
 	"FreeType2 "
 #endif
@@ -142,5 +149,34 @@ const char *gScummVMFeatures = ""
 
 #ifdef USE_PNG
 	"PNG "
+#endif
+
+#ifdef ENABLE_KEYMAPPER
+	"keymapper "
+#endif
+
+#ifdef ENABLE_VKEYBD
+	"virtual keyboard "
+#endif
+
+#ifdef USE_CLOUD
+	"cloud ("
+#ifdef USE_LIBCURL
+	"servers"
+#ifdef USE_SDL_NET
+	", "
+#endif
+#endif
+#ifdef USE_SDL_NET
+	"local"
+#endif
+	") "
+#else
+#ifdef USE_LIBCURL
+	"libcurl "
+#endif
+#ifdef USE_SDL_NET
+	"SDL_net "
+#endif
 #endif
 	;

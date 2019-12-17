@@ -16,17 +16,21 @@ MODULE_OBJS := \
 	iff_container.o \
 	ini-file.o \
 	installshield_cab.o \
+	json.o \
 	language.o \
 	localization.o \
 	macresman.o \
 	memorypool.o \
 	md5.o \
+	mdct.o \
 	mutex.o \
+	osd_message_queue.o \
 	platform.o \
 	quicktime.o \
 	random.o \
 	rational.o \
 	rendermode.o \
+	sinewindows.o \
 	str.o \
 	stream.o \
 	streamdebug.o \
@@ -48,13 +52,23 @@ MODULE_OBJS += \
 	cosinetables.o \
 	dct.o \
 	fft.o \
-	huffman.o \
 	rdft.o \
 	sinetables.o
 
 ifdef ENABLE_EVENTRECORDER
 MODULE_OBJS += \
 	recorderfile.o
+endif
+
+# ResidualVM specific
+ifdef USE_ICONV
+MODULE_OBJS += \
+	iconv.o
+endif
+
+ifdef USE_UPDATES
+MODULE_OBJS += \
+	updates.o
 endif
 
 # Include common rules

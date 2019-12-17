@@ -58,6 +58,11 @@ public:
 	static void setWindowCaption(const char *caption);
 	static void getDPI(float *values);
 	static void displayMessageOnOSD(const char *msg);
+	static bool openUrl(const char *url);
+	static bool hasTextInClipboard();
+	static Common::String getTextFromClipboard();
+	static bool setTextInClipboard(const Common::String &text);
+	static bool isConnectionLimited();
 	static void showVirtualKeyboard(bool enable);
 	static void addSysArchivesToSearchSet(Common::SearchSet &s, int priority);
 
@@ -89,6 +94,11 @@ private:
 
 	static jmethodID _MID_getDPI;
 	static jmethodID _MID_displayMessageOnOSD;
+	static jmethodID _MID_openUrl;
+	static jmethodID _MID_hasTextInClipboard;
+	static jmethodID _MID_getTextFromClipboard;
+	static jmethodID _MID_setTextInClipboard;
+	static jmethodID _MID_isConnectionLimited;
 	static jmethodID _MID_setWindowCaption;
 	static jmethodID _MID_showVirtualKeyboard;
 	static jmethodID _MID_getSysArchives;
@@ -123,6 +133,8 @@ private:
 	static void enableZoning(JNIEnv *env, jobject self, jboolean enable);
 
 	static void setPause(JNIEnv *env, jobject self, jboolean value);
+
+	static jstring getCurrentCharset(JNIEnv *env, jobject self);
 };
 
 inline bool JNI::haveSurface() {

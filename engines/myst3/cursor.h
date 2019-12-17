@@ -23,13 +23,17 @@
 #ifndef CURSOR_H_
 #define CURSOR_H_
 
+#include "common/hashmap.h"
 #include "common/rect.h"
+
+#include "engines/myst3/gfx.h"
 
 namespace Myst3 {
 
 class Myst3Engine;
+class Texture;
 
-class Cursor {
+class Cursor : public Drawable {
 public:
 	Cursor(Myst3Engine *vm);
 	virtual ~Cursor();
@@ -38,12 +42,20 @@ public:
 	bool isPositionLocked() { return _lockedAtCenter; }
 	void lockPosition(bool lock);
 
-	Common::Point getPosition() { return _position; }
-	void updatePosition(Common::Point &mouse);
+	/**
+	 * Get the mouse cursor position
+	 *
+	 * By default it is in 640x480 equivalent coordinates
+	 *
+	 * @param scaled When false the position is in actual game screen coordinates.
+	 * @return
+	 */
+	Common::Point getPosition(bool scaled = true);
+	void updatePosition(const Common::Point &mouse);
 
 	void getDirection(float &pitch, float &heading);
 
-	void draw();
+	void draw() override;
 	void setVisible(bool show);
 	bool isVisible();
 private:
@@ -55,10 +67,15 @@ private:
 	/** Position of the cursor */
 	Common::Point _position;
 
+	typedef Common::HashMap<uint32, Texture *> TextureMap;
+	TextureMap _textures;
+
 	bool _lockedAtCenter;
 
 	void loadAvailableCursors();
+	float getTransparencyForId(uint32 cursorId);
 };
 
-} /* namespace Myst3 */
-#endif /* CURSOR_H_ */
+} // End of namespace Myst3
+
+#endif // CURSOR_H_

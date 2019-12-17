@@ -62,7 +62,7 @@ Model::Model(const Common::String &filename, Common::SeekableReadStream *data, C
 	for (int i = 0; i < _numHierNodes; ++i) {
 		ModelNode &node = _rootHierNode[i];
 		if (node._mesh) {
-			g_driver->createModel(node._mesh);
+			g_driver->createMesh(node._mesh);
 			Mesh &mesh = *node._mesh;
 			Math::Vector3d p = mesh._matrix.getPosition();
 			float x = p.x();
@@ -168,7 +168,6 @@ Model::~Model() {
 }
 
 void Model::loadBinary(Common::SeekableReadStream *data) {
-	char v3[4 * 3], f[4];
 	_numMaterials = data->readUint32LE();
 	_materials = new Material*[_numMaterials];
 	_materialNames = new char[_numMaterials][32];
@@ -191,11 +190,9 @@ void Model::loadBinary(Common::SeekableReadStream *data) {
 	for (int i = 0; i < _numHierNodes; i++) {
 		_rootHierNode[i].loadBinary(data, _rootHierNode, &_geosets[0]);
 	}
-	data->read(f, 4);
-	_radius = get_float(f);
+	_radius = data->readFloatLE();
 	data->seek(36, SEEK_CUR);
-	data->read(v3, 3 * 4);
-	_insertOffset = Math::Vector3d::get_vector3d(v3);
+	_insertOffset.readFromStream(data);
 }
 
 void Model::loadText(TextSplitter *ts) {
@@ -264,9 +261,9 @@ void Model::loadText(TextSplitter *ts) {
 
 		_rootHierNode[num]._numChildren = numChildren;
 		_rootHierNode[num]._pos = Math::Vector3d(x, y, z);
-		_rootHierNode[num]._pitch = pitch;
-		_rootHierNode[num]._yaw = yaw;
-		_rootHierNode[num]._roll = roll;
+		_rootHierNode[num]._rot = Math::Quaternion::fromEuler(yaw, pitch, roll, Math::EO_ZXY);
+		_rootHierNode[num]._animRot = _rootHierNode[num]._rot;
+		_rootHierNode[num]._animPos = _rootHierNode[num]._pos;
 		_rootHierNode[num]._pivot = Math::Vector3d(pivotx, pivoty, pivotz);
 		_rootHierNode[num]._meshVisible = true;
 		_rootHierNode[num]._hierVisible = true;
@@ -383,7 +380,6 @@ void MeshFace::stealData(MeshFace &other) {
 }
 
 int MeshFace::loadBinary(Common::SeekableReadStream *data, Material *materials[]) {
-	char v3[4 * 3], f[4];
 	data->seek(4, SEEK_CUR);
 	_type = data->readUint32LE();
 	_geo = data->readUint32LE();
@@ -394,11 +390,9 @@ int MeshFace::loadBinary(Common::SeekableReadStream *data, Material *materials[]
 	int texPtr = data->readUint32LE();
 	int materialPtr = data->readUint32LE();
 	data->seek(12, SEEK_CUR);
-	data->read(f, 4);
-	_extraLight = get_float(f);
+	_extraLight = data->readFloatLE();
 	data->seek(12, SEEK_CUR);
-	data->read(v3, 4 * 3);
-	_normal = Math::Vector3d::get_vector3d(v3);
+	_normal.readFromStream(data);
 
 	_vertices = new int[_numVertices];
 	for (int i = 0; i < _numVertices; i++) {
@@ -473,6 +467,8 @@ Mesh::Mesh() :
 
 
 Mesh::~Mesh() {
+	g_driver->destroyMesh(this);
+
 	delete[] _vertices;
 	delete[] _verticesI;
 	delete[] _vertNormals;
@@ -482,7 +478,6 @@ Mesh::~Mesh() {
 }
 
 void Mesh::loadBinary(Common::SeekableReadStream *data, Material *materials[]) {
-	char f[4];
 	data->read(_name, 32);
 	data->seek(4, SEEK_CUR);
 	_geometryMode = data->readUint32LE();
@@ -498,28 +493,23 @@ void Mesh::loadBinary(Common::SeekableReadStream *data, Material *materials[]) {
 	_faces = new MeshFace[_numFaces];
 	_materialid = new int[_numFaces];
 	for (int i = 0; i < 3 * _numVertices; i++) {
-		data->read(f, 4);
-		_vertices[i] = get_float(f);
+		_vertices[i] = data->readFloatLE();
 	}
 	for (int i = 0; i < 2 * _numTextureVerts; i++) {
-		data->read(f, 4);
-		_textureVerts[i] = get_float(f);
+		_textureVerts[i] = data->readFloatLE();
 	}
 	for (int i = 0; i < _numVertices; i++) {
-		data->read(f, 4);
-		_verticesI[i] = get_float(f);
+		_verticesI[i] = data->readFloatLE();
 	}
 	data->seek(_numVertices * 4, SEEK_CUR);
 	for (int i = 0; i < _numFaces; i++)
 		_materialid[i] = _faces[i].loadBinary(data, materials);
 	for (int i = 0; i < 3 * _numVertices; i++) {
-		data->read(f, 4);
-		_vertNormals[i] = get_float(f);
+		_vertNormals[i] = data->readFloatLE();
 	}
 	_shadow = data->readUint32LE();
 	data->seek(4, SEEK_CUR);
-	data->read(f, 4);
-	_radius = get_float(f);
+	_radius = data->readFloatLE();
 	data->seek(24, SEEK_CUR);
 	sortFaces();
 }
@@ -642,7 +632,7 @@ void Mesh::draw() const {
 
 void Mesh::getBoundingBox(int *x1, int *y1, int *x2, int *y2) const {
 	int winX1, winY1, winX2, winY2;
-	g_driver->getBoundingBoxPos(this, &winX1, &winY1, &winX2, &winY2);
+	g_driver->getScreenBoundingBox(this, &winX1, &winY1, &winX2, &winY2);
 	if (winX1 != -1 && winY1 != -1 && winX2 != -1 && winY2 != -1) {
 		*x1 = MIN(*x1, winX1);
 		*y1 = MIN(*y1, winY1);
@@ -670,7 +660,6 @@ ModelNode::~ModelNode() {
 }
 
 void ModelNode::loadBinary(Common::SeekableReadStream *data, ModelNode *hierNodes, const Model::Geoset *g) {
-	char v3[4 * 3], f[4];
 	data->read(_name, 64);
 	_flags = data->readUint32LE();
 	data->seek(4, SEEK_CUR);
@@ -685,20 +674,14 @@ void ModelNode::loadBinary(Common::SeekableReadStream *data, ModelNode *hierNode
 	_numChildren = data->readUint32LE();
 	int childPtr = data->readUint32LE();
 	int siblingPtr = data->readUint32LE();
-	data->read(v3, 4 * 3);
-	_pivot = Math::Vector3d::get_vector3d(v3);
-	data->read(v3, 4 * 3);
-	_pos = Math::Vector3d::get_vector3d(v3);
-	data->read(f, 4);
-	_pitch = get_float(f);
-	data->read(f, 4);
-	_yaw = get_float(f);
-	data->read(f, 4);
-	_roll = get_float(f);
-	_animPos.set(0, 0, 0);
-	_animPitch = 0;
-	_animYaw = 0;
-	_animRoll = 0;
+	_pivot.readFromStream(data);
+	_pos.readFromStream(data);
+	float pitch = data->readFloatLE();
+	float yaw = data->readFloatLE();
+	float roll = data->readFloatLE();
+	_rot = Math::Quaternion::fromEuler(yaw, pitch, roll, Math::EO_ZXY);
+	_animRot = _rot;
+	_animPos = _pos;
 	_sprite = nullptr;
 
 	data->seek(48, SEEK_CUR);
@@ -724,9 +707,14 @@ void ModelNode::loadBinary(Common::SeekableReadStream *data, ModelNode *hierNode
 }
 
 void ModelNode::draw() const {
+	if (_sibling || _child) {
+		translateViewpointStart();
+	}
 	translateViewpoint();
 	if (_hierVisible) {
-		g_driver->translateViewpointStart();
+		if (_child) {
+			translateViewpointStart();
+		}
 		g_driver->translateViewpoint(_pivot);
 
 		if (!g_driver->isShadowModeActive()) {
@@ -741,37 +729,44 @@ void ModelNode::draw() const {
 			_mesh->draw();
 		}
 
-		g_driver->translateViewpointFinish();
-
 		if (_child) {
+			translateViewpointFinish();
 			_child->draw();
 		}
 	}
-	translateViewpointBack();
 
+	if (_sibling || _child) {
+		translateViewpointFinish();
+	}
 	if (_sibling) {
 		_sibling->draw();
 	}
 }
 
 void ModelNode::getBoundingBox(int *x1, int *y1, int *x2, int *y2) const {
+	if (_sibling || _child) {
+		translateViewpointStart();
+	}
 	translateViewpoint();
 	if (_hierVisible) {
-		g_driver->translateViewpointStart();
+		if (_child) {
+			translateViewpointStart();
+		}
 		g_driver->translateViewpoint(_pivot);
 
 		if (_mesh && _meshVisible) {
 			_mesh->getBoundingBox(x1, y1, x2, y2);
 		}
 
-		g_driver->translateViewpointFinish();
-
 		if (_child) {
+			translateViewpointFinish();
 			_child->getBoundingBox(x1, y1, x2, y2);
 		}
 	}
-	translateViewpointBack();
 
+	if (_sibling || _child) {
+		translateViewpointFinish();
+	}
 	if (_sibling) {
 		_sibling->getBoundingBox(x1, y1, x2, y2);
 	}
@@ -806,13 +801,8 @@ void ModelNode::update() {
 		return;
 
 	if (_hierVisible && _needsUpdate) {
-		Math::Vector3d animPos = _pos + _animPos;
-		Math::Angle animPitch = _pitch + _animPitch;
-		Math::Angle animYaw = _yaw + _animYaw;
-		Math::Angle animRoll = _roll + _animRoll;
-
-		_localMatrix.setPosition(animPos);
-		_localMatrix.buildFromXYZ(animYaw, animPitch, animRoll, Math::EO_ZXY);
+		_localMatrix = _animRot.toMatrix();
+		_localMatrix.setPosition(_animPos);
 
 		_matrix = _matrix * _localMatrix;
 
@@ -857,19 +847,18 @@ void ModelNode::removeSprite(const Sprite *sprite) {
 }
 
 void ModelNode::translateViewpoint() const {
-	Math::Vector3d animPos = _pos + _animPos;
-	Math::Angle animPitch = _pitch + _animPitch;
-	Math::Angle animYaw = _yaw + _animYaw;
-	Math::Angle animRoll = _roll + _animRoll;
-	g_driver->translateViewpointStart();
+	g_driver->translateViewpoint(_animPos);
 
-	g_driver->translateViewpoint(animPos);
-	g_driver->rotateViewpoint(animYaw, Math::Vector3d(0, 0, 1));
-	g_driver->rotateViewpoint(animPitch, Math::Vector3d(1, 0, 0));
-	g_driver->rotateViewpoint(animRoll, Math::Vector3d(0, 1, 0));
+	Math::Matrix4 rot = _animRot.toMatrix();
+	rot.transpose();
+	g_driver->rotateViewpoint(rot);
 }
 
-void ModelNode::translateViewpointBack() const {
+void ModelNode::translateViewpointStart() const {
+	g_driver->translateViewpointStart();
+}
+
+void ModelNode::translateViewpointFinish() const {
 	g_driver->translateViewpointFinish();
 }
 

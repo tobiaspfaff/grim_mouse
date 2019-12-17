@@ -24,9 +24,11 @@
 #define GRAPHICS_SURFACE_H
 
 #include "common/scummsys.h"
+#include "common/list.h"
 
 namespace Common {
 struct Rect;
+struct Point;
 }
 
 #include "graphics/pixelformat.h"
@@ -214,7 +216,7 @@ public:
 	 * of buffer must match the pixel format of the Surface.
 	 *
 	 * @param buffer    The buffer containing the graphics data source
-	 * @param pitch     The pitch of the buffer (number of bytes in a scanline)
+	 * @param srcPitch     The pitch of the buffer (number of bytes in a scanline)
 	 * @param destX     The x coordinate of the destination rectangle
 	 * @param destY     The y coordinate of the destination rectangle
 	 * @param width     The width of the destination rectangle
@@ -229,7 +231,6 @@ public:
 	 * @param destX         The x coordinate of the destination rectangle
 	 * @param destY         The y coordinate of the destination rectangle
 	 * @param subRect       The subRect of surface to be blitted
-	 * @return                
 	 */
 	void copyRectToSurface(const Graphics::Surface &srcSurface, int destX, int destY, const Common::Rect subRect);
 
@@ -333,7 +334,7 @@ public:
  *
  * This deleter assures Surface::free is called on deletion.
  */
-struct SharedPtrSurfaceDeleter {
+struct SurfaceDeleter {
 	void operator()(Surface *ptr) {
 		if (ptr) {
 			ptr->free();
@@ -342,6 +343,72 @@ struct SharedPtrSurfaceDeleter {
 	}
 };
 
+/**
+ * Stack-based flood fill algorithm for arbitrary Surfaces.
+ *
+ * It could be used in 2 ways. One is to fill the pixels of oldColor
+ * with fillColor. Second is when the surface stays intact but another
+ * surface with mask is created, where filled colors are marked with 255.
+ *
+ * Before running fill() or fillMask(), the initial pixels must be addSeed
+ * with addSeed() method.
+ */
+class FloodFill {
+public:
+	/**
+	 * Construct a simple Surface object.
+	 *
+	 * @param surface Input surface
+	 * @param oldColor Color on the surface to change
+	 * @param fillColor Color to fill with
+	 */
+	FloodFill(Surface *surface, uint32 oldColor, uint32 fillColor, bool maskMode = false);
+	~FloodFill();
+
+	/**
+	 * Add pixels to the fill queue.
+	 *
+	 * @param x The x coordinate of the pixel.
+	 * @param y The x coordinate of the pixel.
+	 */
+	void addSeed(int x, int y);
+
+	/**
+	 * Fill the surface as requested.
+	 *
+	 * It uses pixels which were added with addSeed() method.
+	 *
+	 * @see addSeed
+	 */
+	void fill();
+
+	/**
+	 * Fill the mask. The mask is a CLUT8 Surface with pixels 0 and 255.
+	 * 255 means that the pixel has been filled.
+	 *
+	 * It uses pixels which were added with addSeed() method.
+	 *
+	 * @see addSeed
+	 */
+	void fillMask();
+
+	/**
+	 * Get the resulting mask.
+	 *
+	 * @see fillMask
+	 */
+	Surface *getMask() { return _mask; }
+
+private:
+	Common::List<Common::Point *> _queue;
+	Surface *_surface;
+	Surface *_mask;
+	uint32 _oldColor, _fillColor;
+	byte *_visited;
+	int _w, _h;
+
+	bool _maskMode;
+};
 
 } // End of namespace Graphics
 

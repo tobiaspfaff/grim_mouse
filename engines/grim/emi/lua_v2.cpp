@@ -26,7 +26,9 @@
 
 #include "engines/grim/emi/lua_v2.h"
 #include "engines/grim/emi/emi_registry.h"
+#include "engines/grim/emi/sound/emisound.h"
 #include "engines/grim/lua/lauxlib.h"
+#include "graphics/pixelbuffer.h"
 
 #include "engines/grim/resource.h"
 #include "engines/grim/set.h"
@@ -116,7 +118,7 @@ void Lua_V2::MakeScreenTextures() {
 		/*int index = (int)lua_getnumber(indexObj);*/
 		// The index does not seem to matter
 
-		g_driver->createSpecialtyTextures();
+		g_driver->makeScreenTextures();
 		lua_pushnumber(1.0);
 	} else {
 		lua_pushnil();
@@ -229,8 +231,7 @@ void Lua_V2::GetFontDimensions() {
 	}
 	if (font) {
 		int32 h = font->getBaseOffsetY();
-		int32 w = font->getCharWidth('w');
-		warning("Lua_V2::GetFontDimensions for font '%s': returns %d,%d", fontName, h, w);
+		int32 w = font->getCharKernedWidth('w');
 		lua_pushnumber(w);
 		lua_pushnumber(h);
 	} else {
@@ -285,7 +286,7 @@ void Lua_V2::ClearOverworld() {
 }
 
 void Lua_V2::ScreenshotForSavegame() {
-	warning("Lua_V2::ScreenshotForSavegame: implement opcode");
+	g_emi->temporaryStoreSaveGameImage();
 }
 
 void Lua_V2::EngineDisplay() {
@@ -307,14 +308,100 @@ void Lua_V2::GetCameraPosition() {
 	lua_pushnumber(setup->_pos.z());
 }
 
+void Lua_V2::GetCameraPitch() {
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr) {
+		lua_pushnil();
+		return;
+	}
+
+	Set::Setup *setup = set->getCurrSetup();
+	float pitch;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		setup->getRotation(nullptr, nullptr, &pitch);
+	} else {
+		setup->getRotation(nullptr, &pitch, nullptr);
+	}
+	lua_pushnumber(pitch);
+}
+
 void Lua_V2::GetCameraYaw() {
-	warning("Lua_V2::GetCameraYaw: implement opcode, just returns 0");
-	lua_pushnumber(0);
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr) {
+		lua_pushnil();
+		return;
+	}
+
+	Set::Setup *setup = set->getCurrSetup();
+	float yaw;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		setup->getRotation(nullptr, &yaw, nullptr);
+	} else {
+		setup->getRotation(&yaw, nullptr, nullptr);
+	}
+	lua_pushnumber(yaw);
 }
 
 void Lua_V2::GetCameraRoll() {
-	warning("Lua_V2::GetCameraRoll: implement opcode, just returns 0");
-	lua_pushnumber(0);
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr) {
+		lua_pushnil();
+		return;
+	}
+
+	Set::Setup *setup = set->getCurrSetup();
+	float roll;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		setup->getRotation(&roll, nullptr, nullptr);
+	} else {
+		setup->getRotation(nullptr, nullptr, &roll);
+	}
+	lua_pushnumber(roll);
+}
+
+void Lua_V2::PitchCamera() {
+	lua_Object pitchObj = lua_getparam(1);
+	if (!lua_isnumber(pitchObj)) {
+		error("Lua_V2::PitchCamera - Parameter is not a number!");
+		return;
+	}
+
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr)
+		return;
+
+	Set::Setup *setup = set->getCurrSetup();
+	setup->setPitch(Math::Angle(lua_getnumber(pitchObj)));
+}
+
+void Lua_V2::YawCamera() {
+	lua_Object yawObj = lua_getparam(1);
+	if (!lua_isnumber(yawObj)) {
+		error("Lua_V2::YawCamera - Parameter is not a number!");
+		return;
+	}
+
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr)
+		return;
+
+	Set::Setup *setup = set->getCurrSetup();
+	setup->setYaw(Math::Angle(lua_getnumber(yawObj)));
+}
+
+void Lua_V2::RollCamera() {
+	lua_Object rollObj = lua_getparam(1);
+	if (!lua_isnumber(rollObj)) {
+		error("Lua_V2::RollCamera - Parameter is not a number!");
+		return;
+	}
+
+	Set *set = g_grim->getCurrSet();
+	if (set == nullptr)
+		return;
+
+	Set::Setup *setup = set->getCurrSetup();
+	setup->setRoll(Math::Angle(lua_getnumber(rollObj)));
 }
 
 void Lua_V2::PushText() {
@@ -368,7 +455,7 @@ void Lua_V2::FileFindFirst() {
 	// _menus.lua: saveload_menu.get_file_list searches for *.gsv.
 	// This avoids conflicts with grim saves.
 	if (0 == strcmp(extension, "*.gsv"))
-		extension = "efmi???.gsv";
+		extension = "efmi###.gsv";
 
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
 	g_grim->_listFiles = saveFileMan->listSavefiles(extension);
@@ -385,17 +472,83 @@ void Lua_V2::ThumbnailFromFile() {
 	lua_Object texIdObj = lua_getparam(1);
 	lua_Object filenameObj = lua_getparam(2);
 
-	if (!lua_isnumber(texIdObj) || !lua_isstring(filenameObj))
+	if (!lua_isnumber(texIdObj) || !lua_isstring(filenameObj)) {
+		warning("Lua_V2::ThumbnailFromFile: wrong parameters");
 		return;
+	}
+	int index = (int)lua_getnumber(texIdObj);
+	Common::String filename(lua_getstring(filenameObj));
+	
+	if (g_grim->getGameType() == GType_MONKEY4 &&
+		g_grim->getGamePlatform() == Common::kPlatformPS2) {
+		filename += ".ps2";
+	}
 
-	warning("Lua_V2::ThumbnailFromFile: implement opcode, pushing true");
+	int width = 256, height = 128;
+
+	SaveGame *savedState = SaveGame::openForLoading(filename);
+	if (!savedState || !savedState->isCompatible()) {
+		delete savedState;
+		warning("Lua_V2::ThumbnailFromFile: savegame %s not compatible", filename.c_str());
+		lua_pushnil();
+		return;
+	}
+	int dataSize = savedState->beginSection('SIMG');
+	if (dataSize != width * height * 2) {
+		warning("Lua_V2::ThumbnailFromFile: savegame uses unexpected thumbnail size, ignore it");
+		lua_pushnil();
+		delete savedState;
+		return;
+	}
+	uint16 *data = new uint16[dataSize / 2];
+	for (int l = 0; l < dataSize / 2; l++) {
+		data[l] = savedState->readLEUint16();
+	}
+	Graphics::PixelBuffer buf(Graphics::createPixelFormat<565>(), (byte *)data);
+	Bitmap *screenshot = new Bitmap(buf, width, height, "screenshot");
+	if (!screenshot) {
+		lua_pushnil();
+		warning("Lua_V2::ThumbnailFromFile: Could not restore screenshot from file %s", filename.c_str());
+		delete screenshot;
+		delete[] data;
+		delete savedState;
+		return;
+	}
+
+	screenshot->_data->convertToColorFormat(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	g_driver->createSpecialtyTexture(index, screenshot->getData(0).getRawBuffer(), width, height);
+	delete screenshot;
+	delete[] data;
+	savedState->endSection();
+	delete savedState;
+
 	pushbool(true);
 }
 
 void Lua_V2::GetMemoryCardId() {
 	// 0 - No mem card
-	lua_pushnumber(0);
-	warning("GetMemoryCardId: Currently just returning 0");
+	// 1 - Not formatted
+	// 2 - Not enough space
+	// 3 - Error occured
+	lua_pushnumber(4);
+}
+
+void Lua_V2::SetReplayMode() {
+	lua_Object intObj = lua_getparam(1);
+	lua_Object strObj = lua_getparam(2);
+
+	if (!lua_isnumber(intObj) || (!lua_isnil(strObj) && !lua_isstring(strObj))) {
+		warning("Lua_V2::SetReplayMode: wrong parameters");
+		return;
+	}
+
+	int num = lua_getnumber(intObj);
+	if (lua_isstring(strObj)) {
+		const char *str = lua_getstring(strObj);
+		warning("SetReplayMode(%d, %s)", num, str);
+	} else {
+		warning("SetReplayMode(%d)", num);
+	}
 }
 
 void Lua_V2::LocalizeString() {
@@ -448,10 +601,7 @@ void Lua_V2::WorldToScreen() {
 	Math::Vector3d pos = Math::Vector3d(x, y, z);
 
 	const Set::Setup *setup = g_emi->getCurrSet()->getCurrSetup();
-	const Math::Vector3d interest = setup->_interest;
-	const float roll = setup->_roll;
-	const Math::Quaternion quat = Math::Quaternion(interest.x(), interest.y(), interest.z(), roll);
-	Math::Matrix4 view = quat.toMatrix();
+	Math::Matrix4 view = setup->_rot;
 	view.transpose();
 
 	pos -= setup->_pos;
@@ -463,8 +613,8 @@ void Lua_V2::WorldToScreen() {
 	Math::Vector4d screen = proj * Math::Vector4d(pos.x(), pos.y(), pos.z(), 1.0);
 	screen /= screen.w();
 
-	lua_pushnumber((screen.x() + 1) * 320);
-	lua_pushnumber((1 - screen.y()) * 240);
+	lua_pushnumber(screen.x());
+	lua_pushnumber(screen.y());
 }
 
 void Lua_V2::NewLayer() {
@@ -526,11 +676,13 @@ void Lua_V2::SetLayerFrame() {
 void Lua_V2::SetLayerSortOrder() {
 	lua_Object param1 = lua_getparam(1);
 	lua_Object param2 = lua_getparam(2);
-	if (lua_isuserdata(param1) && lua_tag(param1) != MKTAG('L','A','Y','R') && lua_isnumber(param2)) {
+	if (lua_isuserdata(param1) && lua_tag(param1) == MKTAG('L','A','Y','R') && lua_isnumber(param2)) {
 		int layer = (int)lua_getuserdata(param1);
 		int sortorder = (int)lua_getnumber(param2);
 		Layer *l = Layer::getPool().getObject(layer);
 		l->setSortOrder(sortorder);
+	} else {
+		warning("Lua_V2::SetLayerSortOrder: wrong parameters");
 	}
 }
 
@@ -552,7 +704,6 @@ static void stubError(const char *funcName) {
 // STUB_FUNC2(Lua_V2::SetActorRestChore)
 // STUB_FUNC2(Lua_V2::SetActorMumblechore)
 // STUB_FUNC2(Lua_V2::SetActorTalkChore)
-// STUB_FUNC2(Lua_V2::WalkActorVector)
 // STUB_FUNC2(Lua_V2::SetActorLookRate)
 // STUB_FUNC2(Lua_V2::GetActorLookRate)
 // STUB_FUNC2(Lua_V2::GetVisibleThings)
@@ -577,45 +728,9 @@ static void stubError(const char *funcName) {
 // STUB_FUNC2(Lua_V2::SetLightPosition)
 // STUB_FUNC2(Lua_V2::GetAngleBetweenVectors)
 // STUB_FUNC2(Lua_V2::IsPointInSector)
-// STUB_FUNC2(Lua_V2::ThumbnailFromFile)
 
 // Stubbed functions with semi-known arguments:
 // TODO: Verify and implement these: (And add type-checking), also rename params
-void Lua_V2::GetCameraPitch() {
-	error("Lua_V2::GetCameraPitch() - TODO: Implement opcode");
-}
-
-// No idea about parameter types for these three, presumably float
-void Lua_V2::PitchCamera() {
-	lua_Object param1 = lua_getparam(1);
-
-	if (!lua_isnumber(param1))
-		error("Lua_V2::PitchCamera - Unknown parameters");
-
-	float floatValue = lua_getnumber(param1);
-	error("Lua_V2::PitchCamera(%f) - TODO: Implement opcode", floatValue);
-}
-
-void Lua_V2::RollCamera() {
-	lua_Object param1 = lua_getparam(1);
-
-	if (!lua_isnumber(param1))
-		error("Lua_V2::RollCamera - Unknown parameters");
-
-	float floatValue = lua_getnumber(param1);
-	error("Lua_V2::RollCamera(%f) - TODO: Implement opcode", floatValue);
-}
-
-void Lua_V2::YawCamera() {
-	lua_Object param1 = lua_getparam(1);
-
-	if (!lua_isnumber(param1))
-		error("Lua_V2::YawCamera - Unknown parameters");
-
-	float floatValue = lua_getnumber(param1);
-	error("Lua_V2::YawCamera(%f) - TODO: Implement opcode", floatValue);
-}
-
 void Lua_V2::NukeAllScriptLocks() {
 	warning("Lua_V2::NukeAllScriptLocks() - TODO: Implement opcode");
 }
@@ -632,6 +747,20 @@ void Lua_V2::FRUTEY_Begin() {
 
 void Lua_V2::FRUTEY_End() {
 	error("Lua_V2::FRUTEY_End() - TODO: Implement opcode");
+}
+
+void Lua_V2::RenderModeUser() {
+	lua_Object param1 = lua_getparam(1);
+	if (!lua_isnil(param1) && g_grim->getMode() != GrimEngine::DrawMode) {
+		g_grim->setPreviousMode(g_grim->getMode());
+		g_movie->pause(true);
+		g_emiSound->pause(true);
+		g_grim->setMode(GrimEngine::DrawMode);
+	} else if (lua_isnil(param1) && g_grim->getMode() == GrimEngine::DrawMode) {
+		g_movie->pause(false);
+		g_emiSound->pause(false);
+		g_grim->setMode(g_grim->getPreviousMode());
+	}
 }
 
 // Monkey specific LUA_OPCODEs
@@ -781,6 +910,7 @@ struct luaL_reg monkeyMainOpcodes[] = {
 // PS2:
 	{ "GetMemoryCardId", LUA_OPCODE(Lua_V2, GetMemoryCardId) },
 	{ "OverWorldToScreen", LUA_OPCODE(Lua_V2, OverWorldToScreen) },
+	{ "SetReplayMode", LUA_OPCODE(Lua_V2, SetReplayMode) },
 // ResidualVM-hacks:
 	{ "GetResidualVMPreference", LUA_OPCODE(Lua_V2, GetResidualVMPreference) },
 	{ "SetResidualVMPreference", LUA_OPCODE(Lua_V2, SetResidualVMPreference) }

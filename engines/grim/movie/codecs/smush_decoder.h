@@ -35,6 +35,7 @@ class QueuingAudioStream;
 
 namespace Grim {
 
+class Codec48Decoder;
 class Blocky8;
 class Blocky16;
 
@@ -100,13 +101,14 @@ protected:
 		Common::Rational _frameRate;
 		Blocky8 *_blocky8;
 		Blocky16 *_blocky16;
+		Codec48Decoder *_codec48;
 		int32 _nbframes;
 		int _frameStart;
 	};
 
 	class SmushAudioTrack : public AudioTrack {
 	public:
-		SmushAudioTrack(bool isVima, int freq = 22050, int channels = -1);
+		SmushAudioTrack(Audio::Mixer::SoundType soundType, bool isVima, int freq = 22050, int channels = -1);
 		~SmushAudioTrack();
 
 		Audio::AudioStream *getAudioStream() const override { return _queueStream; }

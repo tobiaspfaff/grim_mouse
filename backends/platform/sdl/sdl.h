@@ -24,16 +24,13 @@
 #define PLATFORM_SDL_H
 
 #include "backends/platform/sdl/sdl-sys.h"
-// ResidualVM specific:
-#ifdef USE_OPENGL
-#include <SDL_opengl.h>
-#endif
-#undef ARRAYSIZE
 
 #include "backends/modular-backend.h"
 #include "backends/mixer/sdl/sdl-mixer.h"
 #include "backends/events/sdl/sdl-events.h"
 #include "backends/log/log.h"
+#include "backends/platform/sdl/sdl-window.h"
+#include "backends/graphics/sdl/resvm-sdl-graphics.h"
 
 #include "common/array.h"
 
@@ -59,12 +56,12 @@ public:
 	 */
 	virtual SdlMixerManager *getMixerManager();
 
+	virtual bool hasFeature(Feature f);
+
 	// Override functions from ModularBackend and OSystem
 	virtual void initBackend();
-#if defined(USE_TASKBAR)
 	virtual void engineInit();
 	virtual void engineDone();
-#endif
 	virtual void quit();
 	virtual void fatalError();
 
@@ -73,6 +70,13 @@ public:
 
 	virtual Common::String getSystemLanguage() const;
 
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// Clipboard
+	virtual bool hasTextInClipboard();
+	virtual Common::String getTextFromClipboard();
+	virtual bool setTextInClipboard(const Common::String &text);
+#endif
+
 	virtual void setWindowCaption(const char *caption);
 	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, int priority = 0);
 	virtual uint32 getMillis(bool skipRecord = false);
@@ -80,10 +84,34 @@ public:
 	virtual void getTimeAndDate(TimeDate &td) const;
 	virtual Audio::Mixer *getMixer();
 	virtual Common::TimerManager *getTimerManager();
+	virtual Common::SaveFileManager *getSavefileManager();
+
+	//Screenshots
+	virtual Common::String getScreenshotsPath();
+
+	// ResidualVM specific code
+	virtual void setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d) override;
+	// ResidualVM specific code
+	virtual void launcherInitSize(uint w, uint h) override;
+	// ResidualVM specific code
+	Common::Array<uint> getSupportedAntiAliasingLevels() const;
 
 protected:
 	bool _inited;
 	bool _initedSDL;
+#ifdef USE_SDL_NET
+	bool _initedSDLnet;
+#endif
+
+	/**
+	 * The path of the currently open log file, if any.
+	 *
+	 * @note This is currently a string and not an FSNode for simplicity;
+	 * e.g. we don't need to include fs.h here, and currently the
+	 * only use of this value is to use it to open the log file in an
+	 * editor; for that, we need it only as a string anyway.
+	 */
+	Common::String _logFilePath;
 
 	/**
 	 * Mixer manager that configures and setups SDL for
@@ -96,6 +124,19 @@ protected:
 	 */
 	SdlEventSource *_eventSource;
 
+	/**
+	 * The SDL output window.
+	 */
+	SdlWindow *_window;
+
+	// ResidualVM specific code
+	// Graphics capabilities
+	void detectDesktopResolution();
+	void detectFramebufferSupport();
+	void detectAntiAliasingSupport();
+	ResVmSdlGraphicsManager::Capabilities _capabilities;
+	// End of ResidualVM specific code
+
 	virtual Common::EventSource *getDefaultEventSource() { return _eventSource; }
 
 	/**
@@ -104,12 +145,13 @@ protected:
 	virtual void initSDL();
 
 	/**
-	 * Setup the window icon.
+	 * Create the audio CD manager
 	 */
-	virtual void setupIcon();
+	virtual AudioCDManager *createAudioCDManager();
 
 	// Logging
-	virtual Common::WriteStream *createLogFile() { return 0; }
+	virtual Common::String getDefaultLogFileName() { return Common::String(); }
+	virtual Common::WriteStream *createLogFile();
 	Backends::Log::Log *_logger;
 };
 

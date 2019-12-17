@@ -23,6 +23,9 @@
 #ifndef SOUND_H_
 #define SOUND_H_
 
+#include "audio/audiostream.h"
+#include "audio/mixer.h"
+
 #include "common/str.h"
 
 namespace Myst3 {
@@ -67,6 +70,7 @@ public:
 	uint32 _age;
 	uint32 _ambientFadeOutDelay;
 
+	uint _fadeLastTick;
 	int32 _fadeDuration; // In frames (@30 fps)
 	int32 _fadePosition;
 
@@ -118,6 +122,7 @@ public:
 
 	void stopMusic(uint32 fadeDelay);
 
+	bool isPlaying(uint32 id);
 	int32 playedFrames(uint32 id);
 
 	void update();
@@ -128,7 +133,8 @@ public:
 	void computeVolumeBalance(int32 volume, int32 heading, uint attenuation, int32 *mixerVolume, int32 *balance);
 
 	void setupNextSound(SoundNextCommand command, int16 controlVar, int16 startSoundId, int16 soundCount,
-			int32 soundMinDelay, int32 soundMaxDelay, int32 controlSoundId = 0, int32 controlSoundMaxPosition = 0);
+	                    int32 soundMinDelay, int32 soundMaxDelay, int32 controlSoundId = 0, int32 controlSoundMaxPosition = 0);
+	void resetSoundVars();
 private:
 	static const uint kNumChannels = 14;
 
@@ -138,5 +144,6 @@ private:
 	void compute3DVolumes(int32 heading, uint angle, int32 *left, int32 *right);
 };
 
-} /* namespace Myst3 */
-#endif /* SOUND_H_ */
+} // End of namespace Myst3
+
+#endif // SOUND_H_

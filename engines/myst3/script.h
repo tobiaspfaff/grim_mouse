@@ -55,32 +55,21 @@ private:
 	typedef void (Script::*CommandProc)(Context &c, const Opcode &cmd);
 
 	enum ArgumentType {
-		kUnknown,
-		kVar,
-		kValue,
-		kEvalValue,
-		kCondition
+		kUnknown   = 'u',
+		kVar       = 'v',
+		kValue     = 'i',
+		kEvalValue = 'e',
+		kCondition = 'c'
 	};
 
 	struct Command {
-		Command() {}
-		Command(uint16 o, CommandProc p, const char *d, uint8 argc, ...) : op(o), proc(p), desc(d) {
-			va_list types;
-
-			for(int j = 0; j < 5; j++)
-				argType[j] = kUnknown;
-
-			va_start(types, argc);
-			for(int j = 0; j < argc; j++)
-				argType[j] = (ArgumentType) va_arg(types, int);
-			va_end(types);
-		}
+		Command() : op(0), proc(nullptr), desc(nullptr), signature(nullptr)  { }
+		Command(uint16 o, CommandProc p, const char *d, const char *s) : op(o), proc(p), desc(d), signature(s) { }
 
 		uint16 op;
 		CommandProc proc;
 		const char *desc;
-
-		ArgumentType argType[5];
+		const char *signature;
 	};
 
 	Myst3Engine *_vm;
@@ -89,13 +78,16 @@ private:
 	Common::Array<Command> _commands;
 
 	const Command &findCommand(uint16 op);
+	const Command &findCommandByProc(CommandProc proc);
 	const Common::String describeCommand(uint16 op);
-	const Common::String describeArgument(ArgumentType type, int16 value);
+	const Common::String describeArgument(char type, int16 value);
+
+	void shiftCommands(uint16 base, int32 value);
 
 	void runOp(Context &c, const Opcode &op);
 	void goToElse(Context &c);
 
-	void runScriptForVarDrawFramesHelper(uint16 var, int32 startValue, int32 endValue, uint16 script, int32 numFrames);
+	void runScriptForVarDrawTicksHelper(uint16 var, int32 startValue, int32 endValue, uint16 script, int32 numTicks);
 
 	DECLARE_OPCODE(badOpcode);
 	DECLARE_OPCODE(uselessOpcode);
@@ -121,6 +113,7 @@ private:
 	DECLARE_OPCODE(movieInitFrameVarPreload);
 	DECLARE_OPCODE(movieInitOverrridePosition);
 	DECLARE_OPCODE(movieInitScriptedPosition);
+	DECLARE_OPCODE(movieInitCondScriptedPosition);
 	DECLARE_OPCODE(movieRemove);
 	DECLARE_OPCODE(movieRemoveAll);
 	DECLARE_OPCODE(movieSetLooping);
@@ -173,6 +166,7 @@ private:
 	DECLARE_OPCODE(varAddValueMaxLooping);
 	DECLARE_OPCODE(varDecrement);
 	DECLARE_OPCODE(varDecrementMin);
+	DECLARE_OPCODE(varDecrementMinLooping);
 	DECLARE_OPCODE(varAddValueMax);
 	DECLARE_OPCODE(varSubValueMin);
 	DECLARE_OPCODE(varZeroRange);
@@ -232,6 +226,7 @@ private:
 	DECLARE_OPCODE(goToRoomNode);
 	DECLARE_OPCODE(zipToNode);
 	DECLARE_OPCODE(zipToRoomNode);
+	DECLARE_OPCODE(drawTransition);
 	DECLARE_OPCODE(reloadNode);
 	DECLARE_OPCODE(redrawFrame);
 	DECLARE_OPCODE(moviePlay);
@@ -240,21 +235,22 @@ private:
 	DECLARE_OPCODE(moviePlayFullFrameTrans);
 	DECLARE_OPCODE(moviePlayChangeNode);
 	DECLARE_OPCODE(moviePlayChangeNodeTrans);
-	DECLARE_OPCODE(lootAt);
-	DECLARE_OPCODE(lootAtInXFrames);
-	DECLARE_OPCODE(lootAtMovieStart);
-	DECLARE_OPCODE(lootAtMovieStartInXFrames);
+	DECLARE_OPCODE(lookAt);
+	DECLARE_OPCODE(lookAtInXFrames);
+	DECLARE_OPCODE(lookAtMovieStart);
+	DECLARE_OPCODE(lookAtMovieStartInXFrames);
 	DECLARE_OPCODE(cameraLimitMovement);
 	DECLARE_OPCODE(cameraFreeMovement);
 	DECLARE_OPCODE(cameraLookAt);
 	DECLARE_OPCODE(cameraLookAtVar);
 	DECLARE_OPCODE(cameraGetLookAt);
-	DECLARE_OPCODE(lootAtMovieStartImmediate);
+	DECLARE_OPCODE(lookAtMovieStartImmediate);
 	DECLARE_OPCODE(cameraSetFOV);
 	DECLARE_OPCODE(changeNode);
 	DECLARE_OPCODE(changeNodeRoom);
 	DECLARE_OPCODE(changeNodeRoomAge);
-	DECLARE_OPCODE(drawXFrames);
+
+	DECLARE_OPCODE(drawXTicks);
 	DECLARE_OPCODE(drawWhileCond);
 	DECLARE_OPCODE(whileStart);
 	DECLARE_OPCODE(whileEnd);
@@ -284,6 +280,8 @@ private:
 	DECLARE_OPCODE(ambientPlayCurrentNode);
 	DECLARE_OPCODE(ambientApply);
 	DECLARE_OPCODE(ambientApplyWithFadeDelay);
+	DECLARE_OPCODE(soundPlayBadClick);
+	DECLARE_OPCODE(soundPlayBlocking);
 	DECLARE_OPCODE(soundPlay);
 	DECLARE_OPCODE(soundPlayVolume);
 	DECLARE_OPCODE(soundPlayVolumeDirection);
@@ -313,6 +311,8 @@ private:
 	DECLARE_OPCODE(runSoundScriptNodeRoomAge);
 	DECLARE_OPCODE(soundStopMusic);
 	DECLARE_OPCODE(movieSetStartupSound);
+	DECLARE_OPCODE(movieSetStartupSoundVolume);
+	DECLARE_OPCODE(movieSetStartupSoundVolumeH);
 	DECLARE_OPCODE(drawOneFrame);
 	DECLARE_OPCODE(cursorHide);
 	DECLARE_OPCODE(cursorShow);
@@ -321,8 +321,8 @@ private:
 	DECLARE_OPCODE(cursorUnlock);
 	DECLARE_OPCODE(dialogOpen);
 	DECLARE_OPCODE(newGame);
-
 };
 
-} /* namespace Myst3 */
-#endif /* SCRIPT_H_ */
+} // End of namespace Myst3
+
+#endif // SCRIPT_H_

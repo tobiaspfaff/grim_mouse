@@ -23,25 +23,84 @@
 #ifndef DATABASE_H_
 #define DATABASE_H_
 
-#include "common/scummsys.h"
 #include "engines/myst3/hotspot.h"
+
+#include "common/scummsys.h"
 #include "common/str.h"
+#include "common/language.h"
+#include "common/platform.h"
 #include "common/ptr.h"
 #include "common/array.h"
 #include "common/hashmap.h"
 #include "common/stream.h"
 
-namespace Common {
-class SeekableSubReadStreamEndian;
-}
-
 namespace Myst3 {
 
-typedef uint32 SafeDiskKey[4];
+enum GameLocalizationType {
+	kLocMonolingual,
+	kLocMulti2,
+	kLocMulti6
+};
 
-struct NodeData
-{
+enum MystLanguage {
+	kEnglish = 0,
+	kOther   = 1, // Dutch, Japanese or Polish
+	kDutch   = 1,
+	kFrench  = 2,
+	kGerman  = 3,
+	kItalian = 4,
+	kSpanish = 5
+};
+
+enum NodeID {
+	kNodeSharedInit   = 1,
+	kNodeLogoPlay     = 1,
+	kNodeMenuNewGame  = 98,
+	kNodeMenuMain     = 100,
+	kNodeMenuLoadGame = 200,
+	kNodeMenuSaveGame = 300
+};
+
+enum RoomID {
+	kRoomShared        = 101,
+	kRoomIntro         = 201,
+	kRoomTomahnaStart  = 301,
+	kRoomTomahnaReturn = 401,
+	kJnaninStart       = 501,
+	kRoomLeos          = 502,
+	kRoomLeet          = 503,
+	kRoomLelt          = 504,
+	kRoomLemt          = 505,
+	kRoomLeof          = 506,
+	kRoomEdannaStart   = 601,
+	kRoomLisw          = 602,
+	kRoomLifo          = 603,
+	kRoomLisp          = 604,
+	kRoomLine          = 605,
+	kRoomVoltaicStart  = 701,
+	kRoomEnpp          = 703,
+	kRoomEnem          = 704,
+	kRoomEnlc          = 705,
+	kRoomEndd          = 706,
+	kRoomEnch          = 707,
+	kRoomEnli          = 708,
+	kRoomNarayan       = 801,
+	kRoomMenu          = 901,
+	kRoomJournals      = 902,
+	kRoomDemo          = 903,
+	kRoomAtix          = 904,
+	kRoomAmateriaStart = 1001,
+	kRoomMais          = 1002,
+	kRoomMall          = 1003,
+	kRoomMass          = 1004,
+	kRoomMaww          = 1005,
+	kRoomMato          = 1006,
+	kLogo              = 1101
+};
+
+struct NodeData {
 	int16 id;
+	int16 zipBitIndex;
 	Common::Array<CondScript> scripts;
 	Common::Array<HotSpot> hotspots;
 	Common::Array<CondScript> soundScripts;
@@ -52,26 +111,28 @@ struct NodeData
 // deleted by a script they own
 typedef Common::SharedPtr<NodeData> NodePtr;
 
-struct RoomData
-{
+struct RoomData {
 	uint32 id;
-	char name[8];
-	uint32 scriptsOffset;
-	uint32 ambSoundsOffset;
-	uint32 unkOffset;
-	uint32 roomUnk4;
-	uint32 roomUnk5;
+	const char *name;
 };
 
-struct AgeData
-{
+struct RoomKey {
+	uint16 ageID;
+	uint16 roomID;
+
+	RoomKey(uint16 room, uint16 age) : roomID(room), ageID(age) {};
+
+	bool operator==(const RoomKey &k) const {
+		return ageID == k.ageID && roomID == k.roomID;
+	}
+};
+
+struct AgeData {
 	uint32 id;
 	uint32 disk;
 	uint32 roomCount;
-	uint32 roomsOffset;
+	const RoomData *rooms;
 	uint32 labelId;
-
-	Common::Array<RoomData> rooms;
 };
 
 struct AmbientCue {
@@ -81,26 +142,55 @@ struct AmbientCue {
 	Common::Array<uint16> tracks;
 };
 
+/**
+ * Script types stored in 'myst3.dat'
+ */
+enum ScriptType {
+	kScriptTypeNode,
+	kScriptTypeAmbientSound,
+	kScriptTypeBackgroundSound,
+	kScriptTypeNodeInit,
+	kScriptTypeAmbientCue
+};
+
+/**
+ * A script index entry in the 'myst3.dat' file
+ */
+struct RoomScripts {
+	Common::String room;
+	ScriptType type;
+	uint offset;
+	uint size;
+};
+
 class Myst3Engine;
-struct ExecutableVersion;
 
-class Database
-{
+class Database {
 public:
-	/**
-	 * Initialize the database from an executable file
-	 */
-	Database(Myst3Engine *vm);
+	Database(const Common::Platform platform, const Common::Language language, const uint32 localizationType);
+	~Database();
 
 	/**
-	 * Loads a room's nodes into the database
+	 * Loads a room's nodes into the database cache
 	 */
-	void setCurrentRoom(uint32 roomID);
+	void cacheRoom(uint32 roomID, uint32 ageID);
+
+	/**
+	 * Tells if a room is a common room
+	 *
+	 * Common rooms are always in the cache
+	 */
+	bool isCommonRoom(uint32 roomID, uint32 ageID) const;
 
 	/**
 	 * Returns a node's hotspots and scripts from the currently loaded room
 	 */
-	NodePtr getNodeData(uint16 nodeID, uint32 roomID = 0, uint32 ageID = 0);
+	NodePtr getNodeData(uint16 nodeID, uint32 roomID, uint32 ageID);
+
+	/**
+	 * Returns a node's zip id, as used by savestates
+	 */
+	int32 getNodeZipBitIndex(uint16 nodeID, uint32 roomID, uint32 ageID);
 
 	/**
 	 * Returns the generic node init script
@@ -110,17 +200,17 @@ public:
 	/**
 	 * Returns the name of the currently loaded room
 	 */
-	void getRoomName(char name[8], uint32 roomID = 0);
+	Common::String getRoomName(uint32 roomID, uint32 ageID) const;
 
 	/**
 	 * Returns the id of a room from its name
 	 */
-	uint32 getRoomId(const char *name);
+	RoomKey getRoomKey(const char *name);
 
 	/**
 	 * Returns the list of the nodes of a room
 	 */
-	Common::Array<uint16> listRoomNodes(uint32 roomID = 0, uint32 ageID = 0);
+	Common::Array<uint16> listRoomNodes(uint32 roomID, uint32 ageID);
 
 	/**
 	 * Returns an age's label id, to be used with AGES 1000 metadata
@@ -132,86 +222,67 @@ public:
 	 */
 	Common::String getSoundName(uint32 id);
 
+	/** Get the sound variable id range */
+	uint32 getSoundIdMin() const { return _soundIdMin; }
+	uint32 getSoundIdMax() const { return _soundIdMax; }
+
 	/**
 	 * Retrieve an ambient cue from its id
 	 */
-	const AmbientCue& getAmbientCue(uint16 id);
+	const AmbientCue &getAmbientCue(uint16 id);
+
+	int16 getGameLanguageCode() const;
+
+	/** Check if the scripts for two rooms are identical */
+	bool areRoomsScriptsEqual(uint32 roomID1, uint32 ageID1, uint32 roomID2, uint32 ageID2, ScriptType scriptType);
+
 private:
-	Myst3Engine *_vm;
-	const ExecutableVersion *_executableVersion;
+	struct RoomKeyHash {
+		uint operator()(const RoomKey &v) const {
+			return v.ageID + (v.roomID << 16);
+		}
+	};
 
-	Common::Array<AgeData> _ages;
+	typedef Common::HashMap<RoomKey, Common::Array<NodePtr>, RoomKeyHash> NodesCache;
 
-	uint32 _currentRoomID;
-	RoomData *_currentRoomData;
-	Common::HashMap< uint16, Common::Array<NodePtr> > _roomNodesCache;
+	const Common::Platform _platform;
+	const Common::Language _language;
+	const uint32 _localizationType;
+
+	static const AgeData _ages[];
+
+	NodesCache _roomNodesCache;
 
 	Common::Array<Opcode> _nodeInitScript;
 
+	uint32 _soundIdMin;
+	uint32 _soundIdMax;
 	Common::HashMap<uint32, Common::String> _soundNames;
 	Common::HashMap<uint16, AmbientCue> _ambientCues;
+	Common::HashMap<uint32, int16> _roomZipBitIndex;
 
-	RoomData *findRoomData(const uint32 &roomID);
-	Common::Array<NodePtr> loadRoomScripts(RoomData *room);
-	void loadRoomNodeScripts(Common::SeekableSubReadStreamEndian *file, Common::Array<NodePtr> &nodes);
-	void loadRoomSoundScripts(Common::SeekableSubReadStreamEndian *file, Common::Array<NodePtr> &nodes, bool background);
+	// 'myst3.dat' cached data
+	static const uint kDatVersion = 3;
+	Common::SeekableReadStream *_datFile;
+	Common::Array<RoomScripts> _roomScriptsIndex;
+	int32 _roomScriptsStartOffset;
+
+	const RoomData *findRoomData(uint32 roomID, uint32 ageID) const;
+	Common::Array<NodePtr> getRoomNodes(uint32 roomID, uint32 ageID) const;
+
+	Common::Array<NodePtr> readRoomScripts(const RoomData *room) const;
 	void preloadCommonRooms();
+	void initializeZipBitIndexTable();
+	void patchLanguageMenu();
+	void patchNodeScripts(const RoomData *room, Common::Array<NodePtr> &nodes) const;
 
-	Common::Array<AgeData> loadAges(Common::ReadStreamEndian &s);
-	RoomData loadRoomDescription(Common::ReadStreamEndian &s);
-
-	Common::Array<CondScript> loadCondScripts(Common::ReadStreamEndian & s);
-	Common::Array<Opcode> loadOpcodes(Common::ReadStreamEndian & s);
-	Common::Array<HotSpot> loadHotspots(Common::ReadStreamEndian & s);
-	Common::Array<PolarRect> loadRects(Common::ReadStreamEndian & s);
-	CondScript loadCondScript(Common::ReadStreamEndian & s);
-	HotSpot loadHotspot(Common::ReadStreamEndian & s);
-
-	void loadSoundNames(Common::ReadStreamEndian *s);
-	void loadAmbientCues(Common::ReadStreamEndian *s);
-
-	Common::SeekableSubReadStreamEndian *openDatabaseFile() const;
-	Common::SeekableReadStream *decompressPEFDataSegment(Common::SeekableReadStream *stream, uint segmentID) const;
-	Common::SeekableReadStream *extractRussianM3R(Common::SeekableReadStream *stream) const;
-
-	static uint32 safeDiscDecode1(uint32 data);
-	static uint32 safeDiscDecode2(uint32 data);
+	// 'myst3.dat' read methods
+	void readScriptIndex(Common::SeekableReadStream *stream, bool load);
+	void readSoundNames(Common::SeekableReadStream *stream, bool load);
+	void loadAmbientCues(Common::ReadStream *s);
+	Common::SeekableReadStream *getRoomScriptStream(const char *room, ScriptType scriptType) const;
 };
 
-#ifdef USE_SAFEDISC
+} // End of namespace Myst3
 
-class SafeDisc
-{
-public:
-	/** Constructor */
-	SafeDisc();
-
-	/** Decrypt a SafeDisc executable */
-	Common::SeekableReadStream *decrypt(Common::SeekableReadStream *stream) const;
-
-	/** Set the key used for TEA */
-	void setKey(const SafeDiskKey *key);
-
-	typedef uint32 (*DecodeFunc)(uint32);
-
-	/** Set the decoding functions */
-	void setDecodingFunctions(DecodeFunc f1, DecodeFunc f2);
-
-private:
-	SafeDiskKey _key;
-	DecodeFunc _decode1;
-	DecodeFunc _decode2;
-
-	struct Section {
-		uint32 virtualAddress;
-		uint32 size;
-		uint32 offset;
-	};
-
-	void decryptBlock(uint32 *buffer, uint32 size) const;
-};
-
-#endif // USE_SAFEDISC
-
-} /* namespace Myst3 */
-#endif /* DATABASE_H_ */
+#endif // DATABASE_H_

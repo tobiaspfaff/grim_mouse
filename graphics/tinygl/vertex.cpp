@@ -1,5 +1,33 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 #include "graphics/tinygl/zgl.h"
+#include "graphics/tinygl/zdirtyrect.h"
 
 namespace TinyGL {
 
@@ -26,9 +54,6 @@ void glopColor(GLContext *c, GLParam *p) {
 	c->current_color.Y = p[2].f;
 	c->current_color.Z = p[3].f;
 	c->current_color.W = p[4].f;
-	c->longcurrent_color[0] = p[5].ui;
-	c->longcurrent_color[1] = p[6].ui;
-	c->longcurrent_color[2] = p[7].ui;
 
 	if (c->color_material_enabled) {
 		GLParam q[7];
@@ -84,11 +109,11 @@ void glopBegin(GLContext *c, GLParam *p) {
 				c->matrix_model_projection_no_w_transform = 1;
 		}
 
-		// test if the texture matrix is not Identity
-		c->apply_texture_matrix = !c->matrix_stack_ptr[2]->isIdentity();
-
 		c->matrix_model_projection_updated = 0;
 	}
+	// test if the texture matrix is not Identity
+	c->apply_texture_matrix = !c->matrix_stack_ptr[2]->isIdentity();
+
 	// viewport
 	if (c->viewport.updated) {
 		gl_eval_viewport(c);
@@ -156,6 +181,8 @@ static inline void gl_vertex_transform(GLContext *c, GLVertex *v) {
 		if (c->matrix_model_projection_no_w_transform) {
 			v->pc.W = (m->_m[3][3]);
 		}
+		v->normal.X = v->normal.Y = v->normal.Z = 0;
+		v->ec.X = v->ec.Y = v->ec.Z = v->ec.W = 0;
 	}
 
 	v->clip_code = gl_clipcode(v->pc.X, v->pc.Y, v->pc.Z, v->pc.W);
@@ -220,97 +247,16 @@ void glopVertex(GLContext *c, GLParam *p) {
 
 	v->edge_flag = c->current_edge_flag;
 
-	switch (c->begin_type) {
-	case TGL_POINTS:
-		gl_draw_point(c, &c->vertex[0]);
-		n = 0;
-		break;
-	case TGL_LINES:
-		if (n == 2) {
-			gl_draw_line(c, &c->vertex[0], &c->vertex[1]);
-			n = 0;
-		}
-		break;
-	case TGL_LINE_STRIP:
-	case TGL_LINE_LOOP:
-		if (n == 1) {
-			c->vertex[2] = c->vertex[0];
-		} else if (n == 2) {
-			gl_draw_line(c, &c->vertex[0], &c->vertex[1]);
-			c->vertex[0] = c->vertex[1];
-			n = 1;
-		}
-		break;
-	case TGL_TRIANGLES:
-		if (n == 3) {
-			gl_draw_triangle(c, &c->vertex[0], &c->vertex[1], &c->vertex[2]);
-			n = 0;
-		}
-		break;
-	case TGL_TRIANGLE_STRIP:
-		if (cnt >= 3) {
-			if (n == 3)
-				n = 0;
-			// needed to respect triangle orientation
-			switch (cnt & 1) {
-			case 0:
-				gl_draw_triangle(c, &c->vertex[2], &c->vertex[1], &c->vertex[0]);
-				break;
-			case 1:
-				gl_draw_triangle(c, &c->vertex[0], &c->vertex[1], &c->vertex[2]);
-				break;
-			}
-		}
-		break;
-	case TGL_TRIANGLE_FAN:
-		if (n == 3) {
-			gl_draw_triangle(c, &c->vertex[0], &c->vertex[1], &c->vertex[2]);
-			c->vertex[1] = c->vertex[2];
-			n = 2;
-		}
-		break;
-	case TGL_QUADS:
-		if (n == 4) {
-			c->vertex[2].edge_flag = 0;
-			gl_draw_triangle(c, &c->vertex[0], &c->vertex[1], &c->vertex[2]);
-			c->vertex[2].edge_flag = 1;
-			c->vertex[0].edge_flag = 0;
-			gl_draw_triangle(c, &c->vertex[0], &c->vertex[2], &c->vertex[3]);
-			n = 0;
-		}
-		break;
-	case TGL_QUAD_STRIP:
-		if (n == 4) {
-			gl_draw_triangle(c, &c->vertex[0], &c->vertex[1], &c->vertex[2]);
-			gl_draw_triangle(c, &c->vertex[1], &c->vertex[3], &c->vertex[2]);
-			for (int i = 0; i < 2; i++)
-				c->vertex[i] = c->vertex[i + 2];
-			n = 2;
-		}
-		break;
-	case TGL_POLYGON:
-		break;
-	default:
-		error("glBegin: type %x not handled", c->begin_type);
-	}
-
 	c->vertex_n = n;
 }
 
 void glopEnd(GLContext *c, GLParam *) {
 	assert(c->in_begin == 1);
-
-	if (c->begin_type == TGL_LINE_LOOP) {
-		if (c->vertex_cnt >= 3) {
-			gl_draw_line(c, &c->vertex[0], &c->vertex[2]);
-		}
-	} else if (c->begin_type == TGL_POLYGON) {
-		int i = c->vertex_cnt;
-		while (i >= 3) {
-			i--;
-			gl_draw_triangle(c, &c->vertex[i], &c->vertex[0], &c->vertex[i - 1]);
-		}
+	
+	if (c->vertex_cnt > 0) {
+		tglIssueDrawCall(new Graphics::RasterizationDrawCall());
 	}
+
 	c->in_begin = 0;
 }
 

@@ -141,7 +141,8 @@ In find_if(In first, In last, Pred p) {
  */
 template<class In, class Op>
 Op for_each(In first, In last, Op f) {
-	while (first != last) f(*first++);
+	while (first != last)
+		f(*first++);
 	return f;
 }
 
@@ -177,7 +178,8 @@ T sortChoosePivot(T first, T last) {
 template<typename T, class StrictWeakOrdering>
 T sortPartition(T first, T last, T pivot, StrictWeakOrdering &comp) {
 	--last;
-	SWAP(*pivot, *last);
+	if (pivot != last)
+		SWAP(*pivot, *last);
 
 	T sorted;
 	for (sorted = first; first != last; ++first) {
@@ -188,7 +190,8 @@ T sortPartition(T first, T last, T pivot, StrictWeakOrdering &comp) {
 		}
 	}
 
-	SWAP(*last, *sorted);
+	if (last != sorted)
+		SWAP(*last, *sorted);
 	return sorted;
 }
 
@@ -267,6 +270,27 @@ T gcd(T a, T b) {
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+
+/**
+ * Replacement algorithm for iterables.
+ *
+ * Replaces all occurrences of "original" in [begin, end) with occurrences of "replaced".
+ *
+ * @param[in, out] begin: First element to be examined.
+ * @param[in] end: Last element in the seubsection. Not examined.
+ * @param[in] original: Elements to be replaced.
+ * @param[in] replaced: Element to replace occurrences of "original".
+ *
+ * @note Usage examples and unit tests may be found in "test/common/algorithm.h"
+ */
+template<class It, class Dat>
+void replace(It begin, It end, const Dat &original, const Dat &replaced) {
+	for (; begin != end; ++begin) {
+        if (*begin == original) {
+            *begin = replaced;
+        }
+    }
+}
 
 } // End of namespace Common
 #endif

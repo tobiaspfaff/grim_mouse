@@ -43,6 +43,7 @@ MoviePlayer *CreateBinkPlayer(bool demo) {
 
 BinkPlayer::BinkPlayer(bool demo) : MoviePlayer(), _demo(demo) {
 	_videoDecoder = new Video::BinkDecoder();
+	_videoDecoder->setDefaultHighColorFormat(Graphics::PixelFormat(4, 8, 8, 8, 0, 8, 16, 24, 0));
 	_subtitleIndex = _subtitles.begin();
 }
 
@@ -80,7 +81,7 @@ void BinkPlayer::handleFrame() {
 				textObject->setX(640 / 2);
 				textObject->setY(40);
 			}
-			textObject->setText(g_localizer->localize(_subtitleIndex->_textId.c_str()));
+			textObject->setText(g_localizer->localize(_subtitleIndex->_textId.c_str()), false);
 			g_grim->setMovieSubtitle(textObject);
 			_subtitleIndex->active = true;
 		}

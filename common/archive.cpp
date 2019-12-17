@@ -48,7 +48,7 @@ int Archive::listMatchingMembers(ArchiveMemberList &list, const String &pattern)
 	int matches = 0;
 
 	ArchiveMemberList::const_iterator it = allNames.begin();
-	for ( ; it != allNames.end(); ++it) {
+	for (; it != allNames.end(); ++it) {
 		// TODO: We match case-insenstivie for now, our API does not define whether that's ok or not though...
 		// For our use case case-insensitive is probably what we want to have though.
 		if ((*it)->getName().matchString(pattern, true, true)) {
@@ -64,7 +64,7 @@ int Archive::listMatchingMembers(ArchiveMemberList &list, const String &pattern)
 
 SearchSet::ArchiveNodeList::iterator SearchSet::find(const String &name) {
 	ArchiveNodeList::iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		if (it->_name == name)
 			break;
 	}
@@ -73,7 +73,7 @@ SearchSet::ArchiveNodeList::iterator SearchSet::find(const String &name) {
 
 SearchSet::ArchiveNodeList::const_iterator SearchSet::find(const String &name) const {
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		if (it->_name == name)
 			break;
 	}
@@ -81,13 +81,13 @@ SearchSet::ArchiveNodeList::const_iterator SearchSet::find(const String &name) c
 }
 
 /*
-	Keep the nodes sorted according to descending priorities.
-	In case two or node nodes have the same priority, insertion
-	order prevails.
+    Keep the nodes sorted according to descending priorities.
+    In case two or node nodes have the same priority, insertion
+    order prevails.
 */
 void SearchSet::insert(const Node &node) {
 	ArchiveNodeList::iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		if (it->_priority < node._priority)
 			break;
 	}
@@ -115,7 +115,7 @@ void SearchSet::addDirectory(const String &name, const FSNode &dir, int priority
 	if (!dir.exists() || !dir.isDirectory())
 		return;
 
-	add(name, new FSDirectory(dir, depth, flat), priority);
+	add(name, new FSDirectory(dir, depth, flat, _ignoreClashes), priority);
 }
 
 void SearchSet::addSubDirectoriesMatching(const FSNode &directory, String origPattern, bool ignoreCase, int priority, int depth, bool flat) {
@@ -131,8 +131,7 @@ void SearchSet::addSubDirectoriesMatching(const FSNode &directory, String origPa
 		++sep;
 		if (sep != origPattern.end())
 			nextPattern = String(sep, origPattern.end());
-	}
-	else {
+	} else {
 		pattern = origPattern;
 	}
 
@@ -211,7 +210,7 @@ bool SearchSet::hasFile(const String &name) const {
 		return false;
 
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		if (it->_arc->hasFile(name))
 			return true;
 	}
@@ -223,7 +222,7 @@ int SearchSet::listMatchingMembers(ArchiveMemberList &list, const String &patter
 	int matches = 0;
 
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it)
+	for (; it != _list.end(); ++it)
 		matches += it->_arc->listMatchingMembers(list, pattern);
 
 	return matches;
@@ -233,7 +232,7 @@ int SearchSet::listMembers(ArchiveMemberList &list) const {
 	int matches = 0;
 
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it)
+	for (; it != _list.end(); ++it)
 		matches += it->_arc->listMembers(list);
 
 	return matches;
@@ -244,7 +243,7 @@ const ArchiveMemberPtr SearchSet::getMember(const String &name) const {
 		return ArchiveMemberPtr();
 
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		if (it->_arc->hasFile(name))
 			return it->_arc->getMember(name);
 	}
@@ -254,21 +253,21 @@ const ArchiveMemberPtr SearchSet::getMember(const String &name) const {
 
 SeekableReadStream *SearchSet::createReadStreamForMember(const String &name) const {
 	if (name.empty())
-		return 0;
+		return nullptr;
 
 	ArchiveNodeList::const_iterator it = _list.begin();
-	for ( ; it != _list.end(); ++it) {
+	for (; it != _list.end(); ++it) {
 		SeekableReadStream *stream = it->_arc->createReadStreamForMember(name);
 		if (stream)
 			return stream;
 	}
 
-	return 0;
+	return nullptr;
 }
 
 
 SearchManager::SearchManager() {
-	clear();	// Force a reset
+	clear(); // Force a reset
 }
 
 void SearchManager::clear() {

@@ -1,3 +1,30 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 #include "graphics/tinygl/zgl.h"
 
@@ -22,24 +49,15 @@ void gl_transform_to_viewport(GLContext *c, GLVertex *v) {
 	v->zp.y = (int)(v->pc.Y * winv * c->viewport.scale.Y + c->viewport.trans.Y);
 	v->zp.z = (int)(v->pc.Z * winv * c->viewport.scale.Z + c->viewport.trans.Z);
 	// color
-	if (c->lighting_enabled) {
-		v->zp.r = (int)(v->color.X * (ZB_POINT_RED_MAX - ZB_POINT_RED_MIN)
-					+ ZB_POINT_RED_MIN);
-		v->zp.g = (int)(v->color.Y * (ZB_POINT_GREEN_MAX - ZB_POINT_GREEN_MIN)
-					+ ZB_POINT_GREEN_MIN);
-		v->zp.b = (int)(v->color.Z * (ZB_POINT_BLUE_MAX - ZB_POINT_BLUE_MIN)
-					+ ZB_POINT_BLUE_MIN);
-	} else {
-		// no need to convert to integer if no lighting : take current color
-		v->zp.r = c->longcurrent_color[0];
-		v->zp.g = c->longcurrent_color[1];
-		v->zp.b = c->longcurrent_color[2];
-	}
+	v->zp.r = (int)(v->color.X * ZB_POINT_RED_MAX);
+	v->zp.g = (int)(v->color.Y * ZB_POINT_GREEN_MAX);
+	v->zp.b = (int)(v->color.Z * ZB_POINT_BLUE_MAX);
+	v->zp.a = (int)(v->color.W * ZB_POINT_ALPHA_MAX);
 
 	// texture
 	if (c->texture_2d_enabled) {
-		v->zp.s = (int)(v->tex_coord.X * (ZB_POINT_S_MAX - ZB_POINT_S_MIN) + ZB_POINT_S_MIN);
-		v->zp.t = (int)(v->tex_coord.Y * (ZB_POINT_S_MAX - ZB_POINT_S_MIN) + ZB_POINT_S_MIN);
+		v->zp.s = (int)(v->tex_coord.X * ZB_POINT_ST_MAX);
+		v->zp.t = (int)(v->tex_coord.Y * ZB_POINT_ST_MAX);
 	}
 }
 
@@ -73,9 +91,16 @@ void gl_draw_point(GLContext *c, GLVertex *p0) {
 
 // line
 
-static inline void interpolate(GLVertex *q, GLVertex *p0, GLVertex *p1, float t) {
+static inline void interpolate_color(GLContext *c, GLVertex *q, GLVertex *p0, GLVertex *p1, float t) {
+	if (c->current_shade_model == TGL_SMOOTH)
+		q->color = p0->color + (p1->color - p0->color) * t;
+	else
+		q->color = p0->color;
+}
+
+static inline void interpolate(GLContext *c, GLVertex *q, GLVertex *p0, GLVertex *p1, float t) {
 	q->pc = p0->pc + (p1->pc - p0->pc) * t;
-	q->color = p0->color + (p1->color - p0->color) * t;
+	interpolate_color(c, q, p0, p1, t);
 }
 
 // Line Clipping
@@ -141,8 +166,8 @@ void gl_draw_line(GLContext *c, GLVertex *p1, GLVertex *p2) {
 				ClipLine1(-dy + dw, y1 - w1, &tmin, &tmax) &&
 				ClipLine1(dz + dw, -z1 - w1, &tmin, &tmax) &&
 				ClipLine1(-dz + dw, z1 - w1, &tmin, &tmax)) {
-			interpolate(&q1, p1, p2, tmin);
-			interpolate(&q2, p1, p2, tmax);
+			interpolate(c, &q1, p1, p2, tmin);
+			interpolate(c, &q2, p1, p2, tmax);
 			gl_transform_to_viewport(c, &q1);
 			gl_transform_to_viewport(c, &q2);
 
@@ -194,20 +219,12 @@ float(*clip_proc[6])(Vector4 *, Vector4 *, Vector4 *) =  {
 	clip_zmin, clip_zmax
 };
 
-static inline void updateTmp(GLContext *c, GLVertex *q,
-							 GLVertex *p0, GLVertex *p1, float t) {
-	if (c->current_shade_model == TGL_SMOOTH) {
-		float a = q->color.W;
-		q->color = p0->color + (p1->color - p0->color) * t;
-		q->color.W = a;
-	} else {
-		q->color.X = (p0->color.X);
-		q->color.Y = (p0->color.Y);
-		q->color.Z = (p0->color.Z);
-	}
+static inline void updateTmp(GLContext *c, GLVertex *q, GLVertex *p0, GLVertex *p1, float t) {
+	interpolate_color(c, q, p0, p1, t);
 
 	if (c->texture_2d_enabled) {
-		//NOTE: This could be implemented with operator overloading, but i'm not 100% sure that we can completely disregard Z and W components so I'm leaving it like this for now.
+		// NOTE: This could be implemented with operator overloading,
+		// but i'm not 100% sure that we can completely disregard Z and W components so I'm leaving it like this for now.
 		q->tex_coord.X = (p0->tex_coord.X + (p1->tex_coord.X - p0->tex_coord.X) * t);
 		q->tex_coord.Y = (p0->tex_coord.Y + (p1->tex_coord.Y - p0->tex_coord.Y) * t);
 	}
@@ -217,8 +234,7 @@ static inline void updateTmp(GLContext *c, GLVertex *q,
 		gl_transform_to_viewport(c, q);
 }
 
-static void gl_draw_triangle_clip(GLContext *c, GLVertex *p0,
-								  GLVertex *p1, GLVertex *p2, int clip_bit);
+static void gl_draw_triangle_clip(GLContext *c, GLVertex *p0, GLVertex *p1, GLVertex *p2, int clip_bit);
 
 void gl_draw_triangle(GLContext *c, GLVertex *p0, GLVertex *p1, GLVertex *p2) {
 	int co, c_and, cc[3], front;
@@ -270,8 +286,7 @@ void gl_draw_triangle(GLContext *c, GLVertex *p0, GLVertex *p1, GLVertex *p2) {
 	}
 }
 
-static void gl_draw_triangle_clip(GLContext *c, GLVertex *p0,
-								  GLVertex *p1, GLVertex *p2, int clip_bit) {
+static void gl_draw_triangle_clip(GLContext *c, GLVertex *p0, GLVertex *p1, GLVertex *p2, int clip_bit) {
 	int co, c_and, co1, cc[3], edge_flag_tmp, clip_mask;
 	GLVertex tmp1, tmp2, *q[3];
 	float tt;
@@ -397,7 +412,11 @@ void gl_draw_triangle_fill(GLContext *c, GLVertex *p0, GLVertex *p1, GLVertex *p
 		count_triangles_textured++;
 #endif
 		c->fb->setTexture(c->current_texture->images[0].pixmap);
-		c->fb->fillTriangleMappingPerspective(&p0->zp, &p1->zp, &p2->zp);
+		if (c->current_shade_model == TGL_SMOOTH) {
+			c->fb->fillTriangleTextureMappingPerspectiveSmooth(&p0->zp, &p1->zp, &p2->zp);
+		} else {
+			c->fb->fillTriangleTextureMappingPerspectiveFlat(&p0->zp, &p1->zp, &p2->zp);
+		}
 	} else if (c->current_shade_model == TGL_SMOOTH) {
 		c->fb->fillTriangleSmooth(&p0->zp, &p1->zp, &p2->zp);
 	} else {

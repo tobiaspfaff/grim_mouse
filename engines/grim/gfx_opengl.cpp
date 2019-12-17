@@ -20,7 +20,7 @@
  *
  */
 
-#if defined(WIN32) && !defined(__SYMBIAN32__)
+#if defined(WIN32)
 #include <windows.h>
 // winnt.h defines ARRAYSIZE, but we want our own one...
 #undef ARRAYSIZE
@@ -30,10 +30,12 @@
 #include "common/system.h"
 #include "common/config-manager.h"
 
-#if defined(USE_OPENGL) && !defined(USE_OPENGL_SHADERS)
+#if defined(USE_OPENGL) && !defined(USE_GLES2)
 
 #include "graphics/surface.h"
 #include "graphics/pixelbuffer.h"
+
+#include "math/glmath.h"
 
 #include "engines/grim/actor.h"
 #include "engines/grim/colormap.h"
@@ -49,7 +51,7 @@
 #include "engines/grim/emi/modelemi.h"
 #include "engines/grim/registry.h"
 
-#if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program)
+#if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program) && !defined(USE_GLEW)
 
 // We need SDL.h for SDL_GL_GetProcAddress.
 #include "backends/platform/sdl/sdl-sys.h"
@@ -99,7 +101,6 @@ GfxOpenGL::GfxOpenGL() : _smushNumTex(0),
 		_useDepthShader(false), _fragmentProgram(0), _useDimShader(0),
 		_dimFragProgram(0), _maxLights(0), _storedDisplay(nullptr),
 		_emergFont(0), _alpha(1.f) {
-	g_driver = this;
 	// GL_LEQUAL as glDepthFunc ensures that subsequent drawing attempts for
 	// the same triangles are not ignored by the depth test.
 	// That's necessary for EMI where some models have multiple faces which
@@ -121,32 +122,27 @@ GfxOpenGL::~GfxOpenGL() {
 	if (_useDimShader)
 		glDeleteProgramsARB(1, &_dimFragProgram);
 #endif
+	for (unsigned int i = 0; i < _numSpecialtyTextures; i++) {
+		destroyTexture(&_specialtyTextures[i]);
+	}
 }
 
 byte *GfxOpenGL::setupScreen(int screenW, int screenH, bool fullscreen) {
-	_pixelFormat = g_system->setupScreen(screenW, screenH, fullscreen, true).getFormat();
-
 	_screenWidth = screenW;
 	_screenHeight = screenH;
 	_scaleW = _screenWidth / (float)_gameWidth;
 	_scaleH = _screenHeight / (float)_gameHeight;
 
-	_isFullscreen = g_system->getFeatureState(OSystem::kFeatureFullscreenMode);
 	_useDepthShader = false;
 	_useDimShader = false;
 
 	g_system->showMouse(false);
 
-	char GLDriver[1024];
-	sprintf(GLDriver, "ResidualVM: %s/%s", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
-	g_system->setWindowCaption(GLDriver);
+	g_system->setWindowCaption("ResidualVM: OpenGL Renderer");
 
-	// Load emergency built-in font
-	loadEmergFont();
-
-	_screenSize = _screenWidth * _screenHeight * 4;
-	_storedDisplay = new byte[_screenSize];
-	memset(_storedDisplay, 0, _screenSize);
+	int screenSize = _screenWidth * _screenHeight * 4;
+	_storedDisplay = new byte[screenSize];
+	memset(_storedDisplay, 0, screenSize);
 	_smushNumTex = 0;
 
 	_currentShadowArray = nullptr;
@@ -154,10 +150,12 @@ byte *GfxOpenGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 
 	GLfloat ambientSource[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, ambientSource);
-	GLfloat specularReflectance[] = { 0.3f, 0.3f, 0.3f, 1.0f };
-	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specularReflectance);
+	GLfloat diffuseReflectance[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, diffuseReflectance);
 
-	glPolygonOffset(-6.0, -6.0);
+	if (g_grim->getGameType() == GType_GRIM) {
+		glPolygonOffset(-6.0, -6.0);
+	}
 
 	initExtensions();
 	glGetIntegerv(GL_MAX_LIGHTS, &_maxLights);
@@ -171,6 +169,7 @@ void GfxOpenGL::initExtensions() {
 	}
 
 #if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program)
+#ifndef USE_GLEW
 	union {
 		void *obj_ptr;
 		void (APIENTRY *func_ptr)();
@@ -188,9 +187,10 @@ void GfxOpenGL::initExtensions() {
 	glDeleteProgramsARB = (PFNGLDELETEPROGRAMSARBPROC)u.func_ptr;
 	u.obj_ptr = SDL_GL_GetProcAddress("glProgramLocalParameter4fARB");
 	glProgramLocalParameter4fARB = (PFNGLPROGRAMLOCALPARAMETER4FARBPROC)u.func_ptr;
+#endif
 
 	const char *extensions = (const char *)glGetString(GL_EXTENSIONS);
-	if (strstr(extensions, "ARB_fragment_program")) {
+	if (extensions && strstr(extensions, "ARB_fragment_program")) {
 		_useDepthShader = true;
 		_useDimShader = true;
 	}
@@ -225,7 +225,7 @@ const char *GfxOpenGL::getVideoDeviceName() {
 	return "OpenGL Renderer";
 }
 
-void GfxOpenGL::setupCamera(float fov, float nclip, float fclip, float roll) {
+void GfxOpenGL::setupCameraFrustum(float fov, float nclip, float fclip) {
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
@@ -234,25 +234,25 @@ void GfxOpenGL::setupCamera(float fov, float nclip, float fclip, float roll) {
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-
 }
 
 void GfxOpenGL::positionCamera(const Math::Vector3d &pos, const Math::Vector3d &interest, float roll) {
-	if (g_grim->getGameType() == GType_MONKEY4) {
-		glScaled(1, 1, -1);
+	Math::Vector3d up_vec(0, 0, 1);
 
-		_currentPos = pos;
-		_currentQuat = Math::Quaternion(interest.x(), interest.y(), interest.z(), roll);
-	} else {
-		Math::Vector3d up_vec(0, 0, 1);
+	glRotatef(roll, 0, 0, -1);
 
-		glRotatef(roll, 0, 0, -1);
+	if (pos.x() == interest.x() && pos.y() == interest.y())
+		up_vec = Math::Vector3d(0, 1, 0);
 
-		if (pos.x() == interest.x() && pos.y() == interest.y())
-			up_vec = Math::Vector3d(0, 1, 0);
+	Math::Matrix4 lookMatrix = Math::makeLookAtMatrix(pos, interest, up_vec);
+	glMultMatrixf(lookMatrix.getData());
+	glTranslated(-pos.x(), -pos.y(), -pos.z());
+}
 
-		gluLookAt(pos.x(), pos.y(), pos.z(), interest.x(), interest.y(), interest.z(), up_vec.x(), up_vec.y(), up_vec.z());
-	}
+void GfxOpenGL::positionCamera(const Math::Vector3d &pos, const Math::Matrix4 &rot) {
+	glScaled(1, 1, -1);
+	_currentPos = pos;
+	_currentRot = rot;
 }
 
 Math::Matrix4 GfxOpenGL::getModelView() {
@@ -262,8 +262,7 @@ Math::Matrix4 GfxOpenGL::getModelView() {
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 
-		Math::Matrix4 worldRot = _currentQuat.toMatrix();
-		glMultMatrixf(worldRot.getData());
+		glMultMatrixf(_currentRot.getData());
 		glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
 
 		glGetFloatv(GL_MODELVIEW_MATRIX, modelView.getData());
@@ -298,6 +297,10 @@ void GfxOpenGL::flipBuffer() {
 
 bool GfxOpenGL::isHardwareAccelerated() {
 	return true;
+}
+
+bool GfxOpenGL::supportsShaders() {
+	return false;
 }
 
 static void glShadowProjection(const Math::Vector3d &light, const Math::Vector3d &plane, const Math::Vector3d &normal, bool dontNegate) {
@@ -349,7 +352,7 @@ static void glShadowProjection(const Math::Vector3d &light, const Math::Vector3d
 	glMultMatrixf((GLfloat *)mat);
 }
 
-void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, int *y2) {
+void GfxOpenGL::getScreenBoundingBox(const Mesh *model, int *x1, int *y1, int *x2, int *y2) {
 	if (_currentShadowArray) {
 		*x1 = -1;
 		*y1 = -1;
@@ -362,10 +365,9 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 	GLdouble right = -1000;
 	GLdouble left = 1000;
 	GLdouble bottom = -1000;
-	GLdouble winX, winY, winZ;
 
 	for (int i = 0; i < model->_numFaces; i++) {
-		Math::Vector3d v;
+		Math::Vector3d obj;
 		float *pVertices;
 
 		for (int j = 0; j < model->_faces[i].getNumVertices(); j++) {
@@ -378,21 +380,19 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 
 			pVertices = model->_vertices + 3 * model->_faces[i].getVertex(j);
 
-			v.set(*(pVertices), *(pVertices + 1), *(pVertices + 2));
+			obj.set(*(pVertices), *(pVertices + 1), *(pVertices + 2));
 
-			gluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
+			Math::Vector3d win;
+			Math::gluMathProject<GLdouble, GLint>(obj, modelView, projection, viewPort, win);
 
-            winX = winX/_scaleW;
-            winY = winY/_scaleH;
-
-			if (winX > right)
-				right = winX;
-			if (winX < left)
-				left = winX;
-			if (winY < top)
-				top = winY;
-			if (winY > bottom)
-				bottom = winY;
+			if (win.x() > right)
+				right = win.x();
+			if (win.x() < left)
+				left = win.x();
+			if (win.y() < top)
+				top = win.y();
+			if (win.y() > bottom)
+				bottom = win.y();
 		}
 	}
 
@@ -423,7 +423,7 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 	*y2 = (int)bottom;
 }
 
-void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) {
+void GfxOpenGL::getScreenBoundingBox(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) {
 	if (_currentShadowArray) {
 		*x1 = -1;
 		*y1 = -1;
@@ -436,7 +436,6 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 	GLdouble right = -1000;
 	GLdouble left = 1000;
 	GLdouble bottom = -1000;
-	GLdouble winX, winY, winZ;
 
 	GLdouble modelView[16], projection[16];
 	GLint viewPort[4];
@@ -450,21 +449,18 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 
 		for (uint j = 0; j < model->_faces[i]._faceLength * 3; j++) {
 			int index = indices[j];
-			Math::Vector3d v = model->_drawVertices[index];
+			Math::Vector3d obj = model->_drawVertices[index];
+			Math::Vector3d win;
+			Math::gluMathProject<GLdouble, GLint>(obj, modelView, projection, viewPort, win);
 
-			gluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
-
-            winX = winX/_scaleW;
-            winY = winY/_scaleH;
-
-			if (winX > right)
-				right = winX;
-			if (winX < left)
-				left = winX;
-			if (winY < top)
-				top = winY;
-			if (winY > bottom)
-				bottom = winY;
+			if (win.x() > right)
+				right = win.x();
+			if (win.x() < left)
+				left = win.x();
+			if (win.y() < top)
+				top = win.y();
+			if (win.y() > bottom)
+				bottom = win.y();
 		}
 	}
 
@@ -488,20 +484,89 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 		*y2 = -1;
 		return;
 	}
-
+	
 	*x1 = (int)left;
-	*y1 = (int)(_gameHeight - bottom);
+	*y1 = (int)top;
 	*x2 = (int)right;
-	*y2 = (int)(_gameHeight - top);
+	*y2 = (int)bottom;
+}
+
+void GfxOpenGL::getActorScreenBBox(const Actor *actor, Common::Point &p1, Common::Point &p2) {
+	// Get the actor's bounding box information (describes a 3D box)
+	Math::Vector3d bboxPos, bboxSize;
+	actor->getBBoxInfo(bboxPos, bboxSize);
+
+	// Translate the bounding box to the actor's position
+	Math::Matrix4 m = actor->getFinalMatrix();
+	bboxPos = bboxPos + actor->getWorldPos();
+
+	// Set up the camera coordinate system
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	Math::Matrix4 worldRot = _currentRot;
+	glMultMatrixf(worldRot.getData());
+	glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+
+	// Get the current OpenGL state
+	GLdouble modelView[16], projection[16];
+	GLint viewPort[4];
+	glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
+	glGetDoublev(GL_PROJECTION_MATRIX, projection);
+	glGetIntegerv(GL_VIEWPORT, viewPort);
+
+	// Set values outside of the screen range
+	p1.x = 1000;
+	p1.y = 1000;
+	p2.x = -1000;
+	p2.y = -1000;
+
+	// Project all of the points in the 3D bounding box
+	Math::Vector3d p, projected;
+	for (int x = 0; x < 2; x++) {
+		for (int y = 0; y < 2; y++) {
+			for (int z = 0; z < 2; z++) {
+				Math::Vector3d added(bboxSize.x() * 0.5f * (x * 2 - 1), bboxSize.y() * 0.5f * (y * 2 - 1), bboxSize.z() * 0.5f * (z * 2 - 1));
+				m.transform(&added, false);
+				p = bboxPos + added;
+				Math::gluMathProject<GLdouble, GLint>(p, modelView, projection, viewPort, projected);
+
+				// Find the points
+				if (projected.x() < p1.x)
+					p1.x = projected.x();
+				if (projected.y() < p1.y)
+					p1.y = projected.y();
+				if (projected.x() > p2.x)
+					p2.x = projected.x();
+				if (projected.y() > p2.y)
+					p2.y = projected.y();
+			}
+		}
+	}
+
+	// Swap the p1/p2 y coorindates
+	int16 tmp = p1.y;
+	p1.y = 480 - p2.y;
+	p2.y = 480 - tmp;
+
+	// Restore the state
+	glPopMatrix();
 }
 
 void GfxOpenGL::startActorDraw(const Actor *actor) {
 	_currentActor = actor;
 	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_LIGHTING);
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
+
+	if (g_grim->getGameType() == GType_MONKEY4 && !actor->isInOverworld()) {
+		// Apply the view transform.
+		glMultMatrixf(_currentRot.getData());
+		glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
+
 	if (_currentShadowArray) {
 		// TODO find out why shadowMask at device in woods is null
 		if (!_currentShadowArray->shadowMask) {
@@ -509,11 +574,16 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			_currentShadowArray->shadowMaskSize = _screenWidth * _screenHeight;
 		}
 		Sector *shadowSector = _currentShadowArray->planeList.front().sector;
+		glDepthMask(GL_FALSE);
 		glEnable(GL_POLYGON_OFFSET_FILL);
 		glDisable(GL_LIGHTING);
 		glDisable(GL_TEXTURE_2D);
-//      glColor3f(0.0f, 1.0f, 0.0f);
-		glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);
+// 		glColor3f(0.0f, 1.0f, 0.0f); // debug draw color
+		if (g_grim->getGameType() == GType_GRIM) {
+			glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);
+		} else {
+			glColor3ub(_currentShadowArray->color.getRed(), _currentShadowArray->color.getGreen(), _currentShadowArray->color.getBlue());
+		}
 		glShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
 	}
 
@@ -537,17 +607,13 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			float right = 1;
 			float top = right * 0.75;
 			float div = 6.0f;
-			glFrustum(-right/div, right/div, -top/div, top/div, 1.0f/div, 3276.8f);
+			glFrustum(-right / div, right / div, -top / div, top / div, 1.0f / div, 3276.8f);
 			glMatrixMode(GL_MODELVIEW);
 			glLoadIdentity();
 			glScalef(1.0, 1.0, -1.0);
 			glTranslatef(pos.x(), pos.y(), pos.z());
 			glMultMatrixf(quat.toMatrix().getData());
 		} else {
-			Math::Matrix4 worldRot = _currentQuat.toMatrix();
-			glMultMatrixf(worldRot.getData());
-			glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
-
 			Math::Matrix4 m = actor->getFinalMatrix();
 			m.transpose();
 			glMultMatrixf(m.getData());
@@ -558,18 +624,9 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 		const Math::Quaternion &quat = actor->getRotationQuat();
 		const float &scale = actor->getScale();
 
-		Math::Matrix4 worldRot = _currentQuat.toMatrix();
-		worldRot.inverseRotate(&pos);
 		glTranslatef(pos.x(), pos.y(), pos.z());
-		glMultMatrixf(worldRot.getData());
-
 		glScalef(scale, scale, scale);
 		glMultMatrixf(quat.toMatrix().getData());
-	}
-
-	if (actor->getSortOrder() >= 100) {
-		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-		glDepthMask(GL_TRUE);
 	}
 }
 
@@ -579,19 +636,23 @@ void GfxOpenGL::finishActorDraw() {
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
+
+	glDisable(GL_TEXTURE_2D);
 	if (_alpha < 1.f) {
 		glDisable(GL_BLEND);
 		_alpha = 1.f;
 	}
-	glDisable(GL_TEXTURE_2D);
+
 	if (_currentShadowArray) {
 		glEnable(GL_LIGHTING);
 		glColor3f(1.0f, 1.0f, 1.0f);
 		glDisable(GL_POLYGON_OFFSET_FILL);
 	}
+
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		glDisable(GL_CULL_FACE);
 	}
+
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	_currentActor = nullptr;
 }
@@ -613,6 +674,15 @@ void GfxOpenGL::drawShadowPlanes() {
 	}
 */
 
+	glPushMatrix();
+
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		// Apply the view transform.
+		glMultMatrixf(_currentRot.getData());
+		glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
+
+
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glDepthMask(GL_FALSE);
 	glClearStencil(~0);
@@ -623,6 +693,7 @@ void GfxOpenGL::drawShadowPlanes() {
 	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 	glDisable(GL_LIGHTING);
 	glDisable(GL_TEXTURE_2D);
+	glColor4f(1, 1, 1, 1);
 	for (SectorListType::iterator i = _currentShadowArray->planeList.begin(); i != _currentShadowArray->planeList.end(); ++i) {
 		Sector *shadowSector = i->sector;
 		glBegin(GL_POLYGON);
@@ -635,6 +706,8 @@ void GfxOpenGL::drawShadowPlanes() {
 
 	glStencilFunc(GL_EQUAL, 1, (GLuint)~0);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+	glPopMatrix();
 }
 
 void GfxOpenGL::setShadowMode() {
@@ -672,25 +745,33 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_LIGHTING);
-	if (face->_hasTexture)
+	if (!_currentShadowArray && face->_hasTexture)
 		glEnable(GL_TEXTURE_2D);
 	else
 		glDisable(GL_TEXTURE_2D);
+	if (face->_flags & EMIMeshFace::kAlphaBlend || face->_flags & EMIMeshFace::kUnknownBlend || _currentActor->hasLocalAlpha() || _alpha < 1.0f)
+		glEnable(GL_BLEND);
 
-	float dim = 1.0f - _dimLevel;
 	glBegin(GL_TRIANGLES);
+	float alpha = _alpha;
+	if (model->_meshAlphaMode == Actor::AlphaReplace) {
+		alpha *= model->_meshAlpha;
+	}
+	Math::Vector3d noLighting(1.f, 1.f, 1.f);
 	for (uint j = 0; j < face->_faceLength * 3; j++) {
 		int index = indices[j];
-		if (face->_hasTexture) {
-			glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
+
+		if (!_currentShadowArray) {
+			if (face->_hasTexture) {
+				glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
+			}
+			Math::Vector3d lighting = (face->_flags & EMIMeshFace::kNoLighting) ? noLighting : model->_lighting[index];
+			byte r = (byte)(model->_colorMap[index].r * lighting.x());
+			byte g = (byte)(model->_colorMap[index].g * lighting.y());
+			byte b = (byte)(model->_colorMap[index].b * lighting.z());
+			byte a = (int)(alpha * (model->_meshAlphaMode == Actor::AlphaReplace ? model->_colorMap[index].a * _currentActor->getLocalAlpha(index) : 255.f));
+			glColor4ub(r, g, b, a);
 		}
-		
-		Math::Vector3d lighting = model->_lighting[index];
-		byte r = (byte)(model->_colorMap[index].r * lighting.x() * dim);
-		byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
-		byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
-		byte a = (int)(model->_colorMap[index].a * _alpha);
-		glColor4ub(r, g, b, a);
 
 		Math::Vector3d normal = model->_normals[index];
 		Math::Vector3d vertex = model->_drawVertices[index];
@@ -699,13 +780,19 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 		glVertex3fv(vertex.getData());
 	}
 	glEnd();
+
+	if (!_currentShadowArray) {
+		glColor3f(1.0f, 1.0f, 1.0f);
+	}
+
 	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_ALPHA_TEST);
 	glEnable(GL_LIGHTING);
 	glDisable(GL_BLEND);
-	glDepthMask(GL_TRUE);
-	glColor3f(1.0f, 1.0f, 1.0f);
+
+	if (!_currentShadowArray)
+		glDepthMask(GL_TRUE);
 }
 
 void GfxOpenGL::drawModelFace(const Mesh *mesh, const MeshFace *face) {
@@ -743,11 +830,11 @@ void GfxOpenGL::drawSprite(const Sprite *sprite) {
 		Math::Matrix4 act;
 		act.buildAroundZ(_currentActor->getYaw());
 		act.transpose();
-		act(3,0) = modelview[12];
-		act(3,1) = modelview[13];
-		act(3,2) = modelview[14];
+		act(3, 0) = modelview[12];
+		act(3, 1) = modelview[13];
+		act(3, 2) = modelview[14];
 		glLoadMatrixf(act.getData());
-		glTranslatef(sprite->_pos.x(), sprite->_pos.y(), sprite->_pos.z());
+		glTranslatef(sprite->_pos.x(), sprite->_pos.y(), -sprite->_pos.z());
 	} else {
 		glTranslatef(sprite->_pos.x(), sprite->_pos.y(), sprite->_pos.z());
 		GLdouble modelview[16];
@@ -766,7 +853,7 @@ void GfxOpenGL::drawSprite(const Sprite *sprite) {
 		glLoadMatrixd(modelview);
 	}
 
-	if (sprite->_blendMode == Sprite::BlendAdditive) {
+	if (sprite->_flags1 & Sprite::BlendAdditive) {
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	} else {
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -774,45 +861,39 @@ void GfxOpenGL::drawSprite(const Sprite *sprite) {
 
 	glDisable(GL_LIGHTING);
 
-	if (sprite->_alphaTest) {
+	if (g_grim->getGameType() == GType_GRIM) {
 		glEnable(GL_ALPHA_TEST);
-		glAlphaFunc(GL_GEQUAL, g_grim->getGameType() == GType_MONKEY4 ? 0.1f : 0.5f);
+		glAlphaFunc(GL_GEQUAL, 0.5f);
+	}  else if (sprite->_flags2 & Sprite::AlphaTest) {
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GEQUAL, 0.1f);
 	} else {
 		glDisable(GL_ALPHA_TEST);
 	}
 
-	if (sprite->_writeDepth) {
+	if (sprite->_flags2 & Sprite::DepthTest) {
 		glEnable(GL_DEPTH_TEST);
 	} else {
 		glDisable(GL_DEPTH_TEST);
 	}
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		if (_currentActor->isInOverworld()) {
-			// The Overworld actors don't have a proper sort order
-			// so we rely on the z coordinates
-			glDepthMask(GL_TRUE);
-		} else {
-			glDepthMask(GL_FALSE);
-		}
+		glDepthMask(GL_TRUE);
 
 		float halfWidth = sprite->_width / 2;
 		float halfHeight = sprite->_height / 2;
-		float dim = 1.0f - _dimLevel;
-		float texCoordsX[] = { 0.0f, 0.0f, 1.0f, 1.0f };
-		float texCoordsY[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-		float vertexX[] = { -1.0f, -1.0f, 1.0f, 1.0f };
-		float vertexY[] = { -1.0f, 1.0f, 1.0f, -1.0f };
+		float vertexX[] = { -1.0f, 1.0f, 1.0f, -1.0f };
+		float vertexY[] = { 1.0f, 1.0f, -1.0f, -1.0f };
 
 		glBegin(GL_POLYGON);
 		for (int i = 0; i < 4; ++i) {
-			float r = sprite->_red[i] * dim / 255.0f;
-			float g = sprite->_green[i] * dim / 255.0f;
-			float b = sprite->_blue[i] * dim / 255.0f;
-			float a = sprite->_alpha[i] * dim * _alpha / 255.0f;
+			float r = sprite->_red[i] / 255.0f;
+			float g = sprite->_green[i] / 255.0f;
+			float b = sprite->_blue[i] / 255.0f;
+			float a = sprite->_alpha[i] * _alpha / 255.0f;
 
 			glColor4f(r, g, b, a);
-			glTexCoord2f(texCoordsX[i], texCoordsY[i]);
+			glTexCoord2f(sprite->_texCoordX[i], sprite->_texCoordY[i]);
 			glVertex3f(vertexX[i] * halfWidth, vertexY[i] * halfHeight, 0.0f);
 		}
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -839,6 +920,7 @@ void GfxOpenGL::drawSprite(const Sprite *sprite) {
 	glDisable(GL_ALPHA_TEST);
 	glDepthMask(GL_TRUE);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
 
 	glPopMatrix();
@@ -855,6 +937,10 @@ void GfxOpenGL::translateViewpoint(const Math::Vector3d &vec) {
 
 void GfxOpenGL::rotateViewpoint(const Math::Angle &angle, const Math::Vector3d &axis) {
 	glRotatef(angle.getDegrees(), axis.x(), axis.y(), axis.z());
+}
+
+void GfxOpenGL::rotateViewpoint(const Math::Matrix4 &rot) {
+	glMultMatrixf(rot.getData());
 }
 
 void GfxOpenGL::translateViewpointFinish() {
@@ -878,17 +964,17 @@ void GfxOpenGL::setupLight(Light *light, int lightId) {
 	}
 
 	glEnable(GL_LIGHTING);
-	GLfloat diffuse[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	GLfloat specular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	GLfloat lightColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	GLfloat lightPos[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	GLfloat lightDir[] = { 0.0f, 0.0f, -1.0f };
 	GLfloat cutoff = 180.0f;
 	GLfloat spot_exp = 0.0f;
+	GLfloat q_attenuation = 1.0f;
 
-	GLfloat intensity = light->_intensity;
-	diffuse[0] = ((GLfloat)light->_color.getRed() / 15.0f) * intensity;
-	diffuse[1] = ((GLfloat)light->_color.getGreen() / 15.0f) * intensity;
-	diffuse[2] = ((GLfloat)light->_color.getBlue() / 15.0f) * intensity;
+	GLfloat intensity = light->_scaledintensity;
+	lightColor[0] = (GLfloat)light->_color.getRed() * intensity;
+	lightColor[1] = (GLfloat)light->_color.getGreen() * intensity;
+	lightColor[2] = (GLfloat)light->_color.getBlue() * intensity;
 
 	if (light->_type == Light::Omni) {
 		lightPos[0] = light->_pos.x();
@@ -906,21 +992,18 @@ void GfxOpenGL::setupLight(Light *light, int lightId) {
 		lightDir[0] = light->_dir.x();
 		lightDir[1] = light->_dir.y();
 		lightDir[2] = light->_dir.z();
-		specular[0] = diffuse[0];
-		specular[1] = diffuse[1];
-		specular[2] = diffuse[2];
 		spot_exp = 2.0f;
 		cutoff = light->_penumbraangle;
+		q_attenuation = 0.0f;
 	}
 
 	glDisable(GL_LIGHT0 + lightId);
-	glLightfv(GL_LIGHT0 + lightId, GL_DIFFUSE, diffuse);
-	glLightfv(GL_LIGHT0 + lightId, GL_SPECULAR, specular);
+	glLightfv(GL_LIGHT0 + lightId, GL_DIFFUSE, lightColor);
 	glLightfv(GL_LIGHT0 + lightId, GL_POSITION, lightPos);
 	glLightfv(GL_LIGHT0 + lightId, GL_SPOT_DIRECTION, lightDir);
 	glLightf(GL_LIGHT0 + lightId, GL_SPOT_EXPONENT, spot_exp);
 	glLightf(GL_LIGHT0 + lightId, GL_SPOT_CUTOFF, cutoff);
-	glLightf(GL_LIGHT0 + lightId, GL_QUADRATIC_ATTENUATION, 0.2f);
+	glLightf(GL_LIGHT0 + lightId, GL_QUADRATIC_ATTENUATION, q_attenuation);
 	glEnable(GL_LIGHT0 + lightId);
 }
 
@@ -985,11 +1068,11 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 		for (int pic = 0; pic < bitmap->_numImages; pic++) {
 			if (bitmap->_format == 1 && bitmap->_bpp == 16 && bitmap->_colorFormat != BM_RGB1555) {
 				if (texData == nullptr)
-					texData = new byte[4 * bitmap->_width * bitmap->_height];
+					texData = new byte[bytes * bitmap->_width * bitmap->_height];
 				// Convert data to 32-bit RGBA format
 				byte *texDataPtr = texData;
 				uint16 *bitmapData = reinterpret_cast<uint16 *>(bitmap->getImageData(pic).getRawBuffer());
-				for (int i = 0; i < bitmap->_width * bitmap->_height; i++, texDataPtr += 4, bitmapData++) {
+				for (int i = 0; i < bitmap->_width * bitmap->_height; i++, texDataPtr += bytes, bitmapData++) {
 					uint16 pixel = *bitmapData;
 					int r = pixel >> 11;
 					texDataPtr[0] = (r << 3) | (r >> 2);
@@ -1044,11 +1127,10 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 }
 
 void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer, float rot) {
-
 	// The PS2 version of EMI uses a TGA for it's splash-screen
 	// avoid using the TIL-code below for that, by checking
-	// numImages here:
-	if (g_grim->getGameType() == GType_MONKEY4 && bitmap->_data->_numImages > 1) {
+	// for texture coordinates set by BitmapData::loadTile
+	if (g_grim->getGameType() == GType_MONKEY4 && bitmap->_data && bitmap->_data->_texc) {
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 		glLoadIdentity();
@@ -1060,16 +1142,18 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer, f
 		glDisable(GL_LIGHTING);
 		glEnable(GL_TEXTURE_2D);
 		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
 
-		glColor3f(1.0f - _dimLevel, 1.0f - _dimLevel, 1.0f  - _dimLevel);
+	        glColor3f(1.0f, 1.0f, 1.0f);
 
 		BitmapData *data = bitmap->_data;
 		GLuint *textures = (GLuint *)bitmap->getTexIds();
 		float *texc = data->_texc;
 
+		assert(layer < data->_numLayers);
 		uint32 offset = data->_layers[layer]._offset;
 		for (uint32 i = offset; i < offset + data->_layers[layer]._numImages; ++i) {
 			glBindTexture(GL_TEXTURE_2D, textures[data->_verts[i]._texid]);
@@ -1226,7 +1310,7 @@ void GfxOpenGL::createFont(Font *font) {
 	}
 	int size = 0;
 	for (int i = 0; i < 256; ++i) {
-		int width = font->getCharDataWidth(i), height = font->getCharDataHeight(i);
+		int width = font->getCharBitmapWidth(i), height = font->getCharBitmapHeight(i);
 		int m = MAX(width, height);
 		if (m > size)
 			size = m;
@@ -1257,7 +1341,7 @@ void GfxOpenGL::createFont(Font *font) {
 	glGenTextures(1, texture);
 
 	for (int i = 0, row = 0; i < 256; ++i) {
-		int width = font->getCharDataWidth(i), height = font->getCharDataHeight(i);
+		int width = font->getCharBitmapWidth(i), height = font->getCharBitmapHeight(i);
 		int32 d = font->getCharOffset(i);
 		for (int x = 0; x < height; ++x) {
 			// a is the offset to get to the correct row.
@@ -1277,7 +1361,6 @@ void GfxOpenGL::createFont(Font *font) {
 		}
 		if (i != 0 && i % charsWide == 0)
 			++row;
-
 	}
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1358,7 +1441,7 @@ void GfxOpenGL::drawTextObject(const TextObject *text) {
 			glTexCoord2f(cx, cy + width);
 			glVertex2f(z, w + sizeH);
 			glEnd();
-			x += font->getCharWidth(character);
+			x += font->getCharKernedWidth(character);
 		}
 	}
 
@@ -1374,39 +1457,52 @@ void GfxOpenGL::drawTextObject(const TextObject *text) {
 void GfxOpenGL::destroyTextObject(TextObject *text) {
 }
 
-void GfxOpenGL::createMaterial(Texture *material, const char *data, const CMap *cmap, bool clamp) {
-	material->_texture = new GLuint[1];
-	glGenTextures(1, (GLuint *)material->_texture);
-	char *texdata = new char[material->_width * material->_height * 4];
-	char *texdatapos = texdata;
+void GfxOpenGL::createTexture(Texture *texture, const uint8 *data, const CMap *cmap, bool clamp) {
+	texture->_texture = new GLuint[1];
+	glGenTextures(1, (GLuint *)texture->_texture);
+	uint8 *texdata = new uint8[texture->_width * texture->_height * 4];
+	uint8 *texdatapos = texdata;
 
 	if (cmap != nullptr) { // EMI doesn't have colour-maps
-		for (int y = 0; y < material->_height; y++) {
-			for (int x = 0; x < material->_width; x++) {
-				uint8 col = *(const uint8 *)(data);
+		int bytes = 4;
+		for (int y = 0; y < texture->_height; y++) {
+			for (int x = 0; x < texture->_width; x++) {
+				uint8 col = *data;
 				if (col == 0) {
-					memset(texdatapos, 0, 4); // transparent
-					if (!material->_hasAlpha) {
+					memset(texdatapos, 0, bytes); // transparent
+					if (!texture->_hasAlpha) {
 						texdatapos[3] = '\xff'; // fully opaque
 					}
 				} else {
 					memcpy(texdatapos, cmap->_colors + 3 * (col), 3);
 					texdatapos[3] = '\xff'; // fully opaque
 				}
-				texdatapos += 4;
+				texdatapos += bytes;
 				data++;
 			}
 		}
 	} else {
-		memcpy(texdata, data, material->_width * material->_height * material->_bpp);
+#ifdef SCUMM_BIG_ENDIAN
+		// Copy and swap
+		for (int y = 0; y < texture->_height; y++) {
+			for (int x = 0; x < texture->_width; x++) {
+				uint32 pixel = (y * texture->_width + x) * texture->_bpp;
+				for (int b = 0; b < texture->_bpp; b++) {
+					texdata[pixel + b] = data[pixel + (texture->_bpp - 1) - b];
+				}
+			}
+		}
+#else
+		memcpy(texdata, data, texture->_width * texture->_height * texture->_bpp);
+#endif
 	}
 
 	GLuint format = 0;
 	GLuint internalFormat = 0;
-	if (material->_colorFormat == BM_RGBA) {
+	if (texture->_colorFormat == BM_RGBA) {
 		format = GL_RGBA;
 		internalFormat = GL_RGBA;
-	} else if (material->_colorFormat == BM_BGRA) {
+	} else if (texture->_colorFormat == BM_BGRA) {
 		format = GL_BGRA;
 		internalFormat = GL_RGBA;
 	} else {    // The only other colorFormat we load right now is BGR
@@ -1414,7 +1510,7 @@ void GfxOpenGL::createMaterial(Texture *material, const char *data, const CMap *
 		internalFormat = GL_RGB;
 	}
 
-	GLuint *textures = (GLuint *)material->_texture;
+	GLuint *textures = (GLuint *)texture->_texture;
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
 
 	//Remove darkened lines in EMI intro
@@ -1428,15 +1524,15 @@ void GfxOpenGL::createMaterial(Texture *material, const char *data, const CMap *
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, material->_width, material->_height, 0, format, GL_UNSIGNED_BYTE, texdata);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, texture->_width, texture->_height, 0, format, GL_UNSIGNED_BYTE, texdata);
 	delete[] texdata;
 }
 
-void GfxOpenGL::selectMaterial(const Texture *material) {
-	GLuint *textures = (GLuint *)material->_texture;
+void GfxOpenGL::selectTexture(const Texture *texture) {
+	GLuint *textures = (GLuint *)texture->_texture;
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
 
-	if (material->_hasAlpha && g_grim->getGameType() == GType_MONKEY4) {
+	if (texture->_hasAlpha && g_grim->getGameType() == GType_MONKEY4) {
 		glEnable(GL_BLEND);
 	}
 
@@ -1444,12 +1540,12 @@ void GfxOpenGL::selectMaterial(const Texture *material) {
 	if (g_grim->getGameType() != GType_MONKEY4) {
 		glMatrixMode(GL_TEXTURE);
 		glLoadIdentity();
-		glScalef(1.0f / material->_width, 1.0f / material->_height, 1);
+		glScalef(1.0f / texture->_width, 1.0f / texture->_height, 1);
 	}
 }
 
-void GfxOpenGL::destroyMaterial(Texture *material) {
-	GLuint *textures = (GLuint *)material->_texture;
+void GfxOpenGL::destroyTexture(Texture *texture) {
+	GLuint *textures = (GLuint *)texture->_texture;
 	if (textures) {
 		glDeleteTextures(1, textures);
 		delete[] textures;
@@ -1472,7 +1568,7 @@ void GfxOpenGL::drawDepthBitmap(int x, int y, int w, int h, char *data) {
 	glDepthFunc(GL_ALWAYS);
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glDepthMask(GL_TRUE);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 2); // 16 bit Z depth bitmap
 
 	glDrawPixels(w, h, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, data);
 
@@ -1485,6 +1581,39 @@ void GfxOpenGL::prepareMovieFrame(Graphics::Surface *frame) {
 	int height = frame->h;
 	int width = frame->w;
 	byte *bitmap = (byte *)frame->getPixels();
+
+	GLenum format;
+	GLenum dataType;
+	int bytesPerPixel = frame->format.bytesPerPixel;
+
+	// Aspyr Logo format
+	if (frame->format == Graphics::PixelFormat(4, 8, 8, 8, 0, 8, 16, 24, 0)) {
+#if !defined(__amigaos4__)
+		format = GL_BGRA;
+		dataType = GL_UNSIGNED_INT_8_8_8_8;
+#else
+		// AmigaOS' MiniGL does not understand GL_UNSIGNED_INT_8_8_8_8 yet.
+		format = GL_BGRA;
+		dataType = GL_UNSIGNED_BYTE;
+#endif
+	} else if (frame->format == Graphics::PixelFormat(4, 8, 8, 8, 0, 16, 8, 0, 0)) {
+		format = GL_BGRA;
+		dataType = GL_UNSIGNED_INT_8_8_8_8_REV;
+	} else if (frame->format == Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0)) {
+		format = GL_RGB;
+		dataType = GL_UNSIGNED_SHORT_5_6_5;
+	} else {
+		error("Unknown pixelformat: Bpp: %d RBits: %d GBits: %d BBits: %d ABits: %d RShift: %d GShift: %d BShift: %d AShift: %d",
+			frame->format.bytesPerPixel,
+			-(frame->format.rLoss - 8),
+			-(frame->format.gLoss - 8),
+			-(frame->format.bLoss - 8),
+			-(frame->format.aLoss - 8),
+			frame->format.rShift,
+			frame->format.gShift,
+			frame->format.bShift,
+			frame->format.aShift);
+	}
 
 	// remove if already exist
 	if (_smushNumTex > 0) {
@@ -1504,10 +1633,10 @@ void GfxOpenGL::prepareMovieFrame(Graphics::Surface *frame) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, nullptr);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, format, dataType, nullptr);
 	}
 
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, bytesPerPixel); // 16 bit RGB 565 bitmap/32 bit BGR
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, width);
 
 	int curTexIdx = 0;
@@ -1516,7 +1645,7 @@ void GfxOpenGL::prepareMovieFrame(Graphics::Surface *frame) {
 			int t_width = (x + BITMAP_TEXTURE_SIZE >= width) ? (width - x) : BITMAP_TEXTURE_SIZE;
 			int t_height = (y + BITMAP_TEXTURE_SIZE >= height) ? (height - y) : BITMAP_TEXTURE_SIZE;
 			glBindTexture(GL_TEXTURE_2D, _smushTexIds[curTexIdx]);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t_width, t_height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, bitmap + (y * 2 * width) + (2 * x));
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t_width, t_height, format, dataType, bitmap + (y * bytesPerPixel * width) + (bytesPerPixel * x));
 			curTexIdx++;
 		}
 	}
@@ -1584,7 +1713,7 @@ void GfxOpenGL::releaseMovieFrame() {
 }
 
 void GfxOpenGL::loadEmergFont() {
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // 8 bit font bitmaps
 
 	_emergFont = glGenLists(128);
 	for (int i = 32; i < 127; i++) {
@@ -1617,35 +1746,14 @@ void GfxOpenGL::drawEmergString(int x, int y, const char *text, const Color &fgC
 	glPopMatrix();
 }
 
-Bitmap *GfxOpenGL::getScreenshot(int w, int h) {
-	Graphics::PixelBuffer buffer = Graphics::PixelBuffer::createBuffer<565>(w * h, DisposeAfterUse::YES);
+Bitmap *GfxOpenGL::getScreenshot(int w, int h, bool useStored) {
 	Graphics::PixelBuffer src(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24), _screenWidth * _screenHeight, DisposeAfterUse::YES);
-	glReadPixels(0, 0, _screenWidth, _screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, src.getRawBuffer());
-
-	int i1 = (_screenWidth * w - 1) / _screenWidth + 1;
-	int j1 = (_screenHeight * h - 1) / _screenHeight + 1;
-
-	for (int j = 0; j < j1; j++) {
-		for (int i = 0; i < i1; i++) {
-			int x0 = i * _screenWidth / w;
-			int x1 = ((i + 1) * _screenWidth - 1) / w + 1;
-			int y0 = j * _screenHeight / h;
-			int y1 = ((j + 1) * _screenHeight - 1) / h + 1;
-			uint32 color = 0;
-			for (int y = y0; y < y1; y++) {
-				for (int x = x0; x < x1; x++) {
-					uint8 lr, lg, lb;
-					src.getRGBAt(y * _screenWidth + x, lr, lg, lb);
-					color += (lr + lg + lb) / 3;
-				}
-			}
-			color /= (x1 - x0) * (y1 - y0);
-			buffer.setPixelAt((h - j - 1) * w + i, color, color, color);
-		}
+	if (useStored) {
+		memcpy(src.getRawBuffer(), _storedDisplay, _screenWidth * _screenHeight * 4);
+	} else {
+		glReadPixels(0, 0, _screenWidth, _screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, src.getRawBuffer());
 	}
-
-	Bitmap *screenshot = new Bitmap(buffer, w, h, "screenshot");
-	return screenshot;
+	return createScreenshotBitmap(src, w, h, false);
 }
 
 void GfxOpenGL::storeDisplay() {
@@ -1819,10 +1927,11 @@ void GfxOpenGL::irisAroundRegion(int x1, int y1, int x2, int y2) {
 		fx1, fy1
 	};
 
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, points);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 10);
-	glDisableClientState(GL_VERTEX_ARRAY);
+	glBegin(GL_TRIANGLE_STRIP);
+	for (int i = 0 ;i < 10; ++i) {
+		glVertex2fv(points+2*i);
+	}
+	glEnd();
 
 	glColor3f(1.0f, 1.0f, 1.0f);
 	glEnable(GL_DEPTH_TEST);
@@ -1887,33 +1996,12 @@ void GfxOpenGL::drawRectangle(const PrimitiveObject *primitive) {
 		glVertex2f(x1, y2 + 1);
 		glEnd();
 	} else {
-		glBegin(GL_QUADS);
-
-		// top line
+		glLineWidth(_scaleW);
+		glBegin(GL_LINE_LOOP);
 		glVertex2f(x1, y1);
 		glVertex2f(x2 + 1, y1);
-		glVertex2f(x2 + 1, y1 + 1);
-		glVertex2f(x1, y1 + 1);
-
-
-		// right line
-		glVertex2f(x2, y1);
-		glVertex2f(x2 + 1, y1);
-		glVertex2f(x2 + 1, y2 + 1);
-		glVertex2f(x2, y2);
-
-		// bottom line
-		glVertex2f(x1, y2);
-		glVertex2f(x2 + 1, y2);
 		glVertex2f(x2 + 1, y2 + 1);
 		glVertex2f(x1, y2 + 1);
-
-		// left line
-		glVertex2f(x1, y1);
-		glVertex2f(x1 + 1, y1);
-		glVertex2f(x1 + 1, y2 + 1);
-		glVertex2f(x1, y2);
-
 		glEnd();
 	}
 
@@ -1958,6 +2046,39 @@ void GfxOpenGL::drawLine(const PrimitiveObject *primitive) {
 	glEnable(GL_LIGHTING);
 }
 
+void GfxOpenGL::drawDimPlane() {
+	if (_dimLevel == 0.0f) return;
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, 1.0, 1.0, 0, 0, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	glDisable(GL_LIGHTING);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glColor4f(0.0f, 0.0f, 0.0f, _dimLevel);
+
+	glBegin(GL_QUADS);
+	glVertex2f(0, 0);
+	glVertex2f(1.0, 0);
+	glVertex2f(1.0, 1.0);
+	glVertex2f(0, 1.0);
+	glEnd();
+
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_LIGHTING);
+}
+
 void GfxOpenGL::drawPolygon(const PrimitiveObject *primitive) {
 	float x1 = primitive->getP1().x * _scaleW;
 	float y1 = primitive->getP1().y * _scaleH;
@@ -1976,6 +2097,9 @@ void GfxOpenGL::drawPolygon(const PrimitiveObject *primitive) {
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
+#if !defined(__amigaos4__)
+	glDisable(GL_MULTISAMPLE);
+#endif
 	glDisable(GL_LIGHTING);
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
@@ -1984,12 +2108,9 @@ void GfxOpenGL::drawPolygon(const PrimitiveObject *primitive) {
 
 	glBegin(GL_LINES);
 	glVertex2f(x1, y1);
-	glVertex2f(x2, y2);
-	glEnd();
-
-	glBegin(GL_LINES);
-	glVertex2f(x3, y3);
-	glVertex2f(x4, y4);
+	glVertex2f(x2 + 1, y2 + 1);
+	glVertex2f(x3, y3 + 1);
+	glVertex2f(x4 + 1, y4);
 	glEnd();
 
 	glColor3f(1.0f, 1.0f, 1.0f);
@@ -1997,52 +2118,35 @@ void GfxOpenGL::drawPolygon(const PrimitiveObject *primitive) {
 	glDepthMask(GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_LIGHTING);
+#if !defined(__amigaos4__)
+	glEnable(GL_MULTISAMPLE);
+#endif
 }
 
-static void readPixels(int x, int y, int width, int height, char *buffer) {
-	char *p = buffer;
+void GfxOpenGL::readPixels(int x, int y, int width, int height, uint8 *buffer) {
+	uint8 *p = buffer;
 	for (int i = y; i < y + height; i++) {
-		glReadPixels(x, 479 - i, width, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
+		glReadPixels(x, _screenHeight - 1 - i, width, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
 		p += width * 4;
 	}
 }
 
-void GfxOpenGL::createSpecialtyTextures() {
-	//make a buffer big enough to hold any of the textures
-	char *buffer = new char[256 * 256 * 4];
+void GfxOpenGL::createSpecialtyTextureFromScreen(uint id, uint8 *data, int x, int y, int width, int height) {
+	readPixels(x, y, width, height, data);
+	createSpecialtyTexture(id, data, width, height);
+}
 
-	// TODO: Handle screen resolutions other than 640 x 480
-	readPixels(0, 0, 256, 256, buffer);
-	_specialty[0].create(buffer, 256, 256);
-
-	readPixels(256, 0, 256, 256, buffer);
-	_specialty[1].create(buffer, 256, 256);
-
-	readPixels(512, 0, 128, 128, buffer);
-	_specialty[2].create(buffer, 128, 128);
-
-	readPixels(512, 128, 128, 128, buffer);
-	_specialty[3].create(buffer, 128, 128);
-
-	readPixels(0, 256, 256, 256, buffer);
-	_specialty[4].create(buffer, 256, 256);
-
-	readPixels(256, 256, 256, 256, buffer);
-	_specialty[5].create(buffer, 256, 256);
-
-	readPixels(512, 256, 128, 128, buffer);
-	_specialty[6].create(buffer, 128, 128);
-
-	readPixels(512, 384, 128, 128, buffer);
-	_specialty[7].create(buffer, 128, 128);
-
-	delete[] buffer;
+void GfxOpenGL::setBlendMode(bool additive) {
+	if (additive) {
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	} else {
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
 }
 
 bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
     if (_currentShadowArray) return false;
 
-    GLdouble winX, winY, winZ;
     GLdouble modelView[16], projection[16];
     GLint viewPort[4];
 
@@ -2050,42 +2154,34 @@ bool GfxOpenGL::worldToScreen(const Math::Vector3d &vec, int& x, int &y) {
     glGetDoublev(GL_PROJECTION_MATRIX, projection);
     glGetIntegerv(GL_VIEWPORT, viewPort);
 
-    gluProject(vec.x(), vec.y(), vec.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
+	Math::Vector3d win;
+	Math::gluMathProject<GLdouble, GLint>(vec, modelView, projection, viewPort, win);
 
-    winX = winX/_scaleW;
-    winY = winY/_scaleH;
+	if (win.x() < 0)
+		x = 0;
+	else if (win.x() >= _gameWidth)
+		x = _gameWidth - 1;
+	if (win.y() < 0)
+		y = 0;
+	else if (win.y() >= _gameHeight)
+		y = _gameHeight - 1;
 
-    winY = _gameHeight - winY;
-
-    if (winX < 0)
-        winX = 0;
-    if (winX >= _gameWidth)
-        winX = _gameWidth - 1;
-    if (winY < 0)
-        winY = 0;
-    if (winY >= _gameHeight)
-        winY = _gameHeight - 1;
-
-    x = (int)winX;
-    y = (int)winY;
-    return x>0 && y>0 && x<_gameWidth-1 && y<_gameHeight-1;
+	return x>0 && y>0 && x<_gameWidth-1 && y<_gameHeight-1;
 }
 
 bool GfxOpenGL::raycast(int x, int y, Math::Vector3d &r0, Math::Vector3d &r1) {
-    GLdouble modelView[16], projection[16], p0[3], p1[3];
-    GLint viewPort[4];
+	GLint viewPortInd[4];
 
-    GLdouble winX = _scaleW*x, winY = _scaleH*(_gameHeight - y);
-    glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
-    glGetDoublev(GL_PROJECTION_MATRIX, projection);
-    glGetIntegerv(GL_VIEWPORT, viewPort);
-
-    gluUnProject(winX, winY, 0.0, modelView, projection, viewPort, &p0[0], &p0[1], &p0[2]);
-    gluUnProject(winX, winY, 1.0, modelView, projection, viewPort, &p1[0], &p1[1], &p1[2]);
-
-    r0 = Math::Vector3d(p0[0],p0[1],p0[2]);
-    r1 = Math::Vector3d(p1[0],p1[1],p1[2]) - r0;
-    return true;
+	GLdouble winX = _scaleW*x, winY = _scaleH*(_gameHeight - y);
+	glGetIntegerv(GL_VIEWPORT, viewPortInd);
+	Common::Rect viewPort(viewPortInd[0], viewPortInd[1], viewPortInd[2], viewPortInd[3]);
+	Math::Matrix4 modelMatrix = getModelView();
+	Math::Matrix4 projMatrix = getProjection();
+	Math::Matrix4 mvpMatrix = modelMatrix * projMatrix;
+	Math::gluMathUnProject(Math::Vector3d(winX, winY, 0.0), mvpMatrix, viewPort, r0);
+	Math::gluMathUnProject(Math::Vector3d(winX, winY, 1.0), mvpMatrix, viewPort, r1);
+	r1 -= r0;
+	return true;
 }
 
 } // end of namespace Grim

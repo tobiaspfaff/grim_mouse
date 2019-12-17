@@ -80,7 +80,7 @@ public:
 	void clearAllDebugChannels();
 
 	/**
-	 * Enables an debug channel.
+	 * Enables a debug channel.
 	 *
 	 * @param name the name of the debug channel to enable
 	 * @return true on success, false on failure
@@ -88,14 +88,28 @@ public:
 	bool enableDebugChannel(const String &name);
 
 	/**
-	 * Disables an debug channel.
+	 * Enables a debug channel.
+	 *
+	 * @param channel The debug channel
+	 * @return true on success, false on failure
+	 */
+	bool enableDebugChannel(uint32 channel);
+
+	/**
+	 * Disables a debug channel.
 	 *
 	 * @param name the name of the debug channel to disable
 	 * @return true on success, false on failure
 	 */
 	bool disableDebugChannel(const String &name);
 
-
+	/**
+	 * Disables a debug channel.
+	 *
+	 * @param channel The debug channel
+	 * @return true on success, false on failure
+	 */
+	bool disableDebugChannel(uint32 channel);
 
 	typedef List<DebugChannel> DebugChannelList;
 
@@ -106,11 +120,20 @@ public:
 	 */
 	DebugChannelList listDebugChannels();
 
+	/**
+	 * Enable all debug channels.
+	 */
+	void enableAllDebugChannels();
+
+	/**
+	 * Disable all debug channels.
+	 */
+	void disableAllDebugChannels();
 
 	/**
 	 * Test whether the given debug channel is enabled.
 	 */
-	bool isDebugChannelEnabled(uint32 channel);
+	bool isDebugChannelEnabled(uint32 channel, bool enforce = false);
 
 private:
 	typedef HashMap<String, DebugChannel, IgnoreCase_Hash, IgnoreCase_EqualTo> DebugChannelMap;

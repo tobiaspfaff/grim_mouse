@@ -23,6 +23,7 @@
 #ifndef MYST3_DIRECTORYSUBENTRY_H
 #define MYST3_DIRECTORYSUBENTRY_H
 
+#include "common/array.h"
 #include "common/memstream.h"
 #include "math/vector3d.h"
 
@@ -42,7 +43,7 @@ struct VideoData {
 	int32 height;
 };
 
-typedef uint32 MiscData[22];
+typedef Common::Array<uint32> MiscData;
 
 class Archive;
 
@@ -53,6 +54,7 @@ class DirectorySubEntry {
 			kWaterEffectMask = 1,
 			kLavaEffectMask = 2,
 			kMagneticEffectMask = 3,
+			kShieldEffectMask = 4,
 			kSpotItem = 5,
 			kFrame = 6,
 			kRawData = 7,
@@ -67,7 +69,6 @@ class DirectorySubEntry {
 			kDialogMovie = 74
 		};
 
-		DirectorySubEntry() {}
 		DirectorySubEntry(Archive *archive);
 
 		void readFromStream(Common::SeekableReadStream &inStream);
@@ -95,6 +96,8 @@ class DirectorySubEntry {
 		Archive *_archive;
 };
 
-} // end of namespace Myst3
+typedef Common::Array<const DirectorySubEntry *> DirectorySubEntryList;
+
+} // End of namespace Myst3
 
 #endif // MYST3_DIRECTORYSUBENTRY_H

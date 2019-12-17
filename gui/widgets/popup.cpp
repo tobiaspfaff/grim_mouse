@@ -21,7 +21,6 @@
  */
 
 #include "common/system.h"
-#include "gui/dialog.h"
 #include "gui/gui-manager.h"
 #include "gui/widgets/popup.h"
 
@@ -33,55 +32,34 @@ namespace GUI {
 // PopUpDialog
 //
 
-class PopUpDialog : public Dialog {
-protected:
-	PopUpWidget	*_popUpBoss;
-	int			_clickX, _clickY;
-	byte		*_buffer;
-	int			_selection;
-	uint32		_openTime;
-	bool		_twoColumns;
-	int			_entriesPerColumn;
+PopUpDialog::PopUpDialog(Widget *boss, const Common::String &name, int clickX, int clickY):
+		Dialog(name),
+		_boss(boss),
+		// Remember original mouse position
+		_clickX(clickX),
+		_clickY(clickY),
+		_selection(-1),
+		_initialSelection(-1),
+		_openTime(0),
+		_twoColumns(false),
+		_entriesPerColumn(1),
+		_leftPadding(0),
+		_rightPadding(0),
+		_lineHeight(kLineHeight) {
+	_backgroundType = ThemeEngine::kDialogBackgroundNone;
+	_w = _boss->getWidth();
+}
 
-	int			_leftPadding;
-	int			_rightPadding;
+void PopUpDialog::open() {
+	// Time the popup was opened
+	_openTime = g_system->getMillis();
 
-public:
-	PopUpDialog(PopUpWidget *boss, int clickX, int clickY);
-
-	void drawDialog();
-
-	void handleMouseUp(int x, int y, int button, int clickCount);
-	void handleMouseWheel(int x, int y, int direction);	// Scroll through entries with scroll wheel
-	void handleMouseMoved(int x, int y, int button);	// Redraw selections depending on mouse position
-	void handleKeyDown(Common::KeyState state);	// Scroll through entries with arrow keys etc.
-
-protected:
-	void drawMenuEntry(int entry, bool hilite);
-
-	int findItem(int x, int y) const;
-	void setSelection(int item);
-	bool isMouseDown();
-
-	void moveUp();
-	void moveDown();
-};
-
-PopUpDialog::PopUpDialog(PopUpWidget *boss, int clickX, int clickY)
-	: Dialog(0, 0, 16, 16),
-	_popUpBoss(boss) {
-
-	// Copy the selection index
-	_selection = _popUpBoss->_selectedItem;
+	_initialSelection = _selection;
 
 	// Calculate real popup dimensions
-	_x = _popUpBoss->getAbsX();
-	_y = _popUpBoss->getAbsY() - _popUpBoss->_selectedItem * kLineHeight;
-	_h = _popUpBoss->_entries.size() * kLineHeight + 2;
-	_w = _popUpBoss->_w - kLineHeight + 2;
+	_h = _entries.size() * _lineHeight + 2;
 
-	_leftPadding = _popUpBoss->_leftPadding;
-	_rightPadding = _popUpBoss->_rightPadding;
+	_entriesPerColumn = 1;
 
 	// Perform clipping / switch to scrolling mode if we don't fit on the screen
 	// FIXME - OSystem should send out notification messages when the screen
@@ -96,16 +74,16 @@ PopUpDialog::PopUpDialog(PopUpWidget *boss, int clickX, int clickY)
 		const int screenW = g_system->getOverlayWidth();
 
 		_twoColumns = true;
-		_entriesPerColumn = _popUpBoss->_entries.size() / 2;
+		_entriesPerColumn = _entries.size() / 2;
 
-		if (_popUpBoss->_entries.size() & 1)
+		if (_entries.size() & 1)
 			_entriesPerColumn++;
 
-		_h = _entriesPerColumn * kLineHeight + 2;
+		_h = _entriesPerColumn * _lineHeight + 2;
 		_w = 0;
 
-		for (uint i = 0; i < _popUpBoss->_entries.size(); i++) {
-			int width = g_gui.getStringWidth(_popUpBoss->_entries[i].name);
+		for (uint i = 0; i < _entries.size(); i++) {
+			int width = g_gui.getStringWidth(_entries[i]);
 
 			if (width > _w)
 				_w = width;
@@ -116,9 +94,9 @@ PopUpDialog::PopUpDialog(PopUpWidget *boss, int clickX, int clickY)
 		if (!(_w & 1))
 			_w++;
 
-		if (_popUpBoss->_selectedItem >= _entriesPerColumn) {
+		if (_selection >= _entriesPerColumn) {
 			_x -= _w / 2;
-			_y = _popUpBoss->getAbsY() - (_popUpBoss->_selectedItem - _entriesPerColumn) * kLineHeight;
+			_y = _boss->getAbsY() - (_selection - _entriesPerColumn) * _lineHeight;
 		}
 
 		if (_w >= screenW)
@@ -139,22 +117,23 @@ PopUpDialog::PopUpDialog(PopUpWidget *boss, int clickX, int clickY)
 
 	// TODO - implement scrolling if we had to move the menu, or if there are too many entries
 
-	// Remember original mouse position
-	_clickX = clickX - _x;
-	_clickY = clickY - _y;
-
-	_openTime = 0;
+	Dialog::open();
 }
 
-void PopUpDialog::drawDialog() {
+void PopUpDialog::reflowLayout() {
+}
+
+void PopUpDialog::drawDialog(DrawLayer layerToDraw) {
+	Dialog::drawDialog(layerToDraw);
+
 	// Draw the menu border
-	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x+_w, _y+_h), 0);
+	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x + _w, _y + _h), 0);
 
 	/*if (_twoColumns)
 		g_gui.vLine(_x + _w / 2, _y, _y + _h - 2, g_gui._color);*/
 
 	// Draw the entries
-	int count = _popUpBoss->_entries.size();
+	int count = _entries.size();
 	for (int i = 0; i < count; i++) {
 		drawMenuEntry(i, i == _selection);
 	}
@@ -163,19 +142,18 @@ void PopUpDialog::drawDialog() {
 	/*if (_twoColumns && (count & 1)) {
 		g_gui.fillRect(_x + 1 + _w / 2, _y + 1 + kLineHeight * (_entriesPerColumn - 1), _w / 2 - 1, kLineHeight, g_gui._bgcolor);
 	}*/
-
-	if (_openTime == 0) {
-		// Time the popup was opened
-		_openTime = g_system->getMillis();
-	}
 }
 
 void PopUpDialog::handleMouseUp(int x, int y, int button, int clickCount) {
+	int absX = x + getAbsX();
+	int absY = y + getAbsY();
+
 	// Mouse was released. If it wasn't moved much since the original mouse down,
 	// let the popup stay open. If it did move, assume the user made his selection.
-	int dist = (_clickX - x) * (_clickX - x) + (_clickY - y) * (_clickY - y);
+	int dist = (_clickX - absX) * (_clickX - absX) + (_clickY - absY) * (_clickY - absY);
 	if (dist > 3 * 3 || g_system->getMillis() - _openTime > 300) {
-		setResult(_selection);
+		int item = findItem(x, y);
+		setResult(item);
 		close();
 	}
 	_clickX = -1;
@@ -194,11 +172,11 @@ void PopUpDialog::handleMouseMoved(int x, int y, int button) {
 	// Compute over which item the mouse is...
 	int item = findItem(x, y);
 
-	if (item >= 0 && _popUpBoss->_entries[item].name.size() == 0)
+	if (item >= 0 && _entries[item].size() == 0)
 		item = -1;
 
 	if (item == -1 && !isMouseDown()) {
-		setSelection(_popUpBoss->_selectedItem);
+		setSelection(_initialSelection);
 		return;
 	}
 
@@ -232,13 +210,15 @@ void PopUpDialog::handleKeyDown(Common::KeyState state) {
 	case Common::KEYCODE_KP1:
 		if (state.flags & Common::KBD_NUM)
 			break;
+		// fall through
 	case Common::KEYCODE_END:
-		setSelection(_popUpBoss->_entries.size()-1);
+		setSelection(_entries.size()-1);
 		break;
 
 	case Common::KEYCODE_KP2:
 		if (state.flags & Common::KBD_NUM)
 			break;
+		// fall through
 	case Common::KEYCODE_DOWN:
 		moveDown();
 		break;
@@ -246,6 +226,7 @@ void PopUpDialog::handleKeyDown(Common::KeyState state) {
 	case Common::KEYCODE_KP7:
 		if (state.flags & Common::KBD_NUM)
 			break;
+		// fall through
 	case Common::KEYCODE_HOME:
 		setSelection(0);
 		break;
@@ -253,6 +234,7 @@ void PopUpDialog::handleKeyDown(Common::KeyState state) {
 	case Common::KEYCODE_KP8:
 		if (state.flags & Common::KBD_NUM)
 			break;
+		// fall through
 	case Common::KEYCODE_UP:
 		moveUp();
 		break;
@@ -262,19 +244,45 @@ void PopUpDialog::handleKeyDown(Common::KeyState state) {
 	}
 }
 
+void PopUpDialog::setPosition(int x, int y) {
+	_x = x;
+	_y = y;
+}
+
+void PopUpDialog::setPadding(int left, int right) {
+	_leftPadding  = left;
+	_rightPadding = right;
+}
+
+void PopUpDialog::setLineHeight(int lineHeight) {
+	_lineHeight = lineHeight;
+}
+
+void PopUpDialog::setWidth(uint16 width) {
+	_w = width;
+}
+
+void PopUpDialog::appendEntry(const Common::String &entry) {
+	_entries.push_back(entry);
+}
+
+void PopUpDialog::clearEntries() {
+	_entries.clear();
+}
+
 int PopUpDialog::findItem(int x, int y) const {
 	if (x >= 0 && x < _w && y >= 0 && y < _h) {
 		if (_twoColumns) {
-			uint entry = (y - 2) / kLineHeight;
+			uint entry = (y - 2) / _lineHeight;
 			if (x > _w / 2) {
 				entry += _entriesPerColumn;
 
-				if (entry >= _popUpBoss->_entries.size())
+				if (entry >= _entries.size())
 					return -1;
 			}
 			return entry;
 		}
-		return (y - 2) / kLineHeight;
+		return (y - 2) / _lineHeight;
 	}
 	return -1;
 }
@@ -304,19 +312,19 @@ bool PopUpDialog::isMouseDown() {
 
 void PopUpDialog::moveUp() {
 	if (_selection < 0) {
-		setSelection(_popUpBoss->_entries.size() - 1);
+		setSelection(_entries.size() - 1);
 	} else if (_selection > 0) {
 		int item = _selection;
 		do {
 			item--;
-		} while (item >= 0 && _popUpBoss->_entries[item].name.size() == 0);
+		} while (item >= 0 && _entries[item].size() == 0);
 		if (item >= 0)
 			setSelection(item);
 	}
 }
 
 void PopUpDialog::moveDown() {
-	int lastItem = _popUpBoss->_entries.size() - 1;
+	int lastItem = _entries.size() - 1;
 
 	if (_selection < 0) {
 		setSelection(0);
@@ -324,7 +332,7 @@ void PopUpDialog::moveDown() {
 		int item = _selection;
 		do {
 			item++;
-		} while (item <= lastItem && _popUpBoss->_entries[item].name.size() == 0);
+		} while (item <= lastItem && _entries[item].size() == 0);
 		if (item <= lastItem)
 			setSelection(item);
 	}
@@ -336,34 +344,37 @@ void PopUpDialog::drawMenuEntry(int entry, bool hilite) {
 	int x, y, w;
 
 	if (_twoColumns) {
-		int n = _popUpBoss->_entries.size() / 2;
+		int n = _entries.size() / 2;
 
-		if (_popUpBoss->_entries.size() & 1)
+		if (_entries.size() & 1)
 			n++;
 
 		if (entry >= n) {
 			x = _x + 1 + _w / 2;
-			y = _y + 1 + kLineHeight * (entry - n);
+			y = _y + 1 + _lineHeight * (entry - n);
 		} else {
 			x = _x + 1;
-			y = _y + 1 + kLineHeight * entry;
+			y = _y + 1 + _lineHeight * entry;
 		}
 
 		w = _w / 2 - 1;
 	} else {
 		x = _x + 1;
-		y = _y + 1 + kLineHeight * entry;
+		y = _y + 1 + _lineHeight * entry;
 		w = _w - 2;
 	}
 
-	Common::String &name(_popUpBoss->_entries[entry].name);
+	Common::String &name(_entries[entry]);
 
 	if (name.size() == 0) {
 		// Draw a separator
-		g_gui.theme()->drawLineSeparator(Common::Rect(x, y, x+w, y+kLineHeight));
+		g_gui.theme()->drawLineSeparator(Common::Rect(x, y, x + w, y + _lineHeight));
 	} else {
-		g_gui.theme()->drawText(Common::Rect(x+1, y+2, x+w, y+2+kLineHeight), name,	hilite ? ThemeEngine::kStateHighlight : ThemeEngine::kStateEnabled,
-								Graphics::kTextAlignLeft, ThemeEngine::kTextInversionNone, _leftPadding);
+		g_gui.theme()->drawText(
+			Common::Rect(x + 1, y + 2, x + w, y + 2 + _lineHeight),
+			name, hilite ? ThemeEngine::kStateHighlight : ThemeEngine::kStateEnabled,
+			Graphics::kTextAlignLeft, ThemeEngine::kTextInversionNone, _leftPadding
+		);
 	}
 }
 
@@ -380,16 +391,37 @@ PopUpWidget::PopUpWidget(GuiObject *boss, const String &name, const char *toolti
 	_type = kPopUpWidget;
 
 	_selectedItem = -1;
+	_leftPadding = _rightPadding = 0;
+}
+
+PopUpWidget::PopUpWidget(GuiObject *boss, int x, int y, int w, int h, const char *tooltip)
+	: Widget(boss, x, y, w, h, tooltip), CommandSender(boss) {
+	setFlags(WIDGET_ENABLED | WIDGET_CLEARBG | WIDGET_RETAIN_FOCUS | WIDGET_IGNORE_DRAG);
+	_type = kPopUpWidget;
+
+	_selectedItem = -1;
+
+	_leftPadding = _rightPadding = 0;
 }
 
 void PopUpWidget::handleMouseDown(int x, int y, int button, int clickCount) {
 	if (isEnabled()) {
-		PopUpDialog popupDialog(this, x + getAbsX(), y + getAbsY());
+		PopUpDialog popupDialog(this, "", x + getAbsX(), y + getAbsY());
+		popupDialog.setPosition(getAbsX(), getAbsY() - _selectedItem * kLineHeight);
+		popupDialog.setPadding(_leftPadding, _rightPadding);
+		popupDialog.setWidth(getWidth() - kLineHeight + 2);
+
+
+		for (uint i = 0; i < _entries.size(); i++) {
+			popupDialog.appendEntry(_entries[i].name);
+		}
+		popupDialog.setSelection(_selectedItem);
+
 		int newSel = popupDialog.runModal();
 		if (newSel != -1 && _selectedItem != newSel) {
 			_selectedItem = newSel;
 			sendCommand(kPopUpItemSelectedCmd, _entries[_selectedItem].tag);
-			draw();
+			markAsDirty();
 		}
 	}
 }
@@ -409,7 +441,7 @@ void PopUpWidget::handleMouseWheel(int x, int y, int direction) {
 			(newSelection != _selectedItem)) {
 			_selectedItem = newSelection;
 			sendCommand(kPopUpItemSelectedCmd, _entries[_selectedItem].tag);
-			draw();
+			markAsDirty();
 		}
 	}
 }
@@ -457,7 +489,7 @@ void PopUpWidget::drawWidget() {
 	Common::String sel;
 	if (_selectedItem >= 0)
 		sel = _entries[_selectedItem].name;
-	g_gui.theme()->drawPopUpWidget(Common::Rect(_x, _y, _x + _w, _y + _h), sel, _leftPadding, _state, Graphics::kTextAlignLeft);
+	g_gui.theme()->drawPopUpWidget(Common::Rect(_x, _y, _x + _w, _y + _h), sel, _leftPadding, _state);
 }
 
 } // End of namespace GUI

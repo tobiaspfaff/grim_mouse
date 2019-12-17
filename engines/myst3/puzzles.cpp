@@ -21,8 +21,10 @@
  */
 
 #include "engines/myst3/puzzles.h"
+#include "engines/myst3/ambient.h"
 #include "engines/myst3/menu.h"
 #include "engines/myst3/myst3.h"
+#include "engines/myst3/node.h"
 #include "engines/myst3/state.h"
 #include "engines/myst3/sound.h"
 
@@ -31,7 +33,7 @@
 namespace Myst3 {
 
 Puzzles::Puzzles(Myst3Engine *vm) :
-	_vm(vm) {
+		_vm(vm) {
 }
 
 Puzzles::~Puzzles() {
@@ -97,13 +99,19 @@ void Puzzles::run(uint16 id, uint16 arg0, uint16 arg1, uint16 arg2) {
 		settingsSave();
 		break;
 	case 20:
-		saveLoadMenu(arg0, arg1);
+		_vm->_menu->saveLoadAction(arg0, arg1);
 		break;
 	case 21:
 		mainMenu(arg0);
 		break;
+	case 22:
+		updateSoundScriptTimer();
+		break;
 	case 23:
 		_vm->loadNodeSubtitles(arg0);
+		break;
+	case 25:
+		checkCanSave(); // Xbox specific
 		break;
 	default:
 		warning("Puzzle %d is not implemented", id);
@@ -111,53 +119,53 @@ void Puzzles::run(uint16 id, uint16 arg0, uint16 arg1, uint16 arg2) {
 }
 
 void Puzzles::_drawForVarHelper(int16 var, int32 startValue, int32 endValue) {
-		uint startFrame = _vm->_state->getFrameCount();
-		uint currentFrame = startFrame;
-		uint numValues = abs(endValue - startValue);
-		uint endFrame = startFrame + 2 * numValues;
+	uint startTick = _vm->_state->getTickCount();
+	uint currentTick = startTick;
+	uint numValues = abs(endValue - startValue);
+	uint endTick = startTick + 2 * numValues;
 
-		int16 var2 = var;
+	int16 var2 = var;
 
-		if (var < 0)
-			var = -var;
-		if (var2 < 0)
-			var2 = -var2 + 1;
+	if (var < 0)
+		var = -var;
+	if (var2 < 0)
+		var2 = -var2 + 1;
 
-		if (startFrame < endFrame) {
-			int currentValue = -9999;
-			while (1) {
-				int nextValue = (currentFrame - startFrame) / 2;
-				if (currentValue != nextValue) {
-					currentValue = nextValue;
+	if (startTick < endTick) {
+		int currentValue = -9999;
+		while (1) {
+			int nextValue = (currentTick - startTick) / 2;
+			if (currentValue != nextValue) {
+				currentValue = nextValue;
 
-					int16 varValue;
-					if (endValue > startValue)
-						varValue = startValue + currentValue;
-					else
-						varValue = startValue - currentValue;
+				int16 varValue;
+				if (endValue > startValue)
+					varValue = startValue + currentValue;
+				else
+					varValue = startValue - currentValue;
 
-					_vm->_state->setVar(var, varValue);
-					_vm->_state->setVar(var2, varValue);
-				}
-
-				_vm->processInput(true);
-				_vm->drawFrame();
-				currentFrame = _vm->_state->getFrameCount();
-
-				if (currentFrame > endFrame)
-					break;
+				_vm->_state->setVar(var, varValue);
+				_vm->_state->setVar(var2, varValue);
 			}
-		}
 
-		_vm->_state->setVar(var, endValue);
-		_vm->_state->setVar(var2, endValue);
+			_vm->processInput(false);
+			_vm->drawFrame();
+			currentTick = _vm->_state->getTickCount();
+
+			if (currentTick > endTick || _vm->shouldQuit())
+				break;
+		}
+	}
+
+	_vm->_state->setVar(var, endValue);
+	_vm->_state->setVar(var2, endValue);
 }
 
-void Puzzles::_drawXFrames(uint16 frames) {
-	uint32 endFrame = _vm->_state->getFrameCount() + frames;
+void Puzzles::_drawXTicks(uint16 ticks) {
+	uint32 endTick = _vm->_state->getTickCount() + ticks;
 
-	while (_vm->_state->getFrameCount() < endFrame) {
-		_vm->processInput(true);
+	while (_vm->_state->getTickCount() < endTick && !_vm->shouldQuit()) {
+		_vm->processInput(false);
 		_vm->drawFrame();
 	}
 }
@@ -209,7 +217,7 @@ void Puzzles::leversBall(int16 var) {
 	uint16 newLeverLeft = _vm->_state->getBallLeverLeft();
 	uint16 newLeverRight = _vm->_state->getBallLeverRight();
 
-	const Move *move = 0;
+	const Move *move = nullptr;
 	for (uint i = _vm->_state->getBallDoorOpen() ? 0 : 1; i < ARRAYSIZE(moves); i++)
 		if (moves[i].oldBallPosition == oldPosition
 				&& moves[i].oldLeft == oldLeverLeft
@@ -221,7 +229,7 @@ void Puzzles::leversBall(int16 var) {
 	if (!move)
 		error("Unable to find move with old levers l:%d r:%d p:%d", oldLeverLeft, oldLeverRight, oldPosition);
 
-	const NewPosition *position = 0;
+	const NewPosition *position = nullptr;
 	for (uint i = 0; i < ARRAYSIZE(move->p); i++)
 		if (move->p[i].newLeft == newLeverLeft
 				&& move->p[i].newRight == newLeverRight) {
@@ -246,7 +254,10 @@ void Puzzles::leversBall(int16 var) {
 		}
 
 		_vm->_sound->playEffect(sound, 50);
-		_drawForVarHelper(35, position->movieBallStart, position->movieBallEnd);
+
+		if (position->movieBallStart != 0) {
+			_drawForVarHelper(35, position->movieBallStart, position->movieBallEnd);
+		}
 	}
 
 	_vm->_state->setBallPosition(position->newBallPosition);
@@ -400,7 +411,7 @@ void Puzzles::resonanceRingsLaunchBall() {
 	int32 boardMoviePlaying;
 
 	do {
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 
 		ballMoviePlaying = _vm->_state->getVar(27);
@@ -464,9 +475,9 @@ void Puzzles::resonanceRingsLaunchBall() {
 					_vm->_state->setVar(38 + j, false);
 			}
 
-			// TODO: Run sound script (same as opcode 200, args 100, 2)
+			_vm->_ambient->playCurrentNode(100, 2);
 		}
-	} while (ballMoviePlaying || boardMoviePlaying);
+	} while ((ballMoviePlaying || boardMoviePlaying) && !_vm->shouldQuit());
 
 	_vm->_state->setResonanceRingsSolved(!ballShattered);
 }
@@ -496,7 +507,7 @@ void Puzzles::resonanceRingsLights() {
 		}
 	}
 
-	// TODO: Run sound script (same as opcode 200, args 100, 2)
+	_vm->_ambient->playCurrentNode(100, 2);
 }
 
 void Puzzles::pinball(int16 var) {
@@ -611,7 +622,11 @@ void Puzzles::pinball(int16 var) {
 			_vm->_state->setVar(var, 0);
 		} else {
 			_vm->_state->setVar(var, 1);
-			// TODO: Play sound 1024, volume 100 if not already playing
+
+			// Play the "peg clicks into spot sound"
+			if (!_vm->_sound->isPlaying(1024)) {
+				_vm->_sound->playEffect(1024, 100);
+			}
 		}
 	}
 
@@ -654,11 +669,10 @@ void Puzzles::pinball(int16 var) {
 	_vm->loadMovie(rightComb->movie, 1, false, true);
 	_vm->_state->setVar(32, 2);
 
-
 	// Launch sound
 	_vm->_sound->playEffect(1021, 50);
 	_drawForVarHelper(-34, 2, 15);
-	_drawXFrames(30);
+	_drawXTicks(30);
 
 	int32 leftSideFrame = 250;
 	int32 rightSideFrame = 500;
@@ -677,19 +691,15 @@ void Puzzles::pinball(int16 var) {
 	int32 jumpType = -1;
 
 	while (1) {
-		_vm->drawFrame();
-		_vm->processInput(true);
-
-		// while (limit > renderCurrFrame);
-		// limit = _vm->_state->getFrameCount() + 1;
+		_drawXTicks(1);
 
 		bool shouldRotate;
 		if (leftToRightJumpCountDown >= 3 || rightToLeftJumpCountdown >= 3) {
 			shouldRotate = false;
-			// sound fade stop 1025, 7
+			_vm->_sound->stopEffect(1025, 7);
 		} else {
 			shouldRotate = true;
-			_vm->_sound->playEffect(1025, 50, ballOnLeftSide != 0 ? 150 : 210, 95);
+			_vm->_sound->playEffectLooping(1025, 50, ballOnLeftSide != 0 ? 150 : 210, 95);
 		}
 
 		if (ballOnLeftSide && shouldRotate) {
@@ -724,11 +734,12 @@ void Puzzles::pinball(int16 var) {
 			leftPanelFrame++;
 			_vm->_state->setVar(31, leftPanelFrame);
 
-			for (uint i = 0; i < 3; i++)
+			for (uint i = 0; i < 3; i++) {
 				if (leftComb->pegFrames[i] == leftPanelFrame) {
 					_vm->_sound->playEffect(1027, 50);
 					leftToRightJumpCountDown = 5;
 				}
+			}
 
 			if (leftPanelFrame == leftComb->expireFrame) {
 				ballShouldExpire = 1;
@@ -740,11 +751,12 @@ void Puzzles::pinball(int16 var) {
 			rightPanelFrame++;
 			_vm->_state->setVar(32, rightPanelFrame);
 
-			for (uint i = 0; i < 3; i++)
+			for (uint i = 0; i < 3; i++) {
 				if (rightComb->pegFrames[i] == rightPanelFrame) {
 					_vm->_sound->playEffect(1027, 50);
 					rightToLeftJumpCountdown = 5;
 				}
+			}
 
 			if (rightPanelFrame == rightComb->expireFrame) {
 				ballShouldExpire = 1;
@@ -770,8 +782,8 @@ void Puzzles::pinball(int16 var) {
 		}
 
 		if (ballShouldJump) {
-			// sound fade stop 1025, 7
-			_drawXFrames(30);
+			_vm->_sound->stopEffect(1025, 7);
+			_drawXTicks(30);
 
 			int32 jumpPositionLeft = 50 * ((leftSideFrame + 25) / 50);
 			int32 jumpPositionRight = 50 * ((rightSideFrame + 25) / 50);
@@ -836,12 +848,12 @@ void Puzzles::pinball(int16 var) {
 				_drawForVarHelper(-34, jumpStartFrame, jump->endFrame);
 
 			if (jumpType == 3) {
-				_drawXFrames(6);
+				_drawXTicks(6);
 				_vm->_sound->playEffect(1028, 50);
 			} else if (jumpType == 1 || jumpType == 4) {
 				_vm->_state->setVar(26, jumpType);
 				_vm->_state->setWaterEffectRunning(true);
-				// sound fade stop 1025, 7
+				_vm->_sound->stopEffect(1025, 7);
 				return;
 			}
 
@@ -853,7 +865,7 @@ void Puzzles::pinball(int16 var) {
 			if (jumpType >= 2)
 				ballCrashed = 1;
 
-			_drawXFrames(30);
+			_drawXTicks(30);
 		}
 
 		if (ballShouldExpire) {
@@ -866,9 +878,9 @@ void Puzzles::pinball(int16 var) {
 			if (rightSideFrame == 500)
 				rightSideFrame = 200;
 
-			// sound fade stop 1025, 7
-			// Sound same as opcode 213 : 1005, 65, 0, 0, 5, 60, 20
-			_drawXFrames(55);
+			_vm->_sound->stopEffect(1025, 7);
+			_vm->_sound->playEffectFadeInOut(1005, 65, 0, 0, 5, 60, 20);
+			_drawXTicks(55);
 			_vm->_sound->playEffect(1010, 50);
 
 			for (uint i = 0; i < ARRAYSIZE(ballExpireFrames); i++) {
@@ -883,7 +895,7 @@ void Puzzles::pinball(int16 var) {
 				}
 			}
 
-			_drawXFrames(15);
+			_drawXTicks(15);
 			break;
 		}
 
@@ -891,7 +903,7 @@ void Puzzles::pinball(int16 var) {
 			break;
 	}
 
-	if (ballCrashed) {
+	if (ballCrashed || ballShouldExpire) {
 		if (leftSideFrame < 500)
 			leftSideFrame += 300;
 		if (rightSideFrame < 500)
@@ -918,11 +930,12 @@ void Puzzles::pinball(int16 var) {
 				++leftPanelFrame;
 				leftSideFrame = leftPanelFrame;
 
-				for (uint i = 0; i < 3; i++)
+				for (uint i = 0; i < 3; i++) {
 					if (leftComb->pegFrames[i] == leftSideFrame) {
 						_vm->_sound->playEffect(1027, 50);
 						leftToRightJumpCountDown = 5;
 					}
+				}
 
 				moviePlaying = true;
 			}
@@ -944,29 +957,27 @@ void Puzzles::pinball(int16 var) {
 					++rightPanelFrame;
 					rightSideFrame = rightPanelFrame;
 
-					for (uint i = 0; i < 3; i++)
+					for (uint i = 0; i < 3; i++) {
 						if (rightComb->pegFrames[i] == rightSideFrame) {
 							_vm->_sound->playEffect(1027, 50);
 							rightToLeftJumpCountdown = 5;
 						}
+					}
 
 					moviePlaying = true;
 				}
 			}
 
-			_vm->drawFrame();
-			_vm->processInput(true);
-			// while (limit > renderCurrFrame);
-			// limit = _vm->_state->getFrameCount() + 1;
+			_drawXTicks(1);
 
 			if (!moviePlaying) {
 				_vm->_state->setVar(26, jumpType);
 				_vm->_state->setVar(93, 1);
-				// sound fade stop 1025, 7
+				_vm->_sound->stopEffect(1025, 7);
 				return;
 			}
 
-			// play sound same as opcode 212 : 1025, 50
+			_vm->_sound->playEffectLooping(1025, 50);
 		}
 	}
 }
@@ -1039,20 +1050,20 @@ void Puzzles::weightDrag(uint16 var, uint16 movie) {
 		int32 value = _vm->_state->getVar(429 + i);
 		uint16 frame = 0;
 		switch (value) {
-			case 423:
-			case 425:
-				frame = 2;
-				break;
-			case 424:
-			case 427:
-				frame = 3;
-				break;
-			case 426:
-			case 428:
-				frame = 1;
-				break;
-			default:
-				break;
+		case 423:
+		case 425:
+			frame = 2;
+			break;
+		case 424:
+		case 427:
+			frame = 3;
+			break;
+		case 426:
+		case 428:
+			frame = 1;
+			break;
+		default:
+			break;
 		}
 		_vm->_state->setVar(28 + i, frame);
 		_vm->_state->setVar(32 + i, frame != 0);
@@ -1099,7 +1110,7 @@ void Puzzles::journalSaavedro(int16 move) {
 		if (chapter > 0) {
 			opened = 1;
 			if (chapter == 21)
-				lastPage = 2;
+				lastPage = _journalSaavedroLastPageLastChapterValue();
 			else
 				lastPage = 1;
 
@@ -1129,7 +1140,7 @@ void Puzzles::journalSaavedro(int16 move) {
 
 		// Does the left page need to be loaded from a different node?
 		if (nodeLeft != nodeRight) {
-			const DirectorySubEntry *jpegDesc = _vm->getFileDescription(0, nodeLeft, 0, DirectorySubEntry::kFrame);
+			const DirectorySubEntry *jpegDesc = _vm->getFileDescription("", nodeLeft, 0, DirectorySubEntry::kFrame);
 
 			if (!jpegDesc)
 				error("Frame %d does not exist", nodeLeft);
@@ -1138,7 +1149,7 @@ void Puzzles::journalSaavedro(int16 move) {
 
 			// Copy the left half of the node to a new surface
 			Graphics::Surface *leftBitmap = new Graphics::Surface();
-			leftBitmap->create(bitmap->w / 2, bitmap->h, Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+			leftBitmap->create(bitmap->w / 2, bitmap->h, Texture::getRGBAPixelFormat());
 
 			for (uint i = 0; i < bitmap->h; i++) {
 				memcpy(leftBitmap->getBasePtr(0, i),
@@ -1161,8 +1172,17 @@ void Puzzles::journalSaavedro(int16 move) {
 	}
 }
 
+int16 Puzzles::_journalSaavedroLastPageLastChapterValue() {
+	// The scripts just expect different values ...
+	if (_vm->getPlatform() == Common::kPlatformXbox) {
+		return 0;
+	} else {
+		return 2;
+	}
+}
+
 uint16 Puzzles::_journalSaavedroGetNode(uint16 chapter) {
-	const DirectorySubEntry *desc = _vm->getFileDescription(0, 1200, 0, DirectorySubEntry::kNumMetadata);
+	const DirectorySubEntry *desc = _vm->getFileDescription("", 1200, 0, DirectorySubEntry::kNumMetadata);
 
 	if (!desc)
 		error("Node 1200 does not exist");
@@ -1196,7 +1216,7 @@ uint16 Puzzles::_journalSaavedroNextChapter(uint16 chapter, bool forward) {
 void Puzzles::journalAtrus(uint16 node, uint16 var) {
 	uint numPages = 0;
 
-	while (_vm->getFileDescription(0, node++, 0, DirectorySubEntry::kFrame))
+	while (_vm->getFileDescription("", node++, 0, DirectorySubEntry::kFrame))
 		numPages++;
 
 	_vm->_state->setVar(var, numPages - 1);
@@ -1216,55 +1236,55 @@ void Puzzles::symbolCodesInit(uint16 var, uint16 posX, uint16 posY) {
 	};
 
 	static const CodeData codes[] = {
+	{
+		144, 10144, 0,
+		{
+			{ 296, 120 }, { 312, 128 }, { 296, 144 }, { 296, 128 }, { 312, 120 },
+			{ 328, 120 }, { 312, 144 }, { 312, 128 }, { 296, 136 }, { 312, 144 },
+			{ 296, 160 }, { 296, 144 }, { 312, 136 }, { 328, 144 }, { 312, 160 },
+			{ 312, 144 }, { 296, 112 }, { 328, 120 }, { 296, 160 }, { 288, 120 }
+		}
+		}, {
+			244, 10244, 1,
 			{
-					144, 10144, 0,
-					{
-							{ 296, 120 }, { 312, 128 }, { 296, 144 }, { 296, 128 }, { 312, 120 },
-							{ 328, 120 }, { 312, 144 }, { 312, 128 }, { 296, 136 }, { 312, 144 },
-							{ 296, 160 }, { 296, 144 }, { 312, 136 }, { 328, 144 }, { 312, 160 },
-							{ 312, 144 }, { 296, 112 }, { 328, 120 }, { 296, 160 }, { 288, 120 }
-					}
-			}, {
-					244, 10244, 1,
-					{
-							{ 288, 16 }, { 336, 32 }, { 294, 72 }, { 280, 24 }, { 336, 16 },
-							{ 376, 24 }, { 336, 72 }, { 328, 32 }, { 288, 64 }, { 336, 80 },
-							{ 288, 120 }, { 280, 72 }, { 336, 64 }, { 384, 72 }, { 336, 120 },
-							{ 328, 80 }, { 288, 0 }, { 384, 24 }, { 288, 120 }, { 264, 24 }
-					}
-			}, {
-					148, 10148, 0,
-					{
-							{ 280, 24 }, { 304, 32 }, { 288, 48 }, { 280, 24 }, { 304, 24 },
-							{ 320, 32 }, { 304, 48 }, { 296, 32 }, { 288, 40 }, { 304, 48 },
-							{ 280, 64 }, { 280, 48 }, { 304, 48 }, { 320, 48 }, { 304, 64 },
-							{ 296, 48 }, { 280, 16 }, { 320, 24 }, { 280, 64 }, { 272, 24 }
-					}
-			}, {
-					248, 10248, 1,
-					{
-							{ 280, 48 }, { 320, 56 }, { 287, 88 }, { 272, 56 }, { 320, 48 },
-							{ 360, 56 }, { 328, 96 }, { 312, 56 }, { 288, 88 }, { 320, 96 },
-							{ 280, 128 }, { 271, 96 }, { 328, 88 }, { 360, 96 }, { 320, 128 },
-							{ 312, 96 }, { 280, 32 }, { 360, 48 }, { 280, 128 }, { 264, 48 }
-					}
-			}, {
-					348, 10348, 1,
-					{
-							{ 336, 24 }, { 376, 32 }, { 336, 80 }, { 328, 32 }, { 376, 24 },
-							{ 424, 32 }, { 384, 80 }, { 368, 40 }, { 336, 72 }, { 376, 80 },
-							{ 336, 120 }, { 328, 80 }, { 384, 72 }, { 424, 80 }, { 376, 120 },
-							{ 368, 80 }, { 328, 8 }, { 424, 32 }, { 328, 128 }, { 312, 32 }
-					}
-			}, {
-					448, 10448, 1,
-					{
-							{ 224, 32 }, { 264, 40 }, { 224, 80 }, { 208, 40 }, { 264, 32 },
-							{ 304, 40 }, { 270, 88 }, { 256, 40 }, { 224, 72 }, { 264, 88 },
-							{ 224, 128 }, { 208, 88 }, { 272, 72 }, { 312, 88 }, { 264, 128 },
-							{ 256, 88 }, { 216, 16 }, { 312, 40 }, { 216, 128 }, { 200, 40 }
-					}
+				{ 288, 16 }, { 336, 32 }, { 294, 72 }, { 280, 24 }, { 336, 16 },
+				{ 376, 24 }, { 336, 72 }, { 328, 32 }, { 288, 64 }, { 336, 80 },
+				{ 288, 120 }, { 280, 72 }, { 336, 64 }, { 384, 72 }, { 336, 120 },
+				{ 328, 80 }, { 288, 0 }, { 384, 24 }, { 288, 120 }, { 264, 24 }
 			}
+		}, {
+			148, 10148, 0,
+			{
+				{ 280, 24 }, { 304, 32 }, { 288, 48 }, { 280, 24 }, { 304, 24 },
+				{ 320, 32 }, { 304, 48 }, { 296, 32 }, { 288, 40 }, { 304, 48 },
+				{ 280, 64 }, { 280, 48 }, { 304, 48 }, { 320, 48 }, { 304, 64 },
+				{ 296, 48 }, { 280, 16 }, { 320, 24 }, { 280, 64 }, { 272, 24 }
+			}
+		}, {
+			248, 10248, 1,
+			{
+				{ 280, 48 }, { 320, 56 }, { 287, 88 }, { 272, 56 }, { 320, 48 },
+				{ 360, 56 }, { 328, 96 }, { 312, 56 }, { 288, 88 }, { 320, 96 },
+				{ 280, 128 }, { 271, 96 }, { 328, 88 }, { 360, 96 }, { 320, 128 },
+				{ 312, 96 }, { 280, 32 }, { 360, 48 }, { 280, 128 }, { 264, 48 }
+			}
+		}, {
+			348, 10348, 1,
+			{
+				{ 336, 24 }, { 376, 32 }, { 336, 80 }, { 328, 32 }, { 376, 24 },
+				{ 424, 32 }, { 384, 80 }, { 368, 40 }, { 336, 72 }, { 376, 80 },
+				{ 336, 120 }, { 328, 80 }, { 384, 72 }, { 424, 80 }, { 376, 120 },
+				{ 368, 80 }, { 328, 8 }, { 424, 32 }, { 328, 128 }, { 312, 32 }
+			}
+		}, {
+			448, 10448, 1,
+			{
+				{ 224, 32 }, { 264, 40 }, { 224, 80 }, { 208, 40 }, { 264, 32 },
+				{ 304, 40 }, { 270, 88 }, { 256, 40 }, { 224, 72 }, { 264, 88 },
+				{ 224, 128 }, { 208, 88 }, { 272, 72 }, { 312, 88 }, { 264, 128 },
+				{ 256, 88 }, { 216, 16 }, { 312, 40 }, { 216, 128 }, { 200, 40 }
+			}
+		}
 	};
 
 	uint16 node = _vm->_state->getLocationNode();
@@ -1311,9 +1331,9 @@ void Puzzles::symbolCodesClick(int16 var) {
 
 	// Check puzzle with 3 symbols solution
 	static const SymbolCodeSolution solutions[] = {
-			{ 208172, 131196, 252945, 788771 },
-			{ 431060, 418863, 558738, 653337 },
-			{ 472588, 199440, 155951, 597954 }
+		{ 208172, 131196, 252945, 788771 },
+		{ 431060, 418863, 558738, 653337 },
+		{ 472588, 199440, 155951, 597954 }
 	};
 
 
@@ -1364,6 +1384,7 @@ int32 Puzzles::_symbolCodesFound() {
 	int32 top = _vm->_state->getSymbolCode1TopSolved();
 	int32 left = _vm->_state->getSymbolCode1LeftSolved();
 	int32 right = _vm->_state->getSymbolCode1RightSolved();
+
 	return (1 << top) | (1 << left) | (1 << right);
 }
 
@@ -1492,40 +1513,6 @@ void Puzzles::mainMenu(uint16 action) {
 	_vm->setMenuAction(action);
 }
 
-void Puzzles::saveLoadMenu(uint16 action, uint16 item) {
-	switch (action) {
-	case 0:
-		_vm->_menu->loadMenuOpen();
-		break;
-	case 1:
-		_vm->_menu->loadMenuSelect(item);
-		break;
-	case 2:
-		_vm->_menu->loadMenuLoad();
-		break;
-	case 3:
-		_vm->_menu->saveMenuOpen();
-		break;
-	case 4:
-		_vm->_menu->saveMenuSelect(item);
-		break;
-	case 5:
-		_vm->_menu->saveMenuSave();
-		break;
-	case 6:
-		_vm->_menu->loadMenuChangePage();
-		break;
-	case 7:
-		_vm->_menu->saveMenuChangePage();
-		break;
-	case 8:
-		_vm->_menu->saveLoadErase();
-		break;
-	default:
-		warning("Save load menu action %d for item %d is not implemented", action, item);
-	}
-}
-
 static void copySurfaceRect(Graphics::Surface *dest, const Common::Point &destPoint, const Graphics::Surface *src) {
 	for (uint16 i = 0; i < src->h; i++)
 		memcpy(dest->getBasePtr(destPoint.x, i + destPoint.y), src->getBasePtr(0, i), src->pitch);
@@ -1536,9 +1523,9 @@ void Puzzles::projectorLoadBitmap(uint16 bitmap) {
 
 	// This surface is freed by the destructor of the movie that uses it
 	_vm->_projectorBackground = new Graphics::Surface();
-	_vm->_projectorBackground->create(1024, 1024, Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	_vm->_projectorBackground->create(1024, 1024, Texture::getRGBAPixelFormat());
 
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription(0, bitmap, 0, DirectorySubEntry::kStillMovie);
+	const DirectorySubEntry *movieDesc = _vm->getFileDescription("", bitmap, 0, DirectorySubEntry::kStillMovie);
 
 	if (!movieDesc)
 		error("Movie %d does not exist", bitmap);
@@ -1546,15 +1533,16 @@ void Puzzles::projectorLoadBitmap(uint16 bitmap) {
 	// Rebuild the complete background image from the frames of the bink movie
 	Common::MemoryReadStream *movieStream = movieDesc->getData();
 	Video::BinkDecoder bink;
-	bink.setDefaultHighColorFormat(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	bink.loadStream(movieStream);
 	bink.start();
 
-	for (uint i = 0; i < 1024; i += 256)
+	for (uint i = 0; i < 1024; i += 256) {
 		for (uint j = 0; j < 1024; j += 256) {
 			const Graphics::Surface *frame = bink.decodeNextFrame();
 			copySurfaceRect(_vm->_projectorBackground, Common::Point(j, i), frame);
 		}
+	}
 }
 
 void Puzzles::projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y) {
@@ -1564,7 +1552,7 @@ void Puzzles::projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y) {
 	if (!_vm->_state->getVar(26))
 		return;
 
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription(0, bitmap, 0, DirectorySubEntry::kStillMovie);
+	const DirectorySubEntry *movieDesc = _vm->getFileDescription("", bitmap, 0, DirectorySubEntry::kStillMovie);
 
 	if (!movieDesc)
 		error("Movie %d does not exist", bitmap);
@@ -1572,7 +1560,7 @@ void Puzzles::projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y) {
 	// Rebuild the complete background image from the frames of the bink movie
 	Common::MemoryReadStream *movieStream = movieDesc->getData();
 	Video::BinkDecoder bink;
-	bink.setDefaultHighColorFormat(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	bink.loadStream(movieStream);
 	bink.start();
 
@@ -1621,4 +1609,19 @@ void Puzzles::settingsSave() {
 	ConfMan.flushToDisk();
 }
 
-} /* namespace Myst3 */
+void Puzzles::updateSoundScriptTimer() {
+	int frequency = 15 * ConfMan.getInt("music_frequency") / 100;
+	if (_vm->_state->getSoundScriptsPaused()) {
+		_vm->_state->setSoundScriptsTimer(60 * (20 - frequency));
+	} else {
+		_vm->_state->setSoundScriptsTimer(60 * (frequency + 5));
+	}
+}
+
+void Puzzles::checkCanSave() {
+	// There is no reason to forbid saving games with ResidualVM,
+	// since there is no notion of memory card, free blocks and such.
+	_vm->_state->setStateCanSave(true);
+}
+
+} // End of namespace Myst3

@@ -83,51 +83,19 @@ void PixelBuffer::free() {
 }
 
 void PixelBuffer::clear(int length) {
-	memset(_buffer, 0, length);
-}
-
-void PixelBuffer::setPixelAt(int pixel, uint32 value) {
-#if defined(SCUMM_BIG_ENDIAN)
-	byte *buffer = _buffer + pixel * _format.bytesPerPixel;
-	for (int i = 0; i < _format.bytesPerPixel; ++i) {
-		buffer[i] = value >> ((_format.bytesPerPixel - i - 1) * 8) & 0xFF;
-	}
-#elif defined(SCUMM_LITTLE_ENDIAN)
-	byte *buffer = _buffer + pixel * _format.bytesPerPixel;
-	for (int i = 0; i < _format.bytesPerPixel; ++i) {
-		buffer[i] = value >> (i * 8) & 0xFF;
-	}
-#endif
+	memset(_buffer, 0, length * _format.bytesPerPixel);
 }
 
 void PixelBuffer::copyBuffer(int thisFrom, int otherFrom, int length, const PixelBuffer &buf) {
 	if (buf._format == _format) {
 		memcpy(_buffer + thisFrom * _format.bytesPerPixel, buf._buffer + otherFrom * _format.bytesPerPixel, length * _format.bytesPerPixel);
 	} else {
-		uint8 r, g, b;
+		uint8 r, g, b, a;
 		for (int i = 0; i < length; ++i) {
-			buf.getRGBAt(i + otherFrom, r, g, b);
-			setPixelAt(i + thisFrom, r, g, b);
+			buf.getARGBAt(i + otherFrom, a, r, g, b);
+			setPixelAt(i + thisFrom, a, r, g, b);
 		}
 	}
-}
-
-uint32 PixelBuffer::getValueAt(int i) const {
-#if defined(SCUMM_BIG_ENDIAN)
-	byte *buffer = _buffer + i * _format.bytesPerPixel;
-	uint32 p = buffer[0] << ((_format.bytesPerPixel - 1) * 8);
-	for (int l = 1; l < _format.bytesPerPixel; ++l) {
-		p = p | (buffer[l] << (8 * (_format.bytesPerPixel - l - 1)));
-	}
-	return p;
-#elif defined(SCUMM_LITTLE_ENDIAN)
-	byte *buffer = _buffer + i * _format.bytesPerPixel;
-	uint32 p = buffer[0];
-	for (int l = 1; l < _format.bytesPerPixel; ++l) {
-		p = p | (buffer[l] << (8 * l));
-	}
-	return p;
-#endif
 }
 
 PixelBuffer &PixelBuffer::operator=(const PixelBuffer &buf) {

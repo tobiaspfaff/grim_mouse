@@ -29,12 +29,11 @@
 #include "common/rect.h"
 #include "common/textconsole.h"
 
-#if !defined(USE_GLES2) && !defined(USE_OPENGL_SHADERS)
+#if defined(USE_OPENGL) && !defined(USE_GLES2)
 
 #include "graphics/colormasks.h"
+#include "graphics/opengl/context.h"
 #include "graphics/surface.h"
-
-#include "math/vector2d.h"
 
 #include "engines/myst3/gfx.h"
 #include "engines/myst3/gfx_opengl.h"
@@ -42,20 +41,19 @@
 
 namespace Myst3 {
 
-Renderer *Renderer::createRenderer(OSystem *system) {
+Renderer *CreateGfxOpenGL(OSystem *system) {
 	return new OpenGLRenderer(system);
 }
 
 OpenGLRenderer::OpenGLRenderer(OSystem *system) :
-	BaseRenderer(system),
-	_nonPowerOfTwoTexSupport(false) {
+		Renderer(system) {
 }
 
 OpenGLRenderer::~OpenGLRenderer() {
 }
 
 Texture *OpenGLRenderer::createTexture(const Graphics::Surface *surface) {
-	return new OpenGLTexture(surface, _nonPowerOfTwoTexSupport);
+	return new OpenGLTexture(surface);
 }
 
 void OpenGLRenderer::freeTexture(Texture *texture) {
@@ -64,12 +62,14 @@ void OpenGLRenderer::freeTexture(Texture *texture) {
 }
 
 void OpenGLRenderer::init() {
+	debug("Initializing OpenGL Renderer");
+
+	computeScreenViewport();
+
 	// Check the available OpenGL extensions
-	const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
-	if (strstr(extensions, "GL_ARB_texture_non_power_of_two"))
-		_nonPowerOfTwoTexSupport = true;
-	else
+	if (!OpenGLContext.NPOTSupported) {
 		warning("GL_ARB_texture_non_power_of_two is not available.");
+	}
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
@@ -83,42 +83,57 @@ void OpenGLRenderer::init() {
 }
 
 void OpenGLRenderer::clear() {
+	glClearColor(0.f, 0.f, 0.f, 1.f); // Solid black
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glColor3f(1.0f, 1.0f, 1.0f);
 }
 
-void OpenGLRenderer::setupCameraOrtho2D() {
-	glViewport(0, 0, kOriginalWidth, kOriginalHeight);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluOrtho2D(0.0, kOriginalWidth, kOriginalHeight, 0.0);
+void OpenGLRenderer::selectTargetWindow(Window *window, bool is3D, bool scaled) {
+	if (!window) {
+		// No window found ...
+		if (scaled) {
+			// ... in scaled mode draw in the original game screen area
+			Common::Rect vp = viewport();
+			glViewport(vp.left, _system->getHeight() - vp.top - vp.height(), vp.width(), vp.height());
+		} else {
+			// ... otherwise, draw on the whole screen
+			glViewport(0, 0, _system->getWidth(), _system->getHeight());
+		}
+	} else {
+		// Found a window, draw inside it
+		Common::Rect vp = window->getPosition();
+		glViewport(vp.left, _system->getHeight() - vp.top - vp.height(), vp.width(), vp.height());
+	}
 
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-}
+	if (is3D) {
+		glMatrixMode(GL_PROJECTION);
+		glLoadMatrixf(_projectionMatrix.getData());
 
-void OpenGLRenderer::setupCameraPerspective(float pitch, float heading, float fov) {
-	// TODO: Find a correct and exact formula for the FOV
-	GLfloat glFOV = 0.63 * fov; // Approximative and experimental formula
-	if (fov > 79.0 && fov < 81.0)
-		glFOV = 50.5; // Somewhat good value for fov == 80
-	else if (fov > 59.0 && fov < 61.0)
-		glFOV = 36.0; // Somewhat good value for fov == 60
+		glMatrixMode(GL_MODELVIEW);
+		glLoadMatrixf(_modelViewMatrix.getData());
+	} else {
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
 
-	glViewport(0, kBottomBorderHeight, kOriginalWidth, kFrameHeight);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluPerspective(glFOV, (GLfloat)kOriginalWidth / (GLfloat)kFrameHeight, 1.0, 10000.0);
+		if (!window) {
+			if (scaled) {
+				glOrtho(0.0, kOriginalWidth, kOriginalHeight, 0.0, -1.0, 1.0);
+			} else {
+				glOrtho(0.0, _system->getWidth(), _system->getHeight(), 0.0, -1.0, 1.0);
+			}
+		} else {
+			if (scaled) {
+				Common::Rect originalRect = window->getOriginalPosition();
+				glOrtho(0.0, originalRect.width(), originalRect.height(), 0.0, -1.0, 1.0);
+			} else {
+				Common::Rect vp = window->getPosition();
+				glOrtho(0.0, vp.width(), vp.height(), 0.0, -1.0, 1.0);
+			}
+		}
 
-	// Rotate the model to simulate the rotation of the camera
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glRotatef(pitch, -1.0f, 0.0f, 0.0f);
-	glRotatef(heading - 180.0f, 0.0f, 1.0f, 0.0f);
-
-	glGetDoublev(GL_MODELVIEW_MATRIX, _cubeModelViewMatrix);
-	glGetDoublev(GL_PROJECTION_MATRIX, _cubeProjectionMatrix);
-	glGetIntegerv(GL_VIEWPORT, (GLint *)_cubeViewport);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+	}
 }
 
 void OpenGLRenderer::drawRect2D(const Common::Rect &rect, uint32 color) {
@@ -134,32 +149,41 @@ void OpenGLRenderer::drawRect2D(const Common::Rect &rect, uint32 color) {
 	}
 
 	glBegin(GL_TRIANGLE_STRIP);
-		glVertex3f( rect.left, rect.bottom, 0.0f);
-		glVertex3f( rect.right, rect.bottom, 0.0f);
-		glVertex3f( rect.left, rect.top, 0.0f);
-		glVertex3f( rect.right, rect.top, 0.0f);
+		glVertex3f(rect.left, rect.bottom, 0.0f);
+		glVertex3f(rect.right, rect.bottom, 0.0f);
+		glVertex3f(rect.left, rect.top, 0.0f);
+		glVertex3f(rect.right, rect.top, 0.0f);
 	glEnd();
 
 	glDisable(GL_BLEND);
 }
 
 void OpenGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect,
-		Texture *texture, float transparency) {
+		Texture *texture, float transparency, bool additiveBlending) {
 
 	OpenGLTexture *glTexture = static_cast<OpenGLTexture *>(texture);
 
-	const float tLeft = textureRect.left / (float) glTexture->internalWidth;
-	const float tWidth = textureRect.width() / (float) glTexture->internalWidth;
-	const float tTop = textureRect.top / (float) glTexture->internalHeight;
-	const float tHeight = textureRect.height() / (float) glTexture->internalHeight;
+	const float tLeft = textureRect.left / (float)glTexture->internalWidth;
+	const float tWidth = textureRect.width() / (float)glTexture->internalWidth;
+	const float tTop = textureRect.top / (float)glTexture->internalHeight;
+	const float tHeight = textureRect.height() / (float)glTexture->internalHeight;
 
-	const float sLeft = screenRect.left;
-	const float sTop = screenRect.top;
-	const float sWidth = screenRect.width();
-	const float sHeight = screenRect.height();
+	float sLeft = screenRect.left;
+	float sTop = screenRect.top;
+	float sRight = sLeft + screenRect.width();
+	float sBottom = sTop + screenRect.height();
+
+	if (glTexture->upsideDown) {
+		SWAP(sTop, sBottom);
+	}
 
 	if (transparency >= 0.0) {
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		if (additiveBlending) {
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		} else {
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		}
+
 		glEnable(GL_BLEND);
 	} else {
 		transparency = 1.0;
@@ -172,16 +196,16 @@ void OpenGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Co
 	glBindTexture(GL_TEXTURE_2D, glTexture->id);
 	glBegin(GL_TRIANGLE_STRIP);
 		glTexCoord2f(tLeft, tTop + tHeight);
-		glVertex3f(sLeft + 0, sTop + sHeight, 1.0f);
+		glVertex3f(sLeft + 0, sBottom, 1.0f);
 
 		glTexCoord2f(tLeft + tWidth, tTop + tHeight);
-		glVertex3f(sLeft + sWidth, sTop + sHeight, 1.0f);
+		glVertex3f(sRight, sBottom, 1.0f);
 
 		glTexCoord2f(tLeft, tTop);
 		glVertex3f(sLeft + 0, sTop + 0, 1.0f);
 
 		glTexCoord2f(tLeft + tWidth, tTop);
-		glVertex3f(sLeft + sWidth, sTop + 0, 1.0f);
+		glVertex3f(sRight, sTop + 0, 1.0f);
 	glEnd();
 
 	glDisable(GL_BLEND);
@@ -212,10 +236,10 @@ void OpenGLRenderer::draw2DText(const Common::String &text, const Common::Point 
 		int w = textureRect.width();
 		int h = textureRect.height();
 
-		float cw = textureRect.width() / (float) glFont->internalWidth;
-		float ch = textureRect.height() / (float) glFont->internalHeight;
-		float cx = textureRect.left / (float) glFont->internalWidth;
-		float cy = textureRect.top / (float) glFont->internalHeight;
+		float cw = textureRect.width() / (float)glFont->internalWidth;
+		float ch = textureRect.height() / (float)glFont->internalHeight;
+		float cx = textureRect.left / (float)glFont->internalWidth;
+		float cy = textureRect.top / (float)glFont->internalHeight;
 
 		glBegin(GL_QUADS);
 		glTexCoord2f(cx, cy + ch);
@@ -236,65 +260,29 @@ void OpenGLRenderer::draw2DText(const Common::String &text, const Common::Point 
 	glDepthMask(GL_TRUE);
 }
 
+void OpenGLRenderer::drawFace(uint face, Texture *texture) {
+	OpenGLTexture *glTexture = static_cast<OpenGLTexture *>(texture);
+
+	// Used fragment of the texture
+	const float w = glTexture->width  / (float) glTexture->internalWidth;
+	const float h = glTexture->height / (float) glTexture->internalHeight;
+
+	glBindTexture(GL_TEXTURE_2D, glTexture->id);
+	glBegin(GL_TRIANGLE_STRIP);
+	for (uint i = 0; i < 4; i++) {
+		glTexCoord2f(w * cubeVertices[5 * (4 * face + i) + 0], h * cubeVertices[5 * (4 * face + i) + 1]);
+		glVertex3f(cubeVertices[5 * (4 * face + i) + 2], cubeVertices[5 * (4 * face + i) + 3], cubeVertices[5 * (4 * face + i) + 4]);
+	}
+	glEnd();
+}
+
 void OpenGLRenderer::drawCube(Texture **textures) {
-	OpenGLTexture *texture0 = static_cast<OpenGLTexture *>(textures[0]);
-
-	// Size of the cube
-	float t = 256.0f;
-
-	// Used fragment of the textures
-	float s = texture0->width / (float) texture0->internalWidth;
-
 	glEnable(GL_TEXTURE_2D);
 	glDepthMask(GL_FALSE);
 
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[4])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// X-
-		glTexCoord2f(0, s); glVertex3f(-t,-t, t);
-		glTexCoord2f(s, s); glVertex3f(-t,-t,-t);
-		glTexCoord2f(0, 0); glVertex3f(-t, t, t);
-		glTexCoord2f(s, 0); glVertex3f(-t, t,-t);
-	glEnd();
-
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[3])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// X+
-		glTexCoord2f(0, s); glVertex3f( t,-t,-t);
-		glTexCoord2f(s, s); glVertex3f( t,-t, t);
-		glTexCoord2f(0, 0); glVertex3f( t, t,-t);
-		glTexCoord2f(s, 0); glVertex3f( t, t, t);
-	glEnd();
-
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[1])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// Y-
-		glTexCoord2f(0, s); glVertex3f( t,-t,-t);
-		glTexCoord2f(s, s); glVertex3f(-t,-t,-t);
-		glTexCoord2f(0, 0); glVertex3f( t,-t, t);
-		glTexCoord2f(s, 0); glVertex3f(-t,-t, t);
-	glEnd();
-
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[5])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// Y+
-		glTexCoord2f(0, s); glVertex3f( t, t, t);
-		glTexCoord2f(s, s); glVertex3f(-t, t, t);
-		glTexCoord2f(0, 0); glVertex3f( t, t,-t);
-		glTexCoord2f(s, 0); glVertex3f(-t, t,-t);
-	glEnd();
-
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[0])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// Z-
-		glTexCoord2f(0, s); glVertex3f(-t,-t,-t);
-		glTexCoord2f(s, s); glVertex3f( t,-t,-t);
-		glTexCoord2f(0, 0); glVertex3f(-t, t,-t);
-		glTexCoord2f(s, 0); glVertex3f( t, t,-t);
-	glEnd();
-
-	glBindTexture(GL_TEXTURE_2D, static_cast<OpenGLTexture *>(textures[2])->id);
-	glBegin(GL_TRIANGLE_STRIP);			// Z+
-		glTexCoord2f(0, s); glVertex3f( t,-t, t);
-		glTexCoord2f(s, s); glVertex3f(-t,-t, t);
-		glTexCoord2f(0, 0); glVertex3f( t, t, t);
-		glTexCoord2f(s, 0); glVertex3f(-t, t, t);
-	glEnd();
+	for (uint i = 0; i < 6; i++) {
+		drawFace(i, textures[i]);
+	}
 
 	glDepthMask(GL_TRUE);
 }
@@ -304,7 +292,7 @@ void OpenGLRenderer::drawTexturedRect3D(const Math::Vector3d &topLeft, const Mat
 
 	OpenGLTexture *glTexture = static_cast<OpenGLTexture *>(texture);
 
-	const float w = glTexture->width / (float) glTexture->internalWidth;
+	const float w = glTexture->width / (float)glTexture->internalWidth;
 	const float h = glTexture->height / (float)glTexture->internalHeight;
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -332,34 +320,27 @@ void OpenGLRenderer::drawTexturedRect3D(const Math::Vector3d &topLeft, const Mat
 }
 
 Graphics::Surface *OpenGLRenderer::getScreenshot() {
-	Graphics::Surface *s = new Graphics::Surface();
-	s->create(kOriginalWidth, kOriginalHeight, Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	Common::Rect screen = viewport();
 
-	glReadPixels(0, 0, kOriginalWidth, kOriginalHeight, GL_RGBA, GL_UNSIGNED_BYTE, s->getPixels());
+	Graphics::Surface *s = new Graphics::Surface();
+	s->create(screen.width(), screen.height(), Texture::getRGBAPixelFormat());
+
+	glReadPixels(screen.left, screen.top, screen.width(), screen.height(), GL_RGBA, GL_UNSIGNED_BYTE, s->getPixels());
+
+	flipVertical(s);
 
 	return s;
 }
 
-void OpenGLRenderer::screenPosToDirection(const Common::Point screen, float &pitch, float &heading) {
-	double x, y, z;
+Texture *OpenGLRenderer::copyScreenshotToTexture() {
+	OpenGLTexture *texture = new OpenGLTexture();
 
-	// Screen coords to 3D coords
-	gluUnProject(screen.x, kOriginalHeight - screen.y, 0.9, _cubeModelViewMatrix, _cubeProjectionMatrix, (GLint *)_cubeViewport, &x, &y, &z);
+	Common::Rect screen = viewport();
+	texture->copyFromFramebuffer(screen);
 
-	// 3D coords to polar coords
-	Math::Vector3d v = Math::Vector3d(x, y, z);
-	v.normalize();
-
-	Math::Vector2d horizontalProjection = Math::Vector2d(v.x(), v.z());
-	horizontalProjection.normalize();
-
-	pitch = 90 - Math::Angle::arcCosine(v.y()).getDegrees();
-	heading = Math::Angle::arcCosine(horizontalProjection.getY()).getDegrees();
-
-	if (horizontalProjection.getX() > 0.0)
-		heading = 360 - heading;
+	return texture;
 }
 
-} // end of namespace Myst3
+} // End of namespace Myst3
 
 #endif

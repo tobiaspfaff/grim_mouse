@@ -22,6 +22,7 @@
 
 #include "common/file.h"
 #include "common/md5.h"
+#include "common/translation.h"
 
 #include "gui/error.h"
 
@@ -60,7 +61,7 @@ const char *vox0004[] = {
 const char *vox0003[] = {
 	"7c88ad7c949a516793b584299f33ed23", //english unpatched
 	"f900cb063fbd0ef2a0516e9a00291d13", //italian unpatched
-	"e13eb421b9490cbaeef66f0cf6156764", //german unpatched
+	"5bda9a36181c1fea368491b842c11efe", //german unpatched
 	"c4aa2c45b24f351e8fce40a141084fb0", //french unpatched
 	"1d4e94e3d3fd803a02c9993412359082" //spanish unpatched
 };
@@ -83,7 +84,7 @@ const char *vox0000[] = {
 	"c7900f32d48d7e265629bd355a21c795", //english pre-patched
 	"67627f2d9314f9c0ae55dd2099fc052f", //english unpatched
 	"c9e1a755f280b3ebff58578c4e5f1e52", //italian unpatched
-	"f1b8c1de4f82099ab080f9cbe2b02da6", //german unpatched
+	"e884221099ba62dacf04a35be8428419", //german unpatched
 	"dbe35af39eec29db21a4c6e1c228cc9d", //french unpatched
 	"076bf048de229ad8cefcb3d7c0bfd134" //spanish unpatched
 };
@@ -97,7 +98,7 @@ const char *movie04[] = {
 const char *movie03[] = {
 	"113a768e7206016df72f9d2f5c1851b7", //english unpatched
 	"0fdb7dda9ebc049eac386d29bface366", //italian unpatched
-	"500bc51ce211d528f6c7170f479c9525", //german unpatched
+	"d2aae2e27616f78016a71818e528acda", //german unpatched
 	"c2ba7adbf09b7a4f69c180f1c74297ee", //french unpatched
 	"fb87d5a9e3a81d3ffd521dee4432c4da" //spanish unpatched
 };
@@ -144,7 +145,7 @@ const char *credits[] = {
 };
 const char *local[] = {
 	"6142624ce13ea3c9079aa80918010c4a", //italian unpatched
-	"7f76c20f1d77db287473ffef10b8b309", //german unpatched
+	"27c961c16f9eaf0260781883150e5611", //german unpatched
 	"c9dd41f66883959de27f80bbe457f30d", //french unpatched
 	"d22648d6787c2f8f0a789ee3ed0c08f7" //spanish unpatched
 };
@@ -155,6 +156,21 @@ const char *local[] = {
 const char *gfdemo01[] = {
 	"25d831d57a93eb3ab8edbb07b7b63943"
 };
+const char *gdemo001[] = {
+	"aa44d6c01a1b03d4607901933635d385"
+};
+const char *gfdemo01ger[] = {
+	"fd728f040557118b7ca436f8205029e5"
+};
+const char *gfdemo01fra[] = {
+	"fd728f040557118b7ca436f8205029e5" // Same as german
+};
+const char *gfdemo01ita[] = {
+	"fd728f040557118b7ca436f8205029e5" // Same as german
+};
+const char *gfdemo01spa[] = {
+	"fd728f040557118b7ca436f8205029e5" // Same as german
+};
 const char *grimdemo[] = {
 	"3ba28e7e36a49b5fd01ba98e3c772fe8"
 };
@@ -164,7 +180,18 @@ const char *sound001[] = {
 const char *voice001[] = {
 	"f24a45079394fee296a0f7fad07c7fad"
 };
-
+const char *voice001ger[] = {
+	"d1d68735ae10148ecccb6b5000a4db96"
+};
+const char *voice001fra[] = {
+	"43f56fca727e117b724051c740202c26"
+};
+const char *voice001ita[] = {
+	"412bd831ec42d226fa173e0f55cb47cd"
+};
+const char *voice001spa[] = {
+	"00cb825deca33b96719bc157a5427c40"
+};
 
 // EMI retail PC version
 
@@ -230,7 +257,7 @@ const char *emi_sfx[] = {
 };
 const char *emi_voiceAll[] = {
 	"18d3996c7de4d460b4cd4ee5897a90ae", // english patched
-	"4e2ae54188a96dfb8ecbd39bf322b3f5", // german patched
+	"e65a13f2906899ab6eca2cce3c4cb514", // german patched
 	"073ecbe5f23d17536dce591174bac593", // spanish patched
 	"86126ac852312452ee79558a5e76d7fd", // french patched
 	"9b6b4748e872712c267d65778a3ed2da", // italian patched
@@ -319,6 +346,9 @@ const char *emiPS2_voiceMon[] = {
 
 const char *emid_i9n[] = {
 	"d913504ec3a2fe52ee02a20a154a2b17", // english patched
+	"1cd0547b7cb26082274624b146dab3f1", // french
+	"0e011c72372acc4baeac259b46ae30f4", // german
+	"25523ee7687096382cbd3f3b6d30b84c", // spanish
 };
 const char *emid_lip[] = {
 	"0a145aa7acc1a68a738c7a6f27d23283", // english patched
@@ -333,6 +363,11 @@ const char *emid_voice[] = {
 	"7f9867d48b5e0af5cb3fbd8d79741f5d", // english patched
 };
 
+// EMI Macintosh
+const char *emi_installer[] = {
+	"93a639e3221405862dc46e9706216c00", // German (EFMI Installer)
+	"a42f8aa079a6d23c285fceba191e67a4", // English (Monkey Island 4 Installer)
+};
 
 bool MD5Check::_initted = false;
 Common::Array<MD5Check::MD5Sum> *MD5Check::_files = nullptr;
@@ -349,10 +384,34 @@ void MD5Check::init() {
 
 	if (g_grim->getGameType() == GType_GRIM) {
 		if (g_grim->getGameFlags() & ADGF_DEMO) {
-			MD5SUM("gfdemo01.lab", gfdemo01)
+			bool isDemoWithVideo = false;
+			if (g_grim->getGameLanguage() == Common::DE_DEU) {
+				MD5SUM("gfdemo01.lab", gfdemo01ger)
+				MD5SUM("voice001.lab", voice001ger)
+			} else if (g_grim->getGameLanguage() == Common::FR_FRA) {
+				MD5SUM("gfdemo01.lab", gfdemo01fra)
+				MD5SUM("voice001.lab", voice001fra)
+			} else if (g_grim->getGameLanguage() == Common::IT_ITA) {
+				MD5SUM("gfdemo01.lab", gfdemo01ita)
+				MD5SUM("voice001.lab", voice001ita)
+			} else if (g_grim->getGameLanguage() == Common::ES_ESP) {
+				MD5SUM("gfdemo01.lab", gfdemo01spa)
+				MD5SUM("voice001.lab", voice001spa)
+			} else {
+				// Check which version we have
+				Common::File test;
+				if (!test.open("gfdemo01.lab")) {
+					isDemoWithVideo = true;
+					MD5SUM("gdemo001.lab", gdemo001);
+				} else {
+					MD5SUM("gfdemo01.lab", gfdemo01)
+					MD5SUM("voice001.lab", voice001)
+				}
+			}
+			if (!isDemoWithVideo) {
+				MD5SUM("sound001.lab", sound001)
+			}
 			MD5SUM("grimdemo.mus", grimdemo)
-			MD5SUM("sound001.lab", sound001)
-			MD5SUM("voice001.lab", voice001)
 		} else {
 			MD5SUM("gfupd101.exe", gfupd101)
 			MD5SUM("year4mus.lab", year4mus)
@@ -402,6 +461,15 @@ void MD5Check::init() {
 			MD5SUM("voiceMel.m4b", emiPS2_voiceMel)
 			MD5SUM("voiceMon.m4b", emiPS2_voiceMon)
 		} else {
+			if (g_grim->getGamePlatform() == Common::kPlatformMacintosh) {
+				if (g_grim->getGameLanguage() == Common::DE_DEU) {
+					// Known to be the correct filename for german
+					MD5SUM("EFMI Installer", emi_installer)
+				} else {
+					// Known to be the correct filename for english
+					MD5SUM("Monkey Island 4 Installer", emi_installer)
+				}
+			}
 			MD5SUM("artAll.m4b", emi_artAll)
 			MD5SUM("artJam.m4b", emi_artJam)
 			MD5SUM("artLuc.m4b", emi_artLuc)
@@ -475,17 +543,17 @@ bool MD5Check::advanceCheck(int *pos, int *total) {
 	if (file.open(sum.filename)) {
 		Common::String md5 = Common::computeStreamMD5AsString(file);
 		if (!checkMD5(sum, md5.c_str())) {
-			warning("'%s' may be corrupted. MD5: '%s'", sum.filename, md5.c_str());
-			GUI::displayErrorDialog(Common::String::format("The game data file %s may be corrupted.\nIf you are sure it is "
+			warning(_("'%s' may be corrupted. MD5: '%s'"), sum.filename, md5.c_str());
+			GUI::displayErrorDialog(Common::String::format(_("The game data file %s may be corrupted.\nIf you are sure it is "
 									"not please provide the ResidualVM team the following code, along with the file name, the language and a "
-									"description of your game version (i.e. dvd-box or jewelcase):\n%s", sum.filename, md5.c_str()).c_str());
+									"description of your game version (i.e. dvd-box or jewelcase):\n%s"), sum.filename, md5.c_str()).c_str());
 			return false;
 		}
 	} else {
-		warning("Could not open %s for checking", sum.filename);
-		GUI::displayErrorDialog(Common::String::format("Could not open the file %s for checking.\nIt may be missing or "
+		warning(_("Could not open %s for checking"), sum.filename);
+		GUI::displayErrorDialog(Common::String::format(_("Could not open the file %s for checking.\nIt may be missing or "
 								"you may not have the rights to open it.\nGo to http://wiki.residualvm.org/index.php/Datafiles to see a list "
-								"of the needed files.", sum.filename).c_str());
+								"of the needed files."), sum.filename).c_str());
 		return false;
 	}
 

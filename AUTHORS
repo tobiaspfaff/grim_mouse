@@ -3,21 +3,27 @@ ResidualVM
   Project Leaders
   ---------------
      Pawel Kolodziejski
-     Einar Johan T. Somaen
+     Einar Johan T. Soemaaen
 
   Teams
   -----
     Grim Team:
-       James Brown                  - Core developer (retired)
-       Giulio Camuffo               - Core developer
+       James Brown                  - Grim developer (retired)
+       Giulio Camuffo               - Grim developer
        Dries Harnie                 - EMI, Android, OpenGL ES developer
        Pawel Kolodziejski           - Core developer (suspended)
        Christian Krause             - EMI developer
-       Einar Johan T. Somaen        - Grim, EMI developer
+       Einar Johan T. Soemaaen      - Grim, EMI developer
        Joel Teichroeb               - EMI, Android developer
+       Joni Vahamaki                - EMI developer
 
     Myst 3 Team:
        Bastien Bouclet              - Core developer
+
+    Stark Team:
+       Bastien Bouclet              - Core developer
+       Einar Johan T. Soemaaen      - Core developer (retired)
+       Liu Zhaosong                 - Core developer
 
   Contributors
   ------------
@@ -32,6 +38,7 @@ ResidualVM
                                       fixes
        Robert Biro                  - Antialiasing support
        Bastien Bouclet              - Various fixes to engine
+       David Cardwell               - Few fixes to EMI
        Marcus Comstedt              - Initial Dreamcast port
        Andrea Corna                 - Patcher module, various engine
                                       improvements
@@ -41,13 +48,13 @@ ResidualVM
        Vincent Hamm                 - Various engine code fixes and
                                       improvements
        Sven Hesse                   - Various compilation fixes
-       Matthew Hoops                - Some engine improvements, some work on
-                                      EMI support
+       Matthew Hoops                - Smush codec48, Grim and EMI engine
+                                      improvements
        Erich Hoover                 - x86-64 fixes, various code fixes and
                                       improvements
        Max Horn                     - Few code fixes
        Travis Howell                - Various code fixes, Windows port
-       Joseph Jezak                 - Few fixes to engine
+       Joseph Jezak                 - A lot of engine improvements and fixes
        Guillem Jover                - Few code improvements
        Filippos Karapetis           - Compilation fixes
        Ingo van Lil                 - Various fixes and improvements for EMI
@@ -56,8 +63,10 @@ ResidualVM
        Joost Peters                 - Various code fixes
        George Macon                 - Few fixes
        Josh Matthews                - Few fixes to engine
-       Gregory Montoir              - Few fixes to engine
        Matthieu Milan               - Various engine improvements
+       Gregory Montoir              - Few fixes to engine
+       Stefano Musumeci             - TinyGL backend and engine driver
+                                      improvements
        Christian Neumair            - Various optimisation patches
        Daniel Schepler              - Initial grim engine contributor, LUA
                                       support
@@ -66,20 +75,28 @@ ResidualVM
        Julien Templier              - create_project tool
        Pino Toscano                 - Debian GNU/Linux package files
        Lionel Ulmer                 - OpenGL optimisations
-       Joni Vahamaki                - A lot of engine improvements and fixes
        cmayer0087                   - Various engine code fixes
        JenniBee                     - Compilation fixes
        karjonas                     - Various engine code fixes
+       PoulpiFr                     - Few fixes to Android port
        sietschie                    - Few fixes to engine
 
     Myst 3:
        Matthew Hoops                - Various engine improvements and code
                                       fixes
+       Stefano Musumeci             - TinyGL engine driver support
+
+    Stark:
+       Matthew Hoops                - ADPCM decoder
+       Pawel Kolodziejski           - Various engine code fixes
+       Vincent Pelletier            - Raw sound support
+       Jordi Vilalta Prat           - Initial engine contributor
+       Scott Thomas                 - Initial engine author
 
 ScummVM code
 ************
    ResidualVM uses a lot of ScummVM code. For a list of authors look into
-   COPYRIGHT file. 
+   COPYRIGHT file.
 
 Website code
 ************
@@ -87,7 +104,7 @@ Website code
 
 Special thanks to
 *****************
-   The LUA developers, for creating a nice compact script interpreter. 
+   The LUA developers, for creating a nice compact script interpreter.
 
    Tim Schafer, for obvious reasons, and everybody else who helped make Grim
    Fandango a brilliant game; and the EMI team for giving it their best try.
@@ -96,5 +113,5 @@ Special thanks to
    avoiding the horrible hack it could have been.
 
    Benjamin Haisch, for emimeshviewer, which our EMI code borrows heavily
-   from. 
+   from.
 

@@ -1,3 +1,31 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
+
 #define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
 #define FORBIDDEN_SYMBOL_EXCEPTION_stderr
 
@@ -23,13 +51,19 @@ void tglGetIntegerv(int pname, int *params) {
 		*params = T_MAX_LIGHTS;
 		break;
 	case TGL_MAX_TEXTURE_SIZE:
-		*params = 256; // not completely true, but...
+		*params = c->_textureSize;
 		break;
 	case TGL_MAX_TEXTURE_STACK_DEPTH:
 		*params = MAX_TEXTURE_STACK_DEPTH;
 		break;
+	case TGL_BLEND:
+		*params = c->fb->isBlendingEnabled();
+		break;
+	case TGL_ALPHA_TEST:
+		*params = c->fb->isAlphaTestEnabled();
+		break;
 	default:
-		error("glGet: option not implemented");
+		error("tglGet: option not implemented");
 		break;
 	}
 }
@@ -41,8 +75,10 @@ void tglGetFloatv(int pname, float *v) {
 	switch (pname) {
 	case TGL_TEXTURE_MATRIX:
 		mnr++;
+		// fall through
 	case TGL_PROJECTION_MATRIX:
 		mnr++;
+		// fall through
 	case TGL_MODELVIEW_MATRIX: {
 		float *p = &c->matrix_stack_ptr[mnr]->_m[0][0];
 		for (i = 0; i < 4; i++) {

@@ -24,6 +24,7 @@
 #define BACKENDS_GRAPHICS_SDL_SDLGRAPHICS_H
 
 #include "backends/graphics/graphics.h"
+#include "backends/platform/sdl/sdl-window.h"
 
 #include "common/rect.h"
 
@@ -36,7 +37,7 @@ class SdlEventSource;
  */
 class SdlGraphicsManager : virtual public GraphicsManager {
 public:
-	SdlGraphicsManager(SdlEventSource *source);
+	SdlGraphicsManager(SdlEventSource *source, SdlWindow *window);
 	virtual ~SdlGraphicsManager();
 
 	/**
@@ -61,10 +62,10 @@ public:
 	virtual void notifyVideoExpose() = 0;
 
 	/**
-	 * Notify the graphics manager about an resize event.
+	 * Notify the graphics manager about a resize event.
 	 *
 	 * It is noteworthy that the requested width/height should actually be set
-	 * up as is and not changed by the graphics manager, since else it might
+	 * up as is and not changed by the graphics manager, since otherwise it may
 	 * lead to odd behavior for certain window managers.
 	 *
 	 * It is only required to overwrite this method in case you want a
@@ -84,15 +85,53 @@ public:
 	virtual void transformMouseCoordinates(Common::Point &point) = 0;
 
 	/**
-	 * Notifies the graphics manager about a position change according to the
-	 * real screen coordinates.
+	 * Notifies the graphics manager about a mouse position change.
 	 *
-	 * @param mouse Mouse position.
+	 * The passed point *must* be converted from window coordinates to virtual
+	 * coordinates in order for the event to be processed correctly by the game
+	 * engine. Just use `convertWindowToVirtual` for this unless you need to do
+	 * something special.
+	 *
+	 * @param mouse The mouse position in window coordinates, which must be
+	 * converted synchronously to virtual coordinates.
+	 * @returns true if the mouse was in a valid position for the game and
+	 * should cause the event to be sent to the game.
 	 */
-	virtual void notifyMousePos(Common::Point mouse) = 0;
+	virtual bool notifyMousePosition(Common::Point &mouse) = 0;
+
+	/**
+	 * A (subset) of the graphic manager's state. This is used when switching
+	 * between different SDL graphic managers at runtime.
+	 */
+	struct State {
+		int screenWidth, screenHeight;
+		bool aspectRatio;
+		bool fullscreen;
+		bool cursorPalette;
+
+#ifdef USE_RGB_COLOR
+		Graphics::PixelFormat pixelFormat;
+#endif
+	};
+
+	/**
+	 * Queries the current state of the graphic manager.
+	 */
+	State getState() const;
+
+	/**
+	 * Setup a basic state of the graphic manager.
+	 */
+	bool setState(const State &state);
+
+	/**
+	 * Queries the SDL window.
+	 */
+	SdlWindow *getWindow() const { return _window; }
 
 protected:
 	SdlEventSource *_eventSource;
+	SdlWindow *_window;
 };
 
 #endif

@@ -51,7 +51,7 @@ public:
 		TextObjects = 2 << 16,
 		Patchr = 2 << 17,
 		Lipsync = 2 << 18,
-		All = 0xFFFFFF
+		Sprites = 2 << 19
 	};
 
 	static void registerDebugChannels();

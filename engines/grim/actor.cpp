@@ -87,7 +87,7 @@ Actor::Actor() :
 		_pitch(0), _yaw(0), _roll(0), _walkRate(0.3f), _walkBwd(false),
 		_turnRateMultiplier(0.f), _talkAnim(0),
 		_reflectionAngle(80), _scale(1.f), _timeScale(1.f),
-		_visible(true), _lipSync(nullptr), _turning(false), _walking(false),
+		_visible(true), _lipSync(nullptr), _turning(false), _singleTurning(false), _walking(false),
 		_walkedLast(false), _walkedCur(false),
 		_collisionMode(CollisionOff), _collisionScale(1.f),
 		_lastTurnDir(0), _currTurnDir(0),
@@ -95,10 +95,11 @@ Actor::Actor() :
 		_attachedActor(0), _attachedJoint(""),
 		_globalAlpha(1.f), _alphaMode(AlphaOff),
 		 _mustPlaceText(false),
-		_shadowActive(false), _puckOrient(false), _talking(false),
+		_puckOrient(false), _talking(false), 
 		_inOverworld(false), _drawnToClean(false), _backgroundTalk(false),
-		_sortOrder(0), _haveSectorSortOrder(false), _sectorSortOrder(0),
-		_cleanBuffer(0), _lightMode(LightFastDyn), _hasFollowedBoxes(false) {
+		_sortOrder(0), _useParentSortOrder(false),
+		_sectorSortOrder(-1), _fakeUnbound(false), _lightMode(LightFastDyn),
+		_hasFollowedBoxes(false), _lookAtActor(0) {
 
 	// Some actors don't set walk and turn rates, so we default the
 	// _turnRate so Doug at the cat races can turn and we set the
@@ -107,7 +108,7 @@ Actor::Actor() :
 	_turnRate = 100.0f;
 
 	_activeShadowSlot = -1;
-	_shadowArray = new Shadow[5];
+	_shadowArray = new Shadow[MAX_SHADOWS];
 }
 
 Actor::~Actor() {
@@ -120,15 +121,6 @@ Actor::~Actor() {
 		_costumeStack.pop_back();
 	}
 	g_grim->immediatelyRemoveActor(this);
-
-	if (_cleanBuffer) {
-		g_driver->delBuffer(_cleanBuffer);
-	}
-
-	Common::List<Material *>::iterator it = _materials.begin();
-	for (; it != _materials.end(); ++it) {
-		delete (*it);
-	}
 }
 
 void Actor::saveState(SaveGame *savedState) const {
@@ -188,6 +180,7 @@ void Actor::saveState(SaveGame *savedState) const {
 	}
 
 	savedState->writeBool(_turning);
+	savedState->writeBool(_singleTurning);
 	savedState->writeFloat(_moveYaw.getDegrees());
 	savedState->writeFloat(_movePitch.getDegrees());
 	savedState->writeFloat(_moveRoll.getDegrees());
@@ -251,20 +244,33 @@ void Actor::saveState(SaveGame *savedState) const {
 
 		savedState->writeBool(_inOverworld);
 		savedState->writeLESint32(_sortOrder);
-		savedState->writeBool(_shadowActive);
+		savedState->writeBool(_useParentSortOrder);
 
 		savedState->writeLESint32(_attachedActor);
 		savedState->writeString(_attachedJoint);
 
-		_lastWearChore.saveState(savedState);
-
-		Common::List<Material *>::const_iterator it = _materials.begin();
+		Common::List<MaterialPtr>::const_iterator it = _materials.begin();
 		for (; it != _materials.end(); ++it) {
-			savedState->writeLESint32((*it)->getActiveTexture());
+			if (*it) {
+				warning("%s", (*it)->getFilename().c_str());
+				savedState->writeLESint32((*it)->getActiveTexture());
+			}
+		}
+
+		savedState->writeLESint32(_lookAtActor);
+
+		savedState->writeLEUint32(_localAlpha.size());
+		for (unsigned int i = 0; i < _localAlpha.size(); i++) {
+			savedState->writeFloat(_localAlpha[i]);
+		}
+		savedState->writeLEUint32(_localAlphaMode.size());
+		for (unsigned int i = 0; i < _localAlphaMode.size(); i++) {
+			savedState->writeLESint32(_localAlphaMode[i]);
 		}
 	}
 
 	savedState->writeBool(_drawnToClean);
+	savedState->writeBool(_fakeUnbound);
 }
 
 bool Actor::restoreState(SaveGame *savedState) {
@@ -272,9 +278,6 @@ bool Actor::restoreState(SaveGame *savedState) {
 		delete *i;
 	}
 	_costumeStack.clear();
-	for (Common::List<Material *>::const_iterator i = _materials.begin(); i != _materials.end(); ++i) {
-		delete *i;
-	}
 	_materials.clear();
 
 	// load actor name
@@ -344,6 +347,9 @@ bool Actor::restoreState(SaveGame *savedState) {
 	}
 
 	_turning = savedState->readBool();
+	if (savedState->saveMinorVersion() > 25) {
+		_singleTurning = savedState->readBool();
+	}
 	_moveYaw = savedState->readFloat();
 	if (savedState->saveMinorVersion() > 6) {
 		_movePitch = savedState->readFloat();
@@ -375,7 +381,11 @@ bool Actor::restoreState(SaveGame *savedState) {
 	_mumbleChore.restoreState(savedState, this);
 
 	clearShadowPlanes();
-	for (int i = 0; i < MAX_SHADOWS; ++i) {
+
+	int maxShadows = MAX_SHADOWS;
+	if (savedState->saveMinorVersion() < 24)
+		maxShadows = 5;
+	for (int i = 0; i < maxShadows; ++i) {
 		Shadow &shadow = _shadowArray[i];
 		shadow.name = savedState->readString();
 
@@ -425,36 +435,62 @@ bool Actor::restoreState(SaveGame *savedState) {
 
 		_inOverworld  = savedState->readBool();
 		_sortOrder    = savedState->readLESint32();
-		_shadowActive = savedState->readBool();
+		if (savedState->saveMinorVersion() >= 22)
+			_useParentSortOrder = savedState->readBool();
+
+		if (savedState->saveMinorVersion() < 18)
+			savedState->readBool(); // Used to be _shadowActive.
 
 		_attachedActor = savedState->readLESint32();
 		_attachedJoint = savedState->readString();
 
 		// will be recalculated in next update()
-		_haveSectorSortOrder = false;
-		_sectorSortOrder = 0;
+		_sectorSortOrder = -1;
 
-		_lastWearChore.restoreState(savedState, this);
+		if (savedState->saveMinorVersion() < 24) {
+			// Used to be the wear chore.
+			if (savedState->readBool()) {
+				savedState->readString();
+			}
+			savedState->readLESint32();
+		}
 
 		if (savedState->saveMinorVersion() >= 13) {
-			Common::List<Material *>::const_iterator it = _materials.begin();
+			Common::List<MaterialPtr>::const_iterator it = _materials.begin();
 			for (; it != _materials.end(); ++it) {
-				(*it)->setActiveTexture(savedState->readLESint32());
+				if (*it) {
+					(*it)->setActiveTexture(savedState->readLESint32());
+				}
+			}
+		}
+
+		if (savedState->saveMinorVersion() >= 17)
+			_lookAtActor = savedState->readLESint32();
+
+		if (savedState->saveMinorVersion() >= 25) {
+			_localAlpha.resize(savedState->readLEUint32());
+			for (unsigned int i = 0; i < _localAlpha.size(); i++) {
+				_localAlpha[i] = savedState->readFloat();
+			}
+
+			_localAlphaMode.resize(savedState->readLEUint32());
+			for (unsigned int i = 0; i < _localAlphaMode.size(); i++) {
+				_localAlphaMode[i] = savedState->readLESint32();
 			}
 		}
 	}
 
-	if (_cleanBuffer) {
-		g_driver->delBuffer(_cleanBuffer);
-	}
-	_cleanBuffer = 0;
-	_drawnToClean = false;
 	if (savedState->saveMinorVersion() >= 4) {
-		bool drawnToClean = savedState->readBool();
-		if (drawnToClean) {
-			_cleanBuffer = g_driver->genBuffer();
-			g_driver->clearBuffer(_cleanBuffer);
-		}
+		_drawnToClean = savedState->readBool();
+	} else {
+		_drawnToClean = false;
+	}
+	if (savedState->saveMinorVersion() >= 27) {
+		_fakeUnbound = savedState->readBool();
+	} else {
+		// Note: actor will stay invisible until re-bound to set
+		// by game scripts.
+		_fakeUnbound = false;
 	}
 
 	return true;
@@ -485,6 +521,13 @@ void Actor::setPos(const Math::Vector3d &position, int xnum) {
 	if (_followBoxes) {
 		g_grim->getCurrSet()->findClosestSector(_pos, nullptr, &_pos);
 	}
+
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		Math::Vector3d moveVec = position - _pos;
+		foreach (Actor *a, g_grim->getActiveActors()) {
+			handleCollisionWith(a, _collisionMode, &moveVec);
+		}
+	}
 }
 
 void Actor::calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, Math::Angle *yaw, Math::Angle *roll) {
@@ -513,10 +556,10 @@ void Actor::calculateOrientation(const Math::Vector3d &pos, Math::Angle *pitch, 
 	m.buildFromTargetDir(actorForward, _walkBwd ? -lookVector : lookVector, actorUp, up);
 
 	if (_puckOrient) {
-		m.getXYZ(yaw, pitch, roll, Math::EO_ZXY);
+		m.getEuler(yaw, pitch, roll, Math::EO_ZXY);
 	} else {
 		*pitch = _movePitch;
-		m.getXYZ(yaw, nullptr, nullptr, Math::EO_ZXY);
+		m.getEuler(yaw, nullptr, nullptr, Math::EO_ZXY);
 		*roll = _moveRoll;
 	}
 }
@@ -538,6 +581,7 @@ bool Actor::singleTurnTo(const Math::Vector3d &pos) {
 	_moveYaw = _yaw;
 	_movePitch = _pitch;
 	_moveRoll = _roll;
+	_singleTurning = !done;
 
 	return done;
 }
@@ -602,7 +646,7 @@ void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 				openList.remove(node);
 				Sector *sector = node->sect;
 
-				if (sector->isPointInSector(_destPos)) {
+				if (sector && sector->isPointInSector(_destPos)) {
 					PathNode *n = closedList.back();
 					// Don't put the start position in the list, or else
 					// the first angle calculated in updateWalk() will be
@@ -634,9 +678,14 @@ void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 					if (bridges.empty())
 						continue; // The sectors are not adjacent.
 
+					Math::Vector3d closestPoint;
+					if (g_grim->getGameType() == GType_GRIM)
+						closestPoint = s->getClosestPoint(_destPos);
+					else
+						closestPoint = _destPos;
 					Math::Vector3d best;
 					float bestDist = 1e6f;
-					Math::Line3d l(node->pos, _destPos);
+					Math::Line3d l(node->pos, closestPoint);
 
 					// Pick a point on the boundary of the two sectors to walk towards.
 					while (!bridges.empty()) {
@@ -653,7 +702,7 @@ void Actor::walkTo(const Math::Vector3d &p, bool force_walk) {
 							best = pos;
 							break;
 						}
-						float dist = (pos - _destPos).getMagnitude();
+						float dist = (pos - closestPoint).getMagnitude();
 						if (dist < bestDist) {
 							bestDist = dist;
 							best = pos;
@@ -718,6 +767,9 @@ bool Actor::isWalking() const {
 }
 
 bool Actor::isTurning() const {
+	if (g_grim->getGameType() == GType_MONKEY4)
+		if (_singleTurning)
+			return true;
 	if (_turning)
 		return true;
 
@@ -725,6 +777,15 @@ bool Actor::isTurning() const {
 		return true;
 
 	return false;
+}
+
+void Actor::stopTurning() {
+	_turning = false;
+	if (_lastTurnDir != 0)
+		getTurnChore(_lastTurnDir)->stop(true);
+
+	_lastTurnDir = 0;
+	_currTurnDir = 0;
 }
 
 void Actor::moveTo(const Math::Vector3d &pos) {
@@ -754,6 +815,13 @@ void Actor::walkForward() {
 	// scripts that use WalkActorForward and proximity may break.
 	if ((dist > 0 && dist > _walkRate / 5.f) || (dist < 0 && dist < _walkRate / 5.f))
 		dist = _walkRate / 5.f;
+
+	// Handle special case where actor is trying to walk but _walkRate is
+	// currently set to 0.0f by _walkChore to simulate roboter-like walk style:
+	// set _walkedCur to true to keep _walkChore playing in Actor::update()
+	if (_walkRate == 0.0f) {
+		_walkedCur = true;
+	}
 
 	_walking = false;
 
@@ -1033,23 +1101,15 @@ void Actor::setMumbleChore(int chore, Costume *cost) {
 	_mumbleChore = ActionChore(cost, chore);
 }
 
-bool Actor::playLastWearChore() {
-	if (!_lastWearChore.isValid())
-		return false;
-
-	_lastWearChore.playLooping(false, 0);
-	return true;
-}
-
-void Actor::setLastWearChore(int chore, Costume *cost) {
-	if (! _costumeStack.empty() && cost == _costumeStack.back()) {
-		_lastWearChore = ActionChore(cost, chore);
-	}
-}
-
 void Actor::stopAllChores(bool ignoreLoopingChores) {
 	for (Common::List<Costume *>::iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
-		(*i)->stopChores(ignoreLoopingChores);
+		Costume *costume = *i;
+		costume->stopChores(ignoreLoopingChores);
+		if (costume->isChoring(false) == -1) {
+			freeCostume(costume);
+			i = _costumeStack.erase(i);
+			--i;
+		}
 	}
 }
 
@@ -1090,7 +1150,7 @@ Math::Angle Actor::getYawTo(const Math::Vector3d &p) const {
 		return Math::Angle::arcTangent2(-dpos.x(), dpos.y());
 }
 
-void Actor::sayLine(const char *msgId, bool background) {
+void Actor::sayLine(const char *msgId, bool background, float x, float y) {
 	if (!msgId) {
 		warning("zero pointer in message encountered");
 		return;
@@ -1139,12 +1199,10 @@ void Actor::sayLine(const char *msgId, bool background) {
 	if (g_grim->getSpeechMode() != GrimEngine::TextOnly) {
 		// if there is no costume probably the character is drawn by a smush movie, so
 		// we don't want to go out of sync with it.
-		if (getCurrentCostume()) {
+		if (g_grim->getGameType() == GType_GRIM && getCurrentCostume()) {
 			_talkDelay = 500;
 		}
-		if (g_sound->startVoice(_talkSoundName.c_str()) && currSet) {
-			currSet->setSoundPosition(_talkSoundName.c_str(), _pos);
-		}
+		g_sound->startVoice(_talkSoundName.c_str());
 	}
 
 	// If the actor is clearly not visible then don't try to play the lip sync
@@ -1214,7 +1272,10 @@ void Actor::sayLine(const char *msgId, bool background) {
 		if (m == GrimEngine::TextOnly || g_grim->getMode() == GrimEngine::SmushMode) {
 			textObject->setDuration(500 + msg.size() * 15 * (11 - g_grim->getTextSpeed()));
 		}
-		if (g_grim->getMode() == GrimEngine::SmushMode) {
+		if (g_grim->getGameType() == GType_MONKEY4 && (x != -1 || y != -1)) {
+			textObject->setX(320 * (x + 1));
+			textObject->setY(240 * (y + 1));
+		} else if (g_grim->getMode() == GrimEngine::SmushMode) {
 			textObject->setX(640 / 2);
 			textObject->setY(456);
 			g_grim->setMovieSubtitle(textObject);
@@ -1227,7 +1288,7 @@ void Actor::sayLine(const char *msgId, bool background) {
 				textObject->setY(463);
 			}
 		}
-		textObject->setText(msgId);
+		textObject->setText(msgId, _mustPlaceText);
 		if (g_grim->getMode() != GrimEngine::SmushMode)
 			_sayLineText = textObject->getId();
 	}
@@ -1303,10 +1364,7 @@ void Actor::pushCostume(const char *n) {
 
 	Costume *newCost = g_resourceloader->loadCostume(n, this, getCurrentCostume());
 
-	if (Common::String("fx/dumbshadow.cos").equals(n))
-		_costumeStack.push_front(newCost);
-	else
-		_costumeStack.push_back(newCost);
+	_costumeStack.push_back(newCost);
 }
 
 void Actor::setColormap(const char *map) {
@@ -1327,18 +1385,7 @@ void Actor::setCostume(const char *n) {
 
 void Actor::popCostume() {
 	if (!_costumeStack.empty()) {
-		freeCostumeChore(_costumeStack.back(), &_restChore);
-		freeCostumeChore(_costumeStack.back(), &_walkChore);
-
-		if (_leftTurnChore._costume == _costumeStack.back()) {
-			_leftTurnChore = ActionChore();
-			_rightTurnChore = ActionChore();
-		}
-
-		freeCostumeChore(_costumeStack.back(), &_mumbleChore);
-		for (int i = 0; i < 10; i++)
-			freeCostumeChore(_costumeStack.back(), &_talkChore[i]);
-		delete _costumeStack.back();
+		freeCostume(_costumeStack.back());
 		_costumeStack.pop_back();
 
 		if (_costumeStack.empty()) {
@@ -1355,18 +1402,94 @@ void Actor::clearCostumes() {
 		popCostume();
 }
 
+Costume *Actor::getCurrentCostume() const {
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		// Return the first costume that has a model component.
+		for (Common::List<Costume *>::const_iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
+			EMICostume *costume = static_cast<EMICostume *>(*i);
+			if (costume->getEMIModel()) {
+				return costume;
+			}
+		}
+		return nullptr;
+	} else {
+		if (_costumeStack.empty())
+			return nullptr;
+		else
+			return _costumeStack.back();
+	}
+}
+
 void Actor::setHead(int joint1, int joint2, int joint3, float maxRoll, float maxPitch, float maxYaw) {
-	if (!_costumeStack.empty()) {
-		_costumeStack.back()->setHead(joint1, joint2, joint3, maxRoll, maxPitch, maxYaw);
+	Costume *curCostume = getCurrentCostume();
+	if (curCostume) {
+		curCostume->setHead(joint1, joint2, joint3, maxRoll, maxPitch, maxYaw);
+	}
+}
+
+void Actor::setHead(const char *joint, const Math::Vector3d &offset) {
+	Costume *curCostume = getCurrentCostume();
+	if (curCostume) {
+		EMICostume *costume = static_cast<EMICostume *>(curCostume);
+		costume->setHead(joint, offset);
+	}
+}
+
+void Actor::setHeadLimits(float yawRange, float maxPitch, float minPitch) {
+	Costume *curCostume = getCurrentCostume();
+	if (curCostume) {
+		EMICostume *costume = static_cast<EMICostume *>(curCostume);
+		costume->setHeadLimits(yawRange, maxPitch, minPitch);
 	}
 }
 
 void Actor::setLookAtRate(float rate) {
-	_costumeStack.back()->setLookAtRate(rate);
+	getCurrentCostume()->setLookAtRate(rate);
 }
 
 float Actor::getLookAtRate() const {
-	return _costumeStack.back()->getLookAtRate();
+	return getCurrentCostume()->getLookAtRate();
+}
+
+EMIModel *Actor::findModelWithMesh(const Common::String &mesh) {
+	for (Common::List<Costume *>::iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
+		EMICostume *costume = static_cast<EMICostume *>(*i);
+		if (!costume) {
+			continue;
+		}
+		for (int j = 0; j < costume->getNumChores(); j++) {
+			EMIModel *model = costume->getEMIModel(j);
+			if (!model) {
+				continue;
+			}
+			if (mesh == model->_meshName) {
+				return model;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void Actor::setGlobalAlpha(float alpha, const Common::String &mesh) {
+	if (mesh.empty()) {
+		_globalAlpha = alpha;
+	} else {
+		EMIModel *model = findModelWithMesh(mesh);
+		if (model != nullptr) {
+			model->_meshAlpha = alpha;
+		}
+	}
+}
+
+void Actor::setAlphaMode(AlphaMode mode, const Common::String &mesh) {
+	if (mesh.empty()) {
+		_alphaMode = mode;
+	} else {
+		EMIModel *model = findModelWithMesh(mesh);
+		if (model != nullptr) {
+			model->_meshAlphaMode = mode;
+		}
+	}
 }
 
 Costume *Actor::findCostume(const Common::String &n) {
@@ -1425,20 +1548,17 @@ void Actor::update(uint frameTime) {
 	}
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		// Check for sort order information in the current sector
-		int oldSortOrder = getEffectiveSortOrder();
+		if (_followBoxes) {
+			// Check for sort order information in the current sector
+			int oldSortOrder = getEffectiveSortOrder();
+			_sectorSortOrder = set->findSectorSortOrder(_pos, Sector::WalkType);
 
-		Sector *sect = set->findPointSector(_pos, Sector::WalkType);
-		int setup = set->getSetup();
-		if (sect && setup < sect->getNumSortplanes()) {
-			_haveSectorSortOrder = true;
-			_sectorSortOrder = sect->getSortplane(setup);
-		} else {
-			_haveSectorSortOrder = false;
-		}
-
-		if (oldSortOrder != getEffectiveSortOrder())
+			if (oldSortOrder != getEffectiveSortOrder())
+				g_emi->invalidateSortOrder();
+		} else if (_sectorSortOrder >= 0) {
+			_sectorSortOrder = -1;
 			g_emi->invalidateSortOrder();
+		}
 	}
 
 	if (_turning) {
@@ -1580,11 +1700,22 @@ void Actor::update(uint frameTime) {
 		if (marker > 0) {
 			costumeMarkerCallback(marker);
 		}
+		if (g_grim->getGameType() == GType_MONKEY4 && c->isChoring(false) == -1) {
+			freeCostume(c);
+			i = _costumeStack.erase(i);
+			--i;
+		}
 	}
 
 	Costume *c = getCurrentCostume();
 	if (c) {
 		c->animate();
+	}
+
+	if (_lookingMode && _lookAtActor != 0) {
+		Actor *actor = Actor::getPool().getObject(_lookAtActor);
+		if (actor)
+			_lookAtVector = actor->getHeadPos();
 	}
 
 	for (Common::List<Costume *>::iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
@@ -1619,11 +1750,6 @@ bool Actor::updateTalk(uint frameTime) {
 }
 
 void Actor::draw() {
-	for (Common::List<Costume *>::iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
-		Costume *c = *i;
-		c->setupTextures();
-	}
-
 	if (!g_driver->isHardwareAccelerated() && g_grim->getFlagRefreshShadowMask()) {
 		for (int l = 0; l < MAX_SHADOWS; l++) {
 			if (!_shadowArray[l].active)
@@ -1637,7 +1763,7 @@ void Actor::draw() {
 	// FIXME: if isAttached(), factor in the joint rotation as well.
 	const Math::Vector3d &absPos = getWorldPos();
 	if (!_costumeStack.empty()) {
-		g_grim->getCurrSet()->setupLights(absPos);
+		g_grim->getCurrSet()->setupLights(absPos, _inOverworld);
 		if (g_grim->getGameType() == GType_GRIM) {
 			Costume *costume = _costumeStack.back();
 			drawCostume(costume);
@@ -1650,30 +1776,36 @@ void Actor::draw() {
 	}
 
 	if (_mustPlaceText) {
-		int x1, y1, x2, y2;
-		x1 = y1 = 1000;
-		x2 = y2 = -1000;
-		if (!_costumeStack.empty()) {
-			g_driver->startActorDraw(this);
-			_costumeStack.back()->getBoundingBox(&x1, &y1, &x2, &y2);
-			g_driver->finishActorDraw();
+		Common::Point p1, p2;
+		if (g_grim->getGameType() == GType_GRIM) {
+			if (!_costumeStack.empty()) {
+				int x1 = 1000, y1 = 1000, x2 = -1000, y2 = -1000;
+				g_driver->startActorDraw(this);
+				_costumeStack.back()->getBoundingBox(&x1, &y1, &x2, &y2);
+				g_driver->finishActorDraw();
+				p1.x = x1;
+				p1.y = y1;
+				p2.x = x2;
+				p2.y = y2;
+			}
+		} else {
+			g_driver->getActorScreenBBox(this, p1, p2);
 		}
 
 		TextObject *textObject = TextObject::getPool().getObject(_sayLineText);
 		if (textObject) {
-			if (x1 == 1000 || x2 == -1000 || y2 == -1000) {
+			if (p1.x == 1000 || p2.x == -1000 || p2.x == -1000) {
 				textObject->setX(640 / 2);
 				textObject->setY(463);
 			} else {
-				textObject->setX((x1 + x2) / 2);
-				textObject->setY(y1);
+				textObject->setX((p1.x + p2.x) / 2);
+				textObject->setY(p1.y);
 			}
+			// Deletes the original text and rebuilds it with the newly placed text
 			textObject->reset();
 		}
 		_mustPlaceText = false;
 	}
-
-	_drawnToClean = false;
 }
 
 void Actor::drawCostume(Costume *costume) {
@@ -1691,13 +1823,10 @@ void Actor::drawCostume(Costume *costume) {
 		g_driver->setShadow(nullptr);
 	}
 
-	bool isShadowCostume = costume->getFilename().equals("fx/dumbshadow.cos");
-	if (!isShadowCostume || (isShadowCostume && _costumeStack.size() > 1 && _shadowActive)) {
-		// normal draw actor
-		g_driver->startActorDraw(this);
-		costume->draw();
-		g_driver->finishActorDraw();
-	}
+	// normal draw actor
+	g_driver->startActorDraw(this);
+	costume->draw();
+	g_driver->finishActorDraw();
 }
 
 void Actor::setShadowPlane(const char *n) {
@@ -1755,7 +1884,7 @@ void Actor::addShadowPlane(const char *n) {
 }
 
 void Actor::setActiveShadow(int shadowId) {
-	assert(shadowId >= 0 && shadowId <= 4);
+	assert(shadowId >= 0 && shadowId < MAX_SHADOWS);
 
 	_activeShadowSlot = shadowId;
 	_shadowArray[_activeShadowSlot].active = true;
@@ -1769,7 +1898,7 @@ void Actor::setShadowValid(int valid) {
 }
 
 void Actor::setActivateShadow(int shadowId, bool state) {
-	assert(shadowId >= 0 && shadowId <= 4);
+	assert(shadowId >= 0 && shadowId < MAX_SHADOWS);
 
 	_shadowArray[shadowId].active = state;
 }
@@ -1780,36 +1909,75 @@ void Actor::setShadowPoint(const Math::Vector3d &p) {
 	_shadowArray[_activeShadowSlot].pos = p;
 }
 
+void Actor::setShadowColor(const Color &color) {
+	assert(_activeShadowSlot != -1);
+
+	_shadowArray[_activeShadowSlot].color = color;
+}
+
 void Actor::clearShadowPlanes() {
 	for (int i = 0; i < MAX_SHADOWS; i++) {
-		Shadow *shadow = &_shadowArray[i];
-		while (!shadow->planeList.empty()) {
-			delete shadow->planeList.back().sector;
-			shadow->planeList.pop_back();
-		}
-		delete[] shadow->shadowMask;
-		shadow->shadowMaskSize = 0;
-		shadow->shadowMask = nullptr;
-		shadow->active = false;
-		shadow->dontNegate = false;
+		clearShadowPlane(i);
 	}
 }
 
+void Actor::clearShadowPlane(int i) {
+	Shadow *shadow = &_shadowArray[i];
+	while (!shadow->planeList.empty()) {
+		delete shadow->planeList.back().sector;
+		shadow->planeList.pop_back();
+	}
+	delete[] shadow->shadowMask;
+	shadow->shadowMaskSize = 0;
+	shadow->shadowMask = nullptr;
+	shadow->active = false;
+	shadow->dontNegate = false;
+
+	g_driver->destroyShadow(shadow);
+}
+
 void Actor::putInSet(const Common::String &set) {
+	if (_drawnToClean) {
+		// actor was frozen and...
+		if (set == "") {
+			// ...is getting unbound from set.
+			// This is done in game scripts to reduce the drawing
+			// workload in original engine, and we should not need
+			// it here. And implementing off-screen buffers is
+			// highly non-trivial. Disobey so it is still drawn.
+			_fakeUnbound = true;
+			return;
+		} else {
+			// ...is getting bound to a set. Thaw and continue.
+			_drawnToClean = false;
+		}
+	}
+	_fakeUnbound = false;
 	// The set should change immediately, otherwise a very rapid set change
 	// for an actor will be recognized incorrectly and the actor will be lost.
 	_setName = set;
 
-	// clean the buffer. this is needed when an actor goes from frozen state to full model rendering
-	if (_setName != "" && _cleanBuffer) {
-		g_driver->clearBuffer(_cleanBuffer);
-	}
-
 	g_grim->invalidateActiveActorsList();
 }
 
-bool Actor::isInSet(const Common::String &set) const {
+bool Actor::isDrawableInSet(const Common::String &set) const {
 	return _setName == set;
+}
+
+bool Actor::isInSet(const Common::String &set) const {
+	return !_fakeUnbound && _setName == set;
+}
+
+void Actor::freeCostume(Costume *costume) {
+	Debug::debug(Debug::Actors, "Freeing costume %s", costume->getFilename().c_str());
+	freeCostumeChore(costume, &_restChore);
+	freeCostumeChore(costume, &_walkChore);
+	freeCostumeChore(costume, &_leftTurnChore);
+	freeCostumeChore(costume, &_rightTurnChore);
+	freeCostumeChore(costume, &_mumbleChore);
+	for (int i = 0; i < 10; i++)
+		freeCostumeChore(costume, &_talkChore[i]);
+	delete costume;
 }
 
 void Actor::freeCostumeChore(const Costume *toFree, ActionChore *chore) {
@@ -1892,10 +2060,43 @@ Math::Vector3d Actor::getTangentPos(const Math::Vector3d &pos, const Math::Vecto
 	return dest;
 }
 
+void Actor::setLocalAlpha(unsigned int vertex, float alpha) {
+	if (vertex >= _localAlpha.size()) {
+		_localAlpha.resize(MAX(MAX_LOCAL_ALPHA_VERTICES, vertex + 1));
+	}
+	_localAlpha[vertex] = alpha;
+}
+
+void Actor::setLocalAlphaMode(unsigned int vertex, AlphaMode alphaMode) {
+	if (vertex >= _localAlphaMode.size()) {
+		_localAlphaMode.resize(MAX(MAX_LOCAL_ALPHA_VERTICES, vertex + 1));
+	}
+	_localAlphaMode[vertex] = alphaMode;
+}
+
+bool Actor::hasLocalAlpha() const {
+	return !_localAlphaMode.empty();
+}
+
+float Actor::getLocalAlpha(unsigned int vertex) const {
+	if (vertex < _localAlphaMode.size() && vertex < _localAlpha.size() && _localAlphaMode[vertex] == Actor::AlphaReplace) {
+		return _localAlpha[vertex];
+	} else {
+		return 1.0f;
+	}
+}
+
 void Actor::getBBoxInfo(Math::Vector3d &bboxPos, Math::Vector3d &bboxSize) const {
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		bboxPos = Math::Vector3d(0, 0, 0);
-		bboxSize = Math::Vector3d(0, 0, 0);
+		EMICostume *costume = static_cast<EMICostume *>(getCurrentCostume());
+		if (!costume) {
+			bboxPos = Math::Vector3d(0, 0, 0);
+			bboxSize = Math::Vector3d(0, 0, 0);
+			return;
+		}
+		EMIModel *model = costume->getEMIModel();
+		bboxPos = *model->_center;
+		bboxSize = *model->_boxData2 - *model->_boxData;
 	} else {
 		Model *model = getCurrentCostume()->getModel();
 		bboxPos = model->_bboxPos;
@@ -1907,15 +2108,10 @@ bool Actor::getSphereInfo(bool adjustZ, float &size, Math::Vector3d &p) const {
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		EMICostume *costume = static_cast<EMICostume *>(getCurrentCostume());
 		if (!costume) {
-			warning("Actor::getSphereInfo: actor \"%s\" has no costume", getName().c_str());
+			Debug::warning(Debug::Actors, "Actor::getSphereInfo: actor \"%s\" has no costume", getName().c_str());
 			return false;
 		}
-		EMIChore *chore = costume->_wearChore;
-		if (!chore) {
-			warning("Actor::getSphereInfo: actor \"%s\" has no chore", getName().c_str());
-			return false;
-		}
-		EMIModel *model = chore->getMesh()->_obj;
+		EMIModel *model = costume->getEMIModel();
 		assert(model);
 		p = _pos + *(model->_center);
 		// pre-scale factor of 0.8 was guessed by comparing with the original game
@@ -2119,21 +2315,23 @@ void Actor::collisionHandlerCallback(Actor *other) const {
 }
 
 const Math::Matrix4 Actor::getFinalMatrix() const {
+	// Defaults to identity (no rotation)
 	Math::Matrix4 m;
 
+	// Add the rotation and translation from the parent actor, if this actor is attached
 	if (isAttached()) {
 		Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
 		m = attachedActor->getFinalMatrix();
 
+		// If this actor is attached to a joint, add that rotation
 		EMICostume *cost = static_cast<EMICostume *>(attachedActor->getCurrentCostume());
 		if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
 			Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
 			m = m * j->_finalMatrix;
 		}
-	} else {
-		m.setToIdentity();
 	}
 
+	// Translate by this actor's position
 	Math::Vector3d pp = getPos();
 	Math::Matrix4 t;
 	t.setToIdentity();
@@ -2151,6 +2349,7 @@ const Math::Matrix4 Actor::getFinalMatrix() const {
 	// which is not used in EMI. Actor::getFinalMatrix() is only used for EMI
 	// so the additional scaling can be omitted.
 
+	// Finish with this actor's rotation
 	Math::Matrix4 rotMat(getRoll(), getYaw(), getPitch(), Math::EO_ZYX);
 	m = m * rotMat;
 	return  m;
@@ -2160,203 +2359,226 @@ Math::Vector3d Actor::getWorldPos() const {
 	if (! isAttached())
 		return getPos();
 
-	Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
-	Math::Quaternion q = attachedActor->getRotationQuat();
-	Math::Matrix4 attachedToWorld = q.toMatrix();
-	attachedToWorld.transpose();
-	attachedToWorld.setPosition(attachedActor->getWorldPos());
-
-	// If we were attached to a joint, factor in the joint's position & rotation,
-	// relative to its actor.
-	EMICostume *cost = static_cast<EMICostume *>(attachedActor->getCurrentCostume());
-	if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
-		Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
-		if (!j) {
-			warning("Actor::getRotationQuat: joint \"%s\" not found", _attachedJoint.c_str());
-			j = cost->_emiSkel->_obj->getJointNamed("");
-		}
-		const Math::Matrix4 &jointToAttached = j->_finalMatrix;
-		attachedToWorld = attachedToWorld * jointToAttached;
-	}
-
-	Math::Vector3d myPos = getPos();
-	attachedToWorld.transform(&myPos, true);
-	return myPos;
+	return getFinalMatrix().getPosition();
 }
 
 Math::Quaternion Actor::getRotationQuat() const {
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		Math::Quaternion ret = Math::Quaternion::fromEuler(_yaw, _pitch, _roll);
-		if (_inOverworld)
-			ret = Math::Quaternion::fromEuler(-_yaw, -_pitch, -_roll);
-
-		if (isAttached()) {
-			Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
-			const Math::Quaternion &attachedQuat = attachedActor->getRotationQuat();
-
-			EMICostume *cost = static_cast<EMICostume *>(attachedActor->getCurrentCostume());
-			if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
-				Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
-				if (!j) {
-					warning("Actor::getRotationQuat: joint \"%s\" not found", _attachedJoint.c_str());
-					j = cost->_emiSkel->_obj->getJointNamed("");
-				}
-				const Math::Quaternion &jointQuat = j->_finalQuat;
-				ret = ret * jointQuat * attachedQuat;
-			} else {
-				ret = ret * attachedQuat;
-			}
-		}
-		return ret;
+		const Math::Matrix4 m = getFinalMatrix();
+		return Math::Quaternion(m).inverse();
 	} else {
-		return Math::Quaternion::fromEuler(-_roll, -_pitch, -_yaw);
+		return Math::Quaternion::fromEuler(_yaw, _pitch, _roll, Math::EO_ZXY).inverse();
 	}
 }
 
 Math::Vector3d Actor::getHeadPos() const {
-	for (Common::List<Costume *>::const_iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
-		int headJoint = (*i)->getHeadJoint();
-		if (headJoint == -1)
-			continue;
+	if (g_grim->getGameType() == GType_GRIM) {
+		for (Common::List<Costume *>::const_iterator i = _costumeStack.begin(); i != _costumeStack.end(); ++i) {
+			int headJoint = (*i)->getHeadJoint();
+			if (headJoint == -1)
+				continue;
 
-		ModelNode *allNodes = (*i)->getModelNodes();
-		ModelNode *node = allNodes + headJoint;
+			ModelNode *allNodes = (*i)->getModelNodes();
+			ModelNode *node = allNodes + headJoint;
 
-		node->_needsUpdate = true;
-		ModelNode *root = node;
-		while (root->_parent) {
-			root = root->_parent;
-			root->_needsUpdate = true;
+			node->_needsUpdate = true;
+			ModelNode *root = node;
+			while (root->_parent) {
+				root = root->_parent;
+				root->_needsUpdate = true;
+			}
+
+			Math::Matrix4 matrix;
+			matrix.setPosition(_pos);
+			matrix.buildFromEuler(_yaw, _pitch, _roll, Math::EO_ZXY);
+			root->setMatrix(matrix);
+			root->update();
+
+			return node->_pivotMatrix.getPosition();
 		}
-
-		Math::Matrix4 matrix;
-		matrix.setPosition(_pos);
-		matrix.buildFromXYZ(_yaw, _pitch, _roll, Math::EO_ZXY);
-		root->setMatrix(matrix);
-		root->update();
-
-		return node->_pivotMatrix.getPosition();
 	}
 
-	return _pos;
+	return getWorldPos();
+}
+
+void Actor::setSortOrder(const int order) {
+	_sortOrder = order;
+
+	// If this actor is attached to another actor, we'll use the
+	// explicitly specified sort order instead of the parent actor's
+	// sort order from now on.
+	if (_useParentSortOrder)
+		_useParentSortOrder = false;
 }
 
 int Actor::getSortOrder() const {
-	if (_attachedActor != 0) {
-		Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
-		return attachedActor->getSortOrder();
-	}
 	return _sortOrder;
 }
 
 int Actor::getEffectiveSortOrder() const {
-	if (_attachedActor != 0) {
+	if (_useParentSortOrder && _attachedActor != 0) {
 		Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
 		return attachedActor->getEffectiveSortOrder();
 	}
-	return _haveSectorSortOrder ? _sectorSortOrder : getSortOrder();
+	return _sectorSortOrder >= 0 ? _sectorSortOrder : getSortOrder();
 }
 
-void Actor::attachToActor(Actor *other, const char *joint) {
-	assert(other != nullptr);
-	if (other->getId() == _attachedActor)
+void Actor::activateShadow(bool active, const char *shadowName) {
+	Set *set = g_grim->getCurrSet();
+	if (!set) {
+		warning("Actor %s trying to activate shadow to null Set", getName().c_str());
 		return;
+	}
+	if (!shadowName) {
+		for (int i = 0; i < set->getShadowCount(); ++i) {
+			activateShadow(active, set->getShadow(i));
+		}
+	} else {
+		SetShadow *shadow = set->getShadowByName(shadowName);
+		if (shadow)
+			activateShadow(active, shadow);
+	}
+}
+
+void Actor::activateShadow(bool active, SetShadow *setShadow) {
+	int shadowId = -1;
+	for (int i = 0; i < MAX_SHADOWS; i++) {
+		if (setShadow->_name.equals(_shadowArray[i].name)) {
+			shadowId = i;
+			break;
+		}
+	}
+
+	if (shadowId == -1) {
+		for (int i = 0; i < MAX_SHADOWS; i++) {
+			if (!_shadowArray[i].active) {
+				shadowId = i;
+				break;
+			}
+		}
+	}
+
+	if (shadowId == -1) {
+		warning("Actor %s trying to activate shadow %s, but all shadow slots are in use", getName().c_str(), setShadow->_name.c_str());
+		return;
+	}
+
+	clearShadowPlane(shadowId);
+	setActivateShadow(shadowId, active);
+
+	if (active) {
+		setActiveShadow(shadowId);
+		setShadowPoint(setShadow->_shadowPoint);
+		setShadowPlane(setShadow->_name.c_str());
+		setShadowColor(setShadow->_color);
+		setShadowValid(-1); // Don't negate the normal.
+
+		Common::List<Common::String>::iterator it;
+		for (it = setShadow->_sectorNames.begin(); it != setShadow->_sectorNames.end(); ++it) {
+			addShadowPlane((*it).c_str(), g_grim->getCurrSet(), shadowId);
+		}
+	}
+}
+
+void Actor::attachToActor(Actor *parent, const char *joint) {
+	assert(parent != nullptr);
+	// No need to attach if we're already attached to this parent
+	if (parent->getId() == _attachedActor)
+		return;
+	// If we're attached to a different parent, detach first
 	if (_attachedActor != 0)
 		detach();
 
-	Common::String jointStr = joint ? joint : "";
-
-	// If 'other' has a skeleton, check if it has the joint.
-	// Some models (pile o' boulders) don't have a skeleton,
-	// so we don't make the check in that case.
-	EMICostume *cost = static_cast<EMICostume *>(other->getCurrentCostume());
-	if (cost && cost->_emiSkel && cost->_emiSkel->_obj)
-		assert(cost->_emiSkel->_obj->hasJoint(jointStr));
+	// Find the new rotation relative to the parent actor's rotation
+	// Note: Any joint rotation is a part of the parent actor's rotation Quat
+	Math::Quaternion newRot = getRotationQuat().inverse() * parent->getRotationQuat();
 
 	// Find the new position coordinates
-	// FIXME: Check this when attaching to joints
-	Math::Vector3d actor = getWorldPos();
-	Math::Vector3d attachedTo = other->getWorldPos();
+	Math::Matrix4 parentMatrix = parent->getFinalMatrix();
 
-	// Find the magnitude
-	Math::Vector3d diff = actor - attachedTo;
-	Math::Vector4d diff4(diff.x(), diff.y(), diff.z(), 1.0);
+	// If the parent has a skeleton, check if it has the requested joint
+	// Some models (pile o' boulders) don't have a skeleton
+	Common::String jointStr = joint ? joint : "";
+	EMICostume *cost = static_cast<EMICostume *>(parent->getCurrentCostume());
+	if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
+		assert(cost->_emiSkel->_obj->hasJoint(jointStr));
 
-	// Get the rotation matrix
-	Math::Quaternion q = other->getRotationQuat();
-	Math::Matrix4 actorRotMat = q.toMatrix();
-	actorRotMat.transpose();
+		// Add the rotation from the attached actor's joint
+		Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
+		newRot = newRot.inverse() * j->_finalQuat;
 
-	// Apply the matrix to get our new coordinates
-	Math::Vector4d new_pos4 = actorRotMat * diff4;
-	Math::Vector3d new_pos(new_pos4.x(), new_pos4.y(), new_pos4.z());
-	setPos(new_pos);
+		// Get the final position coordinates
+		_pos = _pos - j->_finalMatrix.getPosition();
+		j->_finalMatrix.transpose();
+		j->_finalMatrix.transform(&_pos, true);
+	}
+
+	// Get the final rotation euler coordinates
+	newRot.getEuler(&_roll, &_yaw, &_pitch, Math::EO_ZYX);
+
+	// Get the final position coordinates
+	_pos = _pos - parentMatrix.getPosition();
+	parentMatrix.transpose();
+	parentMatrix.transform(&_pos, true);
 
 	// Save the attachement info
-	_attachedActor = other->getId();
+	_attachedActor = parent->getId();
 	_attachedJoint = jointStr;
+
+	// Use the parent actor's sort order.
+	_useParentSortOrder = true;
 }
 
 void Actor::detach() {
 	if (!isAttached())
 		return;
 
-	// FIXME: Use last known position of attached joint
-	Math::Vector3d oldPos = getWorldPos();
+	// Replace our sort order with the parent actor's sort order. Note
+	// that we do this even if a sort order was explicitly specified for
+	// the actor during the time it was attached (in which case the actor
+	// doesn't respect the parent actor's sort order). This seems weird,
+	// but matches the behavior of the original engine.
+	Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
+	_sortOrder = attachedActor->getEffectiveSortOrder();
+	_useParentSortOrder = false;
+
+	// Position and rotate the actor in relation to the world coords
+	setPos(getWorldPos());
+	Math::Quaternion q = getRotationQuat();
+	q.inverse().getEuler(&_roll, &_yaw, &_pitch, Math::EO_ZYX);
+
+	// Remove the attached actor
 	_attachedActor = 0;
 	_attachedJoint = "";
-	setPos(oldPos);
-	setRot(0, 0, 0);
 }
 
 void Actor::drawToCleanBuffer() {
-	if (!_cleanBuffer) {
-		_cleanBuffer = g_driver->genBuffer();
-	}
-	if (!_cleanBuffer) {
-		return;
-	}
-
-	_drawnToClean = true;
-	// clean the buffer before drawing to it
-	g_driver->clearBuffer(_cleanBuffer);
-	g_driver->selectBuffer(_cleanBuffer);
-	draw();
-	g_driver->selectBuffer(0);
-
 	_drawnToClean = true;
 }
 
-void Actor::clearCleanBuffer() {
-	if (_cleanBuffer) {
-		g_driver->delBuffer(_cleanBuffer);
-		_cleanBuffer = 0;
-	}
-}
-
-void Actor::restoreCleanBuffer() {
-	if (_cleanBuffer) {
-		update(0);
-		drawToCleanBuffer();
-	}
-}
-
-Material *Actor::findMaterial(const Common::String &name) {
+MaterialPtr Actor::findMaterial(const Common::String &name) {
 	Common::String fixedName = g_resourceloader->fixFilename(name, false);
-	Common::List<Material *>::iterator it = _materials.begin();
+	Common::List<MaterialPtr>::iterator it = _materials.begin();
 	for (; it != _materials.end(); ++it) {
-		if ((*it)->getFilename() == fixedName) {
-			return *it;
+		if (*it) {
+			if ((*it)->getFilename() == fixedName) {
+				return *it;
+			}
+		} else {
+			it = _materials.erase(it);
+			--it;
 		}
 	}
-	return nullptr;
+	return (MaterialPtr)nullptr;
 }
 
-Material *Actor::loadMaterial(const Common::String &name, bool clamp) {
-	Material *mat = findMaterial(name);
+MaterialPtr Actor::loadMaterial(const Common::String &name, bool clamp) {
+	MaterialPtr mat = findMaterial(name);
 	if (!mat) {
 		mat = g_resourceloader->loadMaterial(name.c_str(), nullptr, clamp);
+		// Note: We store a weak reference.
 		_materials.push_back(mat);
+		mat->dereference();
 	}
 	return mat;
 }

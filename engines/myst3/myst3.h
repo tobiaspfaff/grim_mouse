@@ -25,39 +25,22 @@
 
 #include "engines/engine.h"
 
+#include "common/array.h"
+#include "common/ptr.h"
 #include "common/system.h"
 #include "common/random.h"
 
-#include "engines/myst3/archive.h"
-#include "engines/myst3/movie.h"
-#include "engines/myst3/node.h"
-#include "engines/myst3/scene.h"
+#include "engines/myst3/directorysubentry.h"
 
 namespace Graphics {
 struct Surface;
 }
 
+namespace Common {
+struct Event;
+}
+
 namespace Myst3 {
-
-enum GameVersionFlags {
-	kFlagNone      = 0,
-	kFlagVersion10 = (1 << 0), // v1.0
-	kFlagDVD       = (1 << 1)  // DVD version
-};
-
-typedef uint32 SafeDiskKey[4];
-
-struct ExecutableVersion {
-	const char *description;
-	int flags;
-	const char *executable;
-	uint32 baseOffset;
-	uint32 ageTableOffset;
-	uint32 nodeInitScriptOffset;
-	uint32 soundNamesOffset;
-	uint32 ambientCuesOffset;
-	const SafeDiskKey *safeDiskKey;
-};
 
 // Engine Debug Flags
 enum {
@@ -67,18 +50,36 @@ enum {
 	kDebugScript   = (1 << 3)
 };
 
+enum TransitionType {
+	kTransitionFade = 1,
+	kTransitionNone,
+	kTransitionZip,
+	kTransitionLeftToRight,
+	kTransitionRightToLeft
+};
+
+class Archive;
 class Console;
+class Drawable;
 class GameState;
 class HotSpot;
 class Cursor;
 class Inventory;
 class Database;
+class Scene;
 class Script;
+class SpotItemFace;
+class SunSpot;
 class Renderer;
 class Menu;
+class Node;
 class Sound;
 class Ambient;
+class ScriptedMovie;
 class ShakeEffect;
+class RotationEffect;
+class Transition;
+class FrameLimiter;
 struct NodeData;
 struct Myst3GameDescription;
 
@@ -88,9 +89,11 @@ class Myst3Engine : public Engine {
 
 protected:
 	// Engine APIs
-	virtual Common::Error run();
-	virtual void syncSoundSettings();
-	virtual GUI::Debugger *getDebugger() { return (GUI::Debugger *)_console; }
+	virtual Common::Error run() override;
+	virtual void syncSoundSettings() override;
+	virtual GUI::Debugger *getDebugger() override { return (GUI::Debugger *)_console; }
+	virtual void pauseEngineIntern(bool pause) override;
+
 public:
 	GameState *_state;
 	Scene *_scene;
@@ -110,25 +113,37 @@ public:
 	Myst3Engine(OSystem *syst, const Myst3GameDescription *version);
 	virtual ~Myst3Engine();
 
-	bool hasFeature(EngineFeature f) const;
+	bool hasFeature(EngineFeature f) const override;
 	Common::Platform getPlatform() const;
-	Common::Language getDefaultLanguage() const;
-	bool isMonolingual() const;
-	const ExecutableVersion *getExecutableVersion() const;
+	Common::Language getGameLanguage() const;
+	uint32 getGameLocalizationType() const;
+	bool isTextLanguageEnglish() const;
+	bool isWideScreenModEnabled() const;
 
-	bool canLoadGameStateCurrently();
-	Common::Error loadGameState(int slot);
+	bool canSaveGameStateCurrently() override;
+	bool canLoadGameStateCurrently() override;
+	void tryAutoSaving();
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc) override;
+	Common::Error loadGameState(Common::String fileName, TransitionType transition);
 
-	const DirectorySubEntry *getFileDescription(const char* room, uint32 index, uint16 face, DirectorySubEntry::ResourceType type);
+	const DirectorySubEntry *getFileDescription(const Common::String &room, uint32 index, uint16 face,
+	                                            DirectorySubEntry::ResourceType type);
+	DirectorySubEntryList listFilesMatching(const Common::String &room, uint32 index, uint16 face,
+	                                        DirectorySubEntry::ResourceType type);
+
 	Graphics::Surface *loadTexture(uint16 id);
 	static Graphics::Surface *decodeJpeg(const DirectorySubEntry *jpegDesc);
 
-	void goToNode(uint16 nodeID, uint transition);
+	void goToNode(uint16 nodeID, TransitionType transition);
 	void loadNode(uint16 nodeID, uint32 roomID = 0, uint32 ageID = 0);
 	void unloadNode();
 	void loadNodeCubeFaces(uint16 nodeID);
 	void loadNodeFrame(uint16 nodeID);
 	void loadNodeMenu(uint16 nodeID);
+
+	void setupTransition();
+	void drawTransition(TransitionType transitionType);
 
 	void dragItem(uint16 statusVar, uint16 movie, uint16 frame, uint16 hoverFrame, uint16 itemVar);
 	void dragSymbol(uint16 var, uint16 id);
@@ -143,12 +158,12 @@ public:
 	void loadMovie(uint16 id, uint16 condition, bool resetCond, bool loop);
 	void playMovieGoToNode(uint16 movie, uint16 node);
 	void playMovieFullFrame(uint16 movie);
-	void playSimpleMovie(uint16 id, bool fullframe = false);
+	void playSimpleMovie(uint16 id, bool fullframe = false, bool refreshAmbientSounds = false);
 	void removeMovie(uint16 id);
 	void setMovieLooping(uint16 id, bool loop);
 
-	void addSpotItem(uint16 id, uint16 condition, bool fade);
-	SpotItemFace *addMenuSpotItem(uint16 id, uint16 condition, const Common::Rect &rect);
+	void addSpotItem(uint16 id, int16 condition, bool fade);
+	SpotItemFace *addMenuSpotItem(uint16 id, int16 condition, const Common::Rect &rect);
 	void loadNodeSubtitles(uint32 id);
 
 	void addSunSpot(uint16 pitch, uint16 heading, uint16 intensity,
@@ -157,11 +172,15 @@ public:
 
 	void setMenuAction(uint16 action) { _menuAction = action; }
 
-	void animateDirectionChange(float pitch, float heading, uint16 speed);
+	void animateDirectionChange(float pitch, float heading, uint16 scriptTicks);
 	void getMovieLookAt(uint16 id, bool start, float &pitch, float &heading);
 
-	void processInput(bool lookOnly);
-	void drawFrame();
+	void drawFrame(bool noSwap = false);
+
+	void processInput(bool interactive);
+	void processEventForKeyboardState(const Common::Event &event);
+	void processEventForGamepad(const Common::Event &event);
+	void updateInputState();
 
 	bool inputValidatePressed();
 	bool inputEscapePressed();
@@ -171,11 +190,12 @@ public:
 	void settingsInitDefaults();
 	void settingsLoadToVars();
 	void settingsApplyFromVars();
+
 private:
 	OSystem *_system;
 	Console *_console;
 	const Myst3GameDescription *_gameDescription;
-	
+
 	Node *_node;
 
 	Common::Array<Archive *> _archivesCommon;
@@ -189,13 +209,34 @@ private:
 
 	uint16 _menuAction;
 
-	// Used Amateria's magnetic rings
+	// Used by Amateria's magnetic rings
 	ShakeEffect *_shakeEffect;
+	// Used by Voltaic's spinning gears
+	RotationEffect *_rotationEffect;
+
+	FrameLimiter *_frameLimiter;
+	Transition *_transition;
 
 	bool _inputSpacePressed;
 	bool _inputEnterPressed;
 	bool _inputEscapePressed;
+	bool _inputEscapePressedNotConsumed;
 	bool _inputTildePressed;
+
+	bool _interactive;
+
+	uint32 _lastSaveTime;
+
+	uint32 _backgroundSoundScriptLastRoomId;
+	uint32 _backgroundSoundScriptLastAgeId;
+
+	/**
+	 * When the widescreen mode is active, the user can manually hide
+	 * the inventory by clicking on an unused inventory space.
+	 * This allows interacting with the scene portion that is below
+	 * the inventory.
+	 */
+	bool _inventoryManualHide;
 
 	HotSpot *getHoveredHotspot(NodePtr nodeData, uint16 var = 0);
 	void updateCursor();
@@ -207,6 +248,8 @@ private:
 	void closeArchives();
 
 	bool isInventoryVisible();
+
+	void interactWithHoveredElement();
 
 	friend class Console;
 };

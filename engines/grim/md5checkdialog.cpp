@@ -21,6 +21,7 @@
  */
 
 #include "common/system.h"
+#include "common/translation.h"
 
 #include "gui/gui-manager.h"
 #include "gui/ThemeEval.h"
@@ -37,9 +38,9 @@ MD5CheckDialog::MD5CheckDialog() :
 	const int screenW = g_system->getOverlayWidth();
 	const int screenH = g_system->getOverlayHeight();
 
-	Common::String message =
+	Common::String message = _(
 		"ResidualVM will now verify the game data files, to make sure you have the best gaming experience.\n"
-		"This may take a while, please wait.\nSuccessive runs will not check them again.";
+		"This may take a while, please wait.\nSuccessive runs will not check them again.");
 
 	// First, determine the size the dialog needs. For this we have to break
 	// down the string into lines, and taking the maximum of their widths.
@@ -73,21 +74,14 @@ MD5CheckDialog::MD5CheckDialog() :
 	}
 	height += 20;
 
-	_progressRect = Common::Rect(_x + 20, _y + height + 10, _x + _w - 20, _y + height + 20);
+	_progressSliderWidget = new GUI::SliderWidget(this, 20, height + 10, _w - 40, 10);
+
 	check();
-}
-
-void MD5CheckDialog::drawDialog() {
-	GUI::Dialog::drawDialog();
-
-	g_gui.theme()->drawSlider(_progressRect, (int)(_progressRect.width() * _progress));
 }
 
 void MD5CheckDialog::check() {
 	_checkOk = true;
 	MD5Check::startCheckFiles();
-	_progress = 0.f;
-	draw();
 }
 
 void MD5CheckDialog::handleTickle() {
@@ -96,13 +90,13 @@ void MD5CheckDialog::handleTickle() {
 	if (!MD5Check::advanceCheck(&p, &t)) {
 		_checkOk = false;
 	}
-	_progress = (float)p / (float)t;
+	_progressSliderWidget->setValue(p * 100 / t);
+	_progressSliderWidget->markAsDirty();
 
 	if (p == t) {
 		setResult(_checkOk);
 		close();
 	}
-	draw();
 }
 
 }

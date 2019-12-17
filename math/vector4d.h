@@ -52,10 +52,6 @@ public:
 
 	void set(float lx, float ly, float lz, float lw);
 
-	inline static Vector4d get_vector4d(const char *data) {
-		return Vector4d(get_float(data), get_float(data + 4), get_float(data + 8), get_float(data + 12));
-	}
-
 };
 
 } // end of namespace Math

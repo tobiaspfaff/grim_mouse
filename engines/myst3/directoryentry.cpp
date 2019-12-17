@@ -43,7 +43,7 @@ void DirectoryEntry::readFromStream(Common::SeekableReadStream &inStream, const 
 	byte subItemCount = inStream.readByte();
 	
 	_subentries.clear();
-	for (uint i = 0; i < subItemCount ; i++) {
+	for (uint i = 0; i < subItemCount; i++) {
 		DirectorySubEntry subEntry(_archive);
 		subEntry.readFromStream(inStream);
 		_subentries.push_back(subEntry);
@@ -58,8 +58,7 @@ void DirectoryEntry::dumpToFiles(Common::SeekableReadStream &inStream) {
 
 DirectorySubEntry *DirectoryEntry::getItemDescription(uint16 face, DirectorySubEntry::ResourceType type) {
 	for (uint i = 0; i < _subentries.size(); i++) {
-		if (_subentries[i].getFace() == face
-				&& _subentries[i].getType() == type) {
+		if (_subentries[i].getFace() == face && _subentries[i].getType() == type) {
 			return &_subentries[i];
 		}
 	}
@@ -67,4 +66,16 @@ DirectorySubEntry *DirectoryEntry::getItemDescription(uint16 face, DirectorySubE
 	return 0;
 }
 
-} // end of namespace Myst3
+DirectorySubEntryList DirectoryEntry::listItemsMatching(uint16 face, DirectorySubEntry::ResourceType type) {
+	DirectorySubEntryList list;
+
+	for (uint i = 0; i < _subentries.size(); i++) {
+		if (_subentries[i].getFace() == face && _subentries[i].getType() == type) {
+			list.push_back(&_subentries[i]);
+		}
+	}
+
+	return list;
+}
+
+} // End of namespace Myst3

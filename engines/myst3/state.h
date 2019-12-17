@@ -24,12 +24,15 @@
 #define VARIABLES_H_
 
 #include "common/hashmap.h"
+#include "common/hash-str.h"
 #include "common/savefile.h"
 #include "common/serializer.h"
 
 #include "engines/myst3/myst3.h"
 
 namespace Myst3 {
+
+class Database;
 
 // View type
 enum ViewType {
@@ -38,18 +41,19 @@ enum ViewType {
 	kMenu = 3
 };
 
-#define DECLARE_VAR(num, name) \
-	void set##name(int32 value) { engineSet(num, value); } \
-	int32 get##name() { return engineGet(num); }
+#define DECLARE_VAR(name) \
+	void set##name(int32 value) { engineSet(#name, value); } \
+	int32 get##name() { return engineGet(#name); } \
+	bool hasVar##name() { return _varDescriptions.contains(#name); }
 
 class GameState {
 public:
-	GameState(Myst3Engine *vm);
+	GameState(const Common::Platform platform, Database *database);
 	virtual ~GameState();
 
 	void newGame();
-	bool load(const Common::String &file);
-	bool save(Common::OutSaveFile *save);
+	bool load(Common::InSaveFile *saveFile);
+	bool save(Common::OutSaveFile *saveFile, const Common::String &description, const Graphics::Surface *thumbnail);
 
 	int32 getVar(uint16 var);
 	void setVar(uint16 var, int32 value);
@@ -59,205 +63,256 @@ public:
 	const Common::String describeVar(uint16 var);
 	const Common::String describeCondition(int16 condition);
 
-	DECLARE_VAR(14, CursorTransparency)
+	DECLARE_VAR(CursorTransparency)
 
-	DECLARE_VAR(47, ProjectorAngleX)
-	DECLARE_VAR(48, ProjectorAngleY)
-	DECLARE_VAR(49, ProjectorAngleZoom)
-	DECLARE_VAR(50, ProjectorAngleBlur)
-	DECLARE_VAR(51, DraggedWeight)
+	DECLARE_VAR(ProjectorAngleX)
+	DECLARE_VAR(ProjectorAngleY)
+	DECLARE_VAR(ProjectorAngleZoom)
+	DECLARE_VAR(ProjectorAngleBlur)
+	DECLARE_VAR(DraggedWeight)
 
-	DECLARE_VAR(57, DragEnded)
-	DECLARE_VAR(58, DragLeverSpeed)
-	DECLARE_VAR(59, DragPositionFound)
-	DECLARE_VAR(60, DragLeverPositionChanged)
+	DECLARE_VAR(DragEnded)
+	DECLARE_VAR(DragLeverSpeed)
+	DECLARE_VAR(DragPositionFound)
+	DECLARE_VAR(DragLeverPositionChanged)
 
-	DECLARE_VAR(61, LocationAge)
-	DECLARE_VAR(62, LocationRoom)
-	DECLARE_VAR(63, LocationNode)
-	DECLARE_VAR(64, BookSavedAge)
-	DECLARE_VAR(65, BookSavedRoom)
-	DECLARE_VAR(66, BookSavedNode)
-	DECLARE_VAR(67, MenuSavedAge)
-	DECLARE_VAR(68, MenuSavedRoom)
-	DECLARE_VAR(69, MenuSavedNode)
+	DECLARE_VAR(LocationAge)
+	DECLARE_VAR(LocationRoom)
+	DECLARE_VAR(LocationNode)
+	DECLARE_VAR(BookSavedAge)
+	DECLARE_VAR(BookSavedRoom)
+	DECLARE_VAR(BookSavedNode)
+	DECLARE_VAR(MenuSavedAge)
+	DECLARE_VAR(MenuSavedRoom)
+	DECLARE_VAR(MenuSavedNode)
 
-	DECLARE_VAR(70, SecondsCountdown)
-	DECLARE_VAR(71, FrameCountdown)
+	DECLARE_VAR(SecondsCountdown)
+	DECLARE_VAR(TickCountdown)
 
-	DECLARE_VAR(84, InputMousePressed)
-	DECLARE_VAR(88, InputEscapePressed)
-	DECLARE_VAR(89, InputTildePressed)
-	DECLARE_VAR(90, InputSpacePressed)
+	DECLARE_VAR(SweepEnabled)
+	DECLARE_VAR(SweepValue)
+	DECLARE_VAR(SweepStep)
+	DECLARE_VAR(SweepMin)
+	DECLARE_VAR(SweepMax)
 
-	DECLARE_VAR(92, HotspotActiveRect)
+	DECLARE_VAR(InputMousePressed)
+	DECLARE_VAR(InputEscapePressed)
+	DECLARE_VAR(InputTildePressed)
+	DECLARE_VAR(InputSpacePressed)
 
-	DECLARE_VAR(93, WaterEffectRunning)
-	DECLARE_VAR(94, WaterEffectActive)
-	DECLARE_VAR(95, WaterEffectSpeed)
-	DECLARE_VAR(96, WaterEffectAttenuation)
-	DECLARE_VAR(97, WaterEffectFrequency)
-	DECLARE_VAR(98, WaterEffectAmpl)
-	DECLARE_VAR(99, WaterEffectMaxStep)
-	DECLARE_VAR(100, WaterEffectAmplOffset)
+	DECLARE_VAR(HotspotActiveRect)
 
-	DECLARE_VAR(101, LavaEffectActive)
-	DECLARE_VAR(102, LavaEffectSpeed)
-	DECLARE_VAR(103, LavaEffectAmpl)
-	DECLARE_VAR(104, LavaEffectStepSize)
+	DECLARE_VAR(WaterEffectRunning)
+	DECLARE_VAR(WaterEffectActive)
+	DECLARE_VAR(WaterEffectSpeed)
+	DECLARE_VAR(WaterEffectAttenuation)
+	DECLARE_VAR(WaterEffectFrequency)
+	DECLARE_VAR(WaterEffectAmpl)
+	DECLARE_VAR(WaterEffectMaxStep)
+	DECLARE_VAR(WaterEffectAmplOffset)
 
-	DECLARE_VAR(105, MagnetEffectActive)
-	DECLARE_VAR(106, MagnetEffectSpeed)
-	DECLARE_VAR(107, MagnetEffectUnk1)
-	DECLARE_VAR(108, MagnetEffectUnk2)
-	DECLARE_VAR(109, MagnetEffectSound)
-	DECLARE_VAR(110, MagnetEffectNode)
-	DECLARE_VAR(111, MagnetEffectUnk3)
+	DECLARE_VAR(LavaEffectActive)
+	DECLARE_VAR(LavaEffectSpeed)
+	DECLARE_VAR(LavaEffectAmpl)
+	DECLARE_VAR(LavaEffectStepSize)
 
-	DECLARE_VAR(112, ShakeEffectAmpl)
-	DECLARE_VAR(113, ShakeEffectFramePeriod)
+	DECLARE_VAR(MagnetEffectActive)
+	DECLARE_VAR(MagnetEffectSpeed)
+	DECLARE_VAR(MagnetEffectUnk1)
+	DECLARE_VAR(MagnetEffectUnk2)
+	DECLARE_VAR(MagnetEffectSound)
+	DECLARE_VAR(MagnetEffectNode)
+	DECLARE_VAR(MagnetEffectUnk3)
 
-	DECLARE_VAR(115, SunspotIntensity)
-	DECLARE_VAR(116, SunspotColor)
-	DECLARE_VAR(117, SunspotRadius)
+	DECLARE_VAR(ShakeEffectAmpl)
+	DECLARE_VAR(ShakeEffectTickPeriod)
+	DECLARE_VAR(RotationEffectSpeed)
+	DECLARE_VAR(SunspotIntensity)
+	DECLARE_VAR(SunspotColor)
+	DECLARE_VAR(SunspotRadius)
 
-	DECLARE_VAR(119, AmbiantFadeOutDelay)
-	DECLARE_VAR(120, AmbiantPreviousFadeOutDelay)
-	DECLARE_VAR(121, AmbientOverrideFadeOutDelay)
+	DECLARE_VAR(AmbiantFadeOutDelay)
+	DECLARE_VAR(AmbiantPreviousFadeOutDelay)
+	DECLARE_VAR(AmbientOverrideFadeOutDelay)
+	DECLARE_VAR(SoundScriptsSuspended)
 
-	DECLARE_VAR(124, SoundNextMultipleSounds)
-	DECLARE_VAR(125, SoundNextIsChoosen)
-	DECLARE_VAR(126, SoundNextId)
-	DECLARE_VAR(127, SoundNextIsLast)
+	DECLARE_VAR(SoundNextMultipleSounds)
+	DECLARE_VAR(SoundNextIsChoosen)
+	DECLARE_VAR(SoundNextId)
+	DECLARE_VAR(SoundNextIsLast)
+	DECLARE_VAR(SoundScriptsTimer)
+	DECLARE_VAR(SoundScriptsPaused)
+	DECLARE_VAR(SoundScriptFadeOutDelay)
 
-	DECLARE_VAR(131, CursorLocked)
-	DECLARE_VAR(132, CursorHidden)
+	DECLARE_VAR(CursorLocked)
+	DECLARE_VAR(CursorHidden)
 
-	DECLARE_VAR(136, CameraPitch)
-	DECLARE_VAR(137, CameraHeading)
-	DECLARE_VAR(140, CameraMinPitch)
-	DECLARE_VAR(141, CameraMaxPitch)
+	DECLARE_VAR(CameraPitch)
+	DECLARE_VAR(CameraHeading)
+	DECLARE_VAR(CameraMinPitch)
+	DECLARE_VAR(CameraMaxPitch)
 
-	DECLARE_VAR(142, MovieStartFrame)
-	DECLARE_VAR(143, MovieEndFrame)
-	DECLARE_VAR(144, MovieVolume1)
-	DECLARE_VAR(145, MovieVolume2)
-	DECLARE_VAR(146, MovieOverrideSubtitles)
-	DECLARE_VAR(149, MovieConditionBit)
-	DECLARE_VAR(150, MoviePreloadToMemory)
-	DECLARE_VAR(151, MovieScriptDriven)
-	DECLARE_VAR(152, MovieNextFrameSetVar)
-	DECLARE_VAR(153, MovieNextFrameGetVar)
-	DECLARE_VAR(154, MovieStartFrameVar)
-	DECLARE_VAR(155, MovieEndFrameVar)
-	DECLARE_VAR(156, MovieForce2d)
-	DECLARE_VAR(157, MovieVolumeVar)
-	DECLARE_VAR(158, MovieSoundHeading)
-	DECLARE_VAR(159, MoviePanningStrenght)
-	DECLARE_VAR(160, MovieSynchronized)
-	DECLARE_VAR(163, MovieOverrideCondition)
-	DECLARE_VAR(164, MovieUVar)
-	DECLARE_VAR(165, MovieVVar)
-	DECLARE_VAR(166, MovieOverridePosition)
-	DECLARE_VAR(167, MovieOverridePosU)
-	DECLARE_VAR(168, MovieOverridePosV)
-	DECLARE_VAR(173, MoviePlayingVar)
-	DECLARE_VAR(174, MovieStartSoundId)
-	DECLARE_VAR(175, MovieStartSoundVolume)
-	DECLARE_VAR(176, MovieStartSoundHeading)
-	DECLARE_VAR(177, MovieStartSoundAttenuation)
+	DECLARE_VAR(MovieStartFrame)
+	DECLARE_VAR(MovieEndFrame)
+	DECLARE_VAR(MovieVolume1)
+	DECLARE_VAR(MovieVolume2)
+	DECLARE_VAR(MovieOverrideSubtitles)
+	DECLARE_VAR(MovieConditionBit)
+	DECLARE_VAR(MoviePreloadToMemory)
+	DECLARE_VAR(MovieScriptDriven)
+	DECLARE_VAR(MovieNextFrameSetVar)
+	DECLARE_VAR(MovieNextFrameGetVar)
+	DECLARE_VAR(MovieStartFrameVar)
+	DECLARE_VAR(MovieEndFrameVar)
+	DECLARE_VAR(MovieForce2d)
+	DECLARE_VAR(MovieVolumeVar)
+	DECLARE_VAR(MovieSoundHeading)
+	DECLARE_VAR(MoviePanningStrenght)
+	DECLARE_VAR(MovieSynchronized)
+	DECLARE_VAR(MovieOverrideCondition)
+	DECLARE_VAR(MovieUVar)
+	DECLARE_VAR(MovieVVar)
+	DECLARE_VAR(MovieOverridePosition)
+	DECLARE_VAR(MovieOverridePosU)
+	DECLARE_VAR(MovieOverridePosV)
+	DECLARE_VAR(MovieAdditiveBlending)
+	DECLARE_VAR(MovieTransparency)
+	DECLARE_VAR(MovieTransparencyVar)
+	DECLARE_VAR(MoviePlayingVar)
+	DECLARE_VAR(MovieStartSoundId)
+	DECLARE_VAR(MovieStartSoundVolume)
+	DECLARE_VAR(MovieStartSoundHeading)
+	DECLARE_VAR(MovieStartSoundAttenuation)
 
-	DECLARE_VAR(178, MovieUseBackground)
-	DECLARE_VAR(179, CameraSkipAnimation)
-	DECLARE_VAR(180, MovieAmbiantScriptStartFrame)
-	DECLARE_VAR(181, MovieAmbiantScript)
-	DECLARE_VAR(182, MovieScriptStartFrame)
-	DECLARE_VAR(183, MovieScript)
+	DECLARE_VAR(MovieUseBackground)
+	DECLARE_VAR(CameraSkipAnimation)
+	DECLARE_VAR(MovieAmbiantScriptStartFrame)
+	DECLARE_VAR(MovieAmbiantScript)
+	DECLARE_VAR(MovieScriptStartFrame)
+	DECLARE_VAR(MovieScript)
 
-	DECLARE_VAR(185, CameraMoveSpeed)
+	DECLARE_VAR(CameraMoveSpeed)
 
-	DECLARE_VAR(189, LocationNextNode)
-	DECLARE_VAR(190, LocationNextRoom)
-	DECLARE_VAR(191, LocationNextAge)
+	DECLARE_VAR(TransitionSound)
+	DECLARE_VAR(TransitionSoundVolume)
 
-	DECLARE_VAR(195, BallPosition)
-	DECLARE_VAR(196, BallFrame)
-	DECLARE_VAR(197, BallLeverLeft)
-	DECLARE_VAR(198, BallLeverRight)
+	DECLARE_VAR(LocationNextNode)
+	DECLARE_VAR(LocationNextRoom)
+	DECLARE_VAR(LocationNextAge)
 
-	DECLARE_VAR(228, BallDoorOpen)
+	DECLARE_VAR(BallPosition)
+	DECLARE_VAR(BallFrame)
+	DECLARE_VAR(BallLeverLeft)
+	DECLARE_VAR(BallLeverRight)
 
-	DECLARE_VAR(243, ProjectorX)
-	DECLARE_VAR(244, ProjectorY)
-	DECLARE_VAR(245, ProjectorZoom)
-	DECLARE_VAR(246, ProjectorBlur)
-	DECLARE_VAR(247, ProjectorAngleXOffset)
-	DECLARE_VAR(248, ProjectorAngleYOffset)
-	DECLARE_VAR(249, ProjectorAngleZoomOffset)
-	DECLARE_VAR(250, ProjectorAngleBlurOffset)
+	DECLARE_VAR(BallDoorOpen)
 
-	DECLARE_VAR(277, JournalAtrusState)
-	DECLARE_VAR(279, JournalSaavedroState)
-	DECLARE_VAR(280, JournalSaavedroClosed)
-	DECLARE_VAR(281, JournalSaavedroOpen)
-	DECLARE_VAR(282, JournalSaavedroLastPage)
-	DECLARE_VAR(283, JournalSaavedroChapter)
-	DECLARE_VAR(284, JournalSaavedroPageInChapter)
+	DECLARE_VAR(ProjectorX)
+	DECLARE_VAR(ProjectorY)
+	DECLARE_VAR(ProjectorZoom)
+	DECLARE_VAR(ProjectorBlur)
+	DECLARE_VAR(ProjectorAngleXOffset)
+	DECLARE_VAR(ProjectorAngleYOffset)
+	DECLARE_VAR(ProjectorAngleZoomOffset)
+	DECLARE_VAR(ProjectorAngleBlurOffset)
 
-	DECLARE_VAR(329, TeslaAllAligned)
-	DECLARE_VAR(330, TeslaTopAligned)
-	DECLARE_VAR(331, TeslaMiddleAligned)
-	DECLARE_VAR(332, TeslaBottomAligned)
-	DECLARE_VAR(333, TeslaMovieStart)
+	DECLARE_VAR(JournalAtrusState)
+	DECLARE_VAR(JournalSaavedroState)
+	DECLARE_VAR(JournalSaavedroClosed)
+	DECLARE_VAR(JournalSaavedroOpen)
+	DECLARE_VAR(JournalSaavedroLastPage)
+	DECLARE_VAR(JournalSaavedroChapter)
+	DECLARE_VAR(JournalSaavedroPageInChapter)
 
-	DECLARE_VAR(444, ResonanceRingsSolved)
+	DECLARE_VAR(TeslaAllAligned)
+	DECLARE_VAR(TeslaTopAligned)
+	DECLARE_VAR(TeslaMiddleAligned)
+	DECLARE_VAR(TeslaBottomAligned)
+	DECLARE_VAR(TeslaMovieStart)
 
-	DECLARE_VAR(460, PinballRemainingPegs)
+	DECLARE_VAR(AmateriaSecondsCounter)
+	DECLARE_VAR(AmateriaTicksCounter)
 
-	DECLARE_VAR(480, BookStateTomahna)
-	DECLARE_VAR(481, BookStateReleeshahn)
+	DECLARE_VAR(ResonanceRingsSolved)
 
-	DECLARE_VAR(489, SymbolCode2Solved)
-	DECLARE_VAR(495, SymbolCode1AllSolved)
-	DECLARE_VAR(496, SymbolCode1CurrentSolved)
-	DECLARE_VAR(497, SymbolCode1TopSolved)
-	DECLARE_VAR(502, SymbolCode1LeftSolved)
-	DECLARE_VAR(507, SymbolCode1RightSolved)
+	DECLARE_VAR(PinballRemainingPegs)
 
-	DECLARE_VAR(1322, ZipModeEnabled)
-	DECLARE_VAR(1323, SubtitlesEnabled)
-	DECLARE_VAR(1324, WaterEffects)
-	DECLARE_VAR(1325, TransitionSpeed)
-	DECLARE_VAR(1326, MouseSpeed)
-	DECLARE_VAR(1327, DialogResult)
+	DECLARE_VAR(OuterShieldUp)
+	DECLARE_VAR(InnerShieldUp)
+	DECLARE_VAR(SaavedroStatus)
 
-	DECLARE_VAR(1337, MenuEscapePressed)
-	DECLARE_VAR(1338, MenuNextAction)
-	DECLARE_VAR(1339, MenuLoadBack)
-	DECLARE_VAR(1340, MenuSaveBack)
-	DECLARE_VAR(1341, MenuSaveAction)
-	DECLARE_VAR(1342, MenuOptionsBack)
+	DECLARE_VAR(BookStateTomahna)
+	DECLARE_VAR(BookStateReleeshahn)
 
-	DECLARE_VAR(1350, MenuSaveLoadPageLeft)
-	DECLARE_VAR(1351, MenuSaveLoadPageRight)
-	DECLARE_VAR(1352, MenuSaveLoadSelectedItem)
-	DECLARE_VAR(1353, MenuSaveLoadCurrentPage)
+	DECLARE_VAR(SymbolCode2Solved)
+	DECLARE_VAR(SymbolCode1AllSolved)
+	DECLARE_VAR(SymbolCode1CurrentSolved)
+	DECLARE_VAR(SymbolCode1TopSolved)
+	DECLARE_VAR(SymbolCode1LeftSolved)
+	DECLARE_VAR(SymbolCode1RightSolved)
 
-	DECLARE_VAR(1374, OverallVolume)
-	DECLARE_VAR(1377, MusicVolume)
-	DECLARE_VAR(1380, MusicFrequency)
-	DECLARE_VAR(1393, LanguageAudio)
-	DECLARE_VAR(1394, LanguageText)
+	DECLARE_VAR(SoundVoltaicUnk540)
+	DECLARE_VAR(SoundEdannaUnk587)
+	DECLARE_VAR(SoundAmateriaUnk627)
+	DECLARE_VAR(SoundAmateriaUnk930)
+	DECLARE_VAR(SoundEdannaUnk1031)
+	DECLARE_VAR(SoundVoltaicUnk1146)
 
-	DECLARE_VAR(1396, HotspotHovered)
-	DECLARE_VAR(1397, SpotSubtitle)
+	DECLARE_VAR(ZipModeEnabled)
+	DECLARE_VAR(SubtitlesEnabled)
+	DECLARE_VAR(WaterEffects)
+	DECLARE_VAR(TransitionSpeed)
+	DECLARE_VAR(MouseSpeed)
+	DECLARE_VAR(DialogResult)
 
-	DECLARE_VAR(1399, DragLeverLimited)
-	DECLARE_VAR(1400, DragLeverLimitMin)
-	DECLARE_VAR(1401, DragLeverLimitMax)
+	DECLARE_VAR(MenuEscapePressed)
+	DECLARE_VAR(MenuNextAction)
+	DECLARE_VAR(MenuLoadBack)
+	DECLARE_VAR(MenuSaveBack)
+	DECLARE_VAR(MenuSaveAction)
+	DECLARE_VAR(MenuOptionsBack)
+
+	DECLARE_VAR(MenuSaveLoadPageLeft)
+	DECLARE_VAR(MenuSaveLoadPageRight)
+	DECLARE_VAR(MenuSaveLoadSelectedItem)
+	DECLARE_VAR(MenuSaveLoadCurrentPage)
+
+	DECLARE_VAR(OverallVolume)
+	DECLARE_VAR(MusicVolume)
+	DECLARE_VAR(MusicFrequency)
+	DECLARE_VAR(LanguageAudio)
+	DECLARE_VAR(LanguageText)
+	DECLARE_VAR(HotspotIgnoreClick)
+	DECLARE_VAR(HotspotHovered)
+	DECLARE_VAR(SpotSubtitle)
+
+	DECLARE_VAR(DragLeverLimited)
+	DECLARE_VAR(DragLeverLimitMin)
+	DECLARE_VAR(DragLeverLimitMax)
+
+	DECLARE_VAR(ShieldEffectActive)
+
+	// Xbox specific variables
+	DECLARE_VAR(GamePadActionPressed)
+	DECLARE_VAR(GamePadDownPressed)
+	DECLARE_VAR(GamePadUpPressed)
+	DECLARE_VAR(GamePadLeftPressed)
+	DECLARE_VAR(GamePadRightPressed)
+	DECLARE_VAR(GamePadCancelPressed)
+
+	DECLARE_VAR(DragWithDirectionKeys)
+	DECLARE_VAR(MenuSavesAvailable)
+	DECLARE_VAR(MenuSelectedSave)
+	DECLARE_VAR(MenuAttractCountDown)
+	DECLARE_VAR(MovieOptional)
+	DECLARE_VAR(VibrationEnabled)
+	DECLARE_VAR(StateCanSave)
 
 	void updateFrameCounters();
-	uint getFrameCount() { return _data.currentFrame; }
+	uint getTickCount() const;
+
+	/** Ensture the counters are correct when the engine is paused or resumed */
+	void pauseEngine(bool pause);
 
 	ViewType getViewType() { return static_cast<ViewType>(_data.currentNodeType); }
 	void setViewType(ViewType t) { _data.currentNodeType = t; }
@@ -276,10 +331,10 @@ public:
 	float getMinHeading() { return _data.minHeading; }
 	float getMaxHeading() { return _data.maxHeading; }
 
+	void markNodeAsVisited(uint16 node, uint16 room, uint32 age);
+	bool isZipDestinationAvailable(uint16 node, uint16 room, uint32 age);
 
-	Graphics::Surface *getSaveThumbnail() const;
-	void setSaveThumbnail(Graphics::Surface *thumb);
-	void setSaveDescription(const Common::String &description) { _data.saveDescription = description; }
+	Common::String formatSaveTime();
 
 	Common::Array<uint16> getInventory();
 	void updateInventory(const Common::Array<uint16> &items);
@@ -287,7 +342,7 @@ public:
 	struct StateData {
 		uint32 version;
 		uint32 gameRunning;
-		uint32 currentFrame;
+		uint32 tickCount;
 		uint32 nextSecondsUpdate;
 		uint32 secondsPlayed;
 		uint32 dword_4C2C44;
@@ -313,7 +368,7 @@ public:
 		int32 vars[2048];
 		uint32 inventoryCount;
 		uint32 inventoryList[7];
-		int8 zipDestinations[256];
+		uint32 zipDestinations[64];
 
 		uint8 saveDay;
 		uint8 saveMonth;
@@ -324,22 +379,28 @@ public:
 
 		Common::String saveDescription;
 
-		Common::SharedPtr<Graphics::Surface> thumbnail;
-
 		StateData();
 		void syncWithSaveGame(Common::Serializer &s);
 	};
 
+	static const Graphics::PixelFormat getThumbnailSavePixelFormat();
+	static Graphics::Surface *readThumbnail(Common::ReadStream *inStream);
+	static void writeThumbnail(Common::WriteStream *outStream, const Graphics::Surface *thumbnail);
+	static Graphics::Surface *resizeThumbnail(Graphics::Surface *big, uint width, uint height);
 
 	static const uint kThumbnailWidth = 240;
 	static const uint kThumbnailHeight = 135;
 
 private:
-	Myst3Engine *_vm;
+	const Common::Platform _platform;
+	Database *_db;
 
 	static const uint32 kSaveVersion = 149;
 
 	StateData _data;
+
+	static const uint32 kTickDuration = 1000 / 30;
+	uint32 _lastTickStartTime;
 
 	struct VarDescription {
 		VarDescription() : var(0), name(0), unknown(0) {}
@@ -350,17 +411,35 @@ private:
 		bool unknown;
 	};
 
-	Common::HashMap<uint16, VarDescription> _varDescriptions;
+	typedef Common::HashMap<Common::String, VarDescription> VarMap;
+
+	VarMap _varDescriptions;
 
 	void checkRange(uint16 var);
+	const VarDescription findDescription(uint16 var);
+	void shiftVariables(uint16 base, int32 value);
 
-	int32 engineGet(uint16 var);
-	void engineSet(uint16 var, int32 value);
+	int32 engineGet(const Common::String &varName);
+	void engineSet(const Common::String &varName, int32 value);
 
 	static void syncFloat(Common::Serializer &s, float &val,
 			Common::Serializer::Version minVersion = 0,
 			Common::Serializer::Version maxVersion = Common::Serializer::kLastVersion);
+
+	void updateTickCounters();
 };
 
-} /* namespace Myst3 */
-#endif /* VARIABLES_H_ */
+/**
+ * Save files related utility functions
+ */
+struct Saves {
+	/** Build a save file name according to the game platform */
+	static Common::String buildName(const char *name, Common::Platform platform);
+
+	/** List all the save file names for the game platform, sorted alphabetically */
+	static Common::StringArray list(Common::SaveFileManager *saveFileManager, Common::Platform platform);
+};
+
+} // End of namespace Myst3
+
+#endif // VARIABLES_H_

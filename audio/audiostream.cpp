@@ -33,6 +33,7 @@
 #include "audio/decoders/quicktime.h"
 #include "audio/decoders/raw.h"
 #include "audio/decoders/vorbis.h"
+#include "audio/mixer.h"
 
 
 namespace Audio {
@@ -98,7 +99,7 @@ LoopingAudioStream::LoopingAudioStream(RewindableAudioStream *stream, uint loops
 		// TODO: Properly indicate error
 		_loops = _completeIterations = 1;
 	}
-	if (stream->endOfData()) {
+	if (stream->endOfStream()) {
 		// Apparently this is an empty stream
 		_loops = _completeIterations = 1;
 	}
@@ -122,7 +123,7 @@ int LoopingAudioStream::readBuffer(int16 *buffer, const int numSamples) {
 			_loops = _completeIterations = 1;
 			return samplesRead;
 		}
-		if (_parent->endOfData()) {
+		if (_parent->endOfStream()) {
 			// Apparently this is an empty stream
 			_loops = _completeIterations = 1;
 		}
@@ -134,7 +135,11 @@ int LoopingAudioStream::readBuffer(int16 *buffer, const int numSamples) {
 }
 
 bool LoopingAudioStream::endOfData() const {
-	return (_loops != 0 && (_completeIterations == _loops));
+	return (_loops != 0 && _completeIterations == _loops) || _parent->endOfData();
+}
+
+bool LoopingAudioStream::endOfStream() const {
+	return _loops != 0 && _completeIterations == _loops;
 }
 
 AudioStream *makeLoopingAudioStream(RewindableAudioStream *stream, uint loops) {
@@ -189,7 +194,7 @@ int SubLoopingAudioStream::readBuffer(int16 *buffer, const int numSamples) {
 	int framesRead = _parent->readBuffer(buffer, framesLeft);
 	_pos = _pos.addFrames(framesRead);
 
-	if (framesRead < framesLeft && _parent->endOfData()) {
+	if (framesRead < framesLeft && _parent->endOfStream()) {
 		// TODO: Proper error indication.
 		_done = true;
 		return framesRead;
@@ -214,6 +219,18 @@ int SubLoopingAudioStream::readBuffer(int16 *buffer, const int numSamples) {
 	} else {
 		return framesRead;
 	}
+}
+
+bool SubLoopingAudioStream::endOfData() const {
+	// We're out of data if this stream is finished or the parent
+	// has run out of data for now.
+	return _done || _parent->endOfData();
+}
+
+bool SubLoopingAudioStream::endOfStream() const {
+	// The end of the stream has been reached only when we've gone
+	// through all the iterations.
+	return _done;
 }
 
 #pragma mark -
@@ -315,18 +332,27 @@ public:
 	virtual int readBuffer(int16 *buffer, const int numSamples);
 	virtual bool isStereo() const { return _stereo; }
 	virtual int getRate() const { return _rate; }
+
 	virtual bool endOfData() const {
-		//Common::StackLock lock(_mutex);
-		return _queue.empty();
+		Common::StackLock lock(_mutex);
+		return _queue.empty() || _queue.front()._stream->endOfData();
 	}
-	virtual bool endOfStream() const { return _finished && _queue.empty(); }
+
+	virtual bool endOfStream() const {
+		Common::StackLock lock(_mutex);
+		return _finished && _queue.empty();
+	}
 
 	// Implement the QueuingAudioStream API
 	virtual void queueAudioStream(AudioStream *stream, DisposeAfterUse::Flag disposeAfterUse);
-	virtual void finish() { _finished = true; }
+
+	virtual void finish() {
+		Common::StackLock lock(_mutex);
+		_finished = true;
+	}
 
 	uint32 numQueuedStreams() const {
-		//Common::StackLock lock(_mutex);
+		Common::StackLock lock(_mutex);
 		return _queue.size();
 	}
 };
@@ -356,11 +382,17 @@ int QueuingAudioStreamImpl::readBuffer(int16 *buffer, const int numSamples) {
 		AudioStream *stream = _queue.front()._stream;
 		samplesDecoded += stream->readBuffer(buffer + samplesDecoded, numSamples - samplesDecoded);
 
-		if (stream->endOfData()) {
+		// Done with the stream completely
+		if (stream->endOfStream()) {
 			StreamHolder tmp = _queue.pop();
 			if (tmp._disposeAfterUse == DisposeAfterUse::YES)
 				delete stream;
+			continue;
 		}
+
+		// Done with data but not the stream, bail out
+		if (stream->endOfData())
+			break;
 	}
 
 	return samplesDecoded;
@@ -416,12 +448,14 @@ public:
 		return samplesRead;
 	}
 
-	bool endOfData() const { return _parentStream->endOfData() || _samplesRead >= _totalSamples; }
+	bool endOfData() const { return _parentStream->endOfData() || reachedLimit(); }
+	bool endOfStream() const { return _parentStream->endOfStream() || reachedLimit(); }
 	bool isStereo() const { return _parentStream->isStereo(); }
 	int getRate() const { return _parentStream->getRate(); }
 
 private:
 	int getChannels() const { return isStereo() ? 2 : 1; }
+	bool reachedLimit() const { return _samplesRead >= _totalSamples; }
 
 	AudioStream *_parentStream;
 	DisposeAfterUse::Flag _disposeAfterUse;
@@ -430,6 +464,26 @@ private:
 
 AudioStream *makeLimitingAudioStream(AudioStream *parentStream, const Timestamp &length, DisposeAfterUse::Flag disposeAfterUse) {
 	return new LimitingAudioStream(parentStream, length, disposeAfterUse);
+}
+
+/**
+ * An AudioStream that plays nothing and immediately returns that
+ * the endOfStream() has been reached
+ */
+class NullAudioStream : public AudioStream {
+public:
+        bool isStereo() const { return false; }
+        int getRate() const;
+        int readBuffer(int16 *data, const int numSamples) { return 0; }
+        bool endOfData() const { return true; }
+};
+
+int NullAudioStream::getRate() const {
+	return g_system->getMixer()->getOutputRate();
+}
+
+AudioStream *makeNullAudioStream() {
+	return new NullAudioStream();
 }
 
 } // End of namespace Audio

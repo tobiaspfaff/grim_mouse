@@ -28,11 +28,12 @@
 #include "common/str.h"
 #include "common/taskbar.h"
 
+class SdlWindow_Win32;
 struct ITaskbarList3;
 
 class Win32TaskbarManager : public Common::TaskbarManager {
 public:
-	Win32TaskbarManager();
+	Win32TaskbarManager(SdlWindow_Win32 *window);
 	virtual ~Win32TaskbarManager();
 
 	virtual void setOverlayIcon(const Common::String &name, const Common::String &description);
@@ -44,6 +45,8 @@ public:
 	virtual void clearError();
 
 private:
+	SdlWindow_Win32 *_window;
+
 	ITaskbarList3 *_taskbar;
 
 	// Count handling
@@ -58,11 +61,6 @@ private:
 	 * @return	The icon path (or "" if no icon was found)
 	 */
 	Common::String getIconPath(Common::String target);
-
-	// Helper functions
-	bool isWin7OrLater();
-	LPWSTR ansiToUnicode(const char *s);
-	HWND getHwnd();
 };
 
 #endif

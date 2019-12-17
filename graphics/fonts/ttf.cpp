@@ -31,13 +31,25 @@
 #include "graphics/font.h"
 #include "graphics/surface.h"
 
+#include "common/file.h"
+#include "common/config-manager.h"
 #include "common/singleton.h"
 #include "common/stream.h"
+#include "common/memstream.h"
 #include "common/hashmap.h"
+#include "common/ptr.h"
+#include "common/unzip.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
+#include FT_TRUETYPE_TABLES_H
+#include FT_TRUETYPE_TAGS_H
+
+// ResidualVM specific
+#if FREETYPE_MAJOR > 2 || ( FREETYPE_MAJOR == 2 &&  FREETYPE_MINOR >= 9)
+#include FT_TRUETYPE_DRIVER_H
+#endif
 
 namespace Graphics {
 
@@ -45,6 +57,10 @@ namespace {
 
 inline int ftCeil26_6(FT_Pos x) {
 	return (x + 63) / 64;
+}
+
+inline int divRoundToNearest(int dividend, int divisor) {
+	return (dividend + (divisor / 2)) / divisor;
 }
 
 } // End of anonymous namespace
@@ -101,7 +117,7 @@ public:
 	TTFFont();
 	virtual ~TTFFont();
 
-	bool load(Common::SeekableReadStream &stream, int size, uint dpi, bool monochrome, const uint32 *mapping);
+	bool load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening);
 
 	virtual int getFontHeight() const;
 
@@ -110,6 +126,8 @@ public:
 	virtual int getCharWidth(uint32 chr) const;
 
 	virtual int getKerningOffset(uint32 left, uint32 right) const;
+
+	virtual Common::Rect getBoundingBox(uint32 chr) const;
 
 	virtual void drawChar(Surface *dst, uint32 chr, int x, int y, uint32 color) const;
 private:
@@ -135,13 +153,21 @@ private:
 	bool _allowLateCaching;
 	void assureCached(uint32 chr) const;
 
-	bool _monochrome;
+	Common::SeekableReadStream *readTTFTable(FT_ULong tag) const;
+
+	int computePointSize(int size, TTFSizeMode sizeMode) const;
+	int readPointSizeFromVDMXTable(int height) const;
+	int computePointSizeFromHeaders(int height) const;
+
+	FT_Int32 _loadFlags;
+	FT_Render_Mode _renderMode;
 	bool _hasKerning;
 };
 
 TTFFont::TTFFont()
     : _initialized(false), _face(), _ttfFile(0), _size(0), _width(0), _height(0), _ascent(0),
-      _descent(0), _glyphs(), _monochrome(false), _hasKerning(false), _allowLateCaching(false) {
+      _descent(0), _glyphs(), _loadFlags(FT_LOAD_TARGET_NORMAL), _renderMode(FT_RENDER_MODE_NORMAL),
+      _hasKerning(false), _allowLateCaching(false) {
 }
 
 TTFFont::~TTFFont() {
@@ -158,7 +184,7 @@ TTFFont::~TTFFont() {
 	}
 }
 
-bool TTFFont::load(Common::SeekableReadStream &stream, int size, uint dpi, bool monochrome, const uint32 *mapping) {
+bool TTFFont::load(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening) {
 	if (!g_ttf.isInitialized())
 		return false;
 
@@ -193,17 +219,44 @@ bool TTFFont::load(Common::SeekableReadStream &stream, int size, uint dpi, bool 
 		return false;
 	}
 
+	// RedisualVM specific
+	if (stemDarkening) {
+#if FREETYPE_MAJOR > 2 || ( FREETYPE_MAJOR == 2 &&  FREETYPE_MINOR >= 9)
+		FT_Parameter param;
+		param.tag = FT_PARAM_TAG_STEM_DARKENING;
+		param.data = &stemDarkening;
+		FT_Face_Properties(_face, 1, &param);
+#else
+		warning("Stem darkening is not available with this version of FreeType");
+#endif
+	}
+
 	// Check whether we have kerning support
 	_hasKerning = (FT_HAS_KERNING(_face) != 0);
 
-	if (FT_Set_Char_Size(_face, 0, size * 64, dpi, dpi)) {
+	if (FT_Set_Char_Size(_face, 0, computePointSize(size, sizeMode) * 64, dpi, dpi)) {
 		delete[] _ttfFile;
 		_ttfFile = 0;
 
 		return false;
 	}
 
-	_monochrome = monochrome;
+	switch (renderMode) {
+	case kTTFRenderModeNormal:
+		_loadFlags = FT_LOAD_TARGET_NORMAL;
+		_renderMode = FT_RENDER_MODE_NORMAL;
+		break;
+
+	case kTTFRenderModeLight:
+		_loadFlags = FT_LOAD_TARGET_LIGHT;
+		_renderMode = FT_RENDER_MODE_LIGHT;
+		break;
+
+	case kTTFRenderModeMonochrome:
+		_loadFlags = FT_LOAD_TARGET_MONO;
+		_renderMode = FT_RENDER_MODE_MONO;
+		break;
+	}
 
 	FT_Fixed yScale = _face->size->metrics.y_scale;
 	_ascent = ftCeil26_6(FT_MulFix(_face->ascender, yScale));
@@ -241,6 +294,126 @@ bool TTFFont::load(Common::SeekableReadStream &stream, int size, uint dpi, bool 
 
 	_initialized = (_glyphs.size() != 0);
 	return _initialized;
+}
+
+int TTFFont::computePointSize(int size, TTFSizeMode sizeMode) const {
+	int ptSize = 0;
+	switch (sizeMode) {
+	case kTTFSizeModeCell: {
+		ptSize = readPointSizeFromVDMXTable(size);
+
+		if (ptSize == 0) {
+			ptSize = computePointSizeFromHeaders(size);
+		}
+
+		if (ptSize == 0) {
+			warning("Unable to compute point size for font '%s'", _face->family_name);
+			ptSize = 1;
+		}
+		break;
+	}
+	case kTTFSizeModeCharacter:
+		ptSize = size;
+		break;
+	}
+
+	return ptSize;
+}
+
+Common::SeekableReadStream *TTFFont::readTTFTable(FT_ULong tag) const {
+	// Find the required buffer size by calling the load function with nullptr
+	FT_ULong size = 0;
+	FT_Error err = FT_Load_Sfnt_Table(_face, tag, 0, nullptr, &size);
+	if (err) {
+		return nullptr;
+	}
+
+	byte *buf = (byte *)malloc(size);
+	if (!buf) {
+		return nullptr;
+	}
+
+	err = FT_Load_Sfnt_Table(_face, tag, 0, buf, &size);
+	if (err) {
+		free(buf);
+		return nullptr;
+	}
+
+	return new Common::MemoryReadStream(buf, size, DisposeAfterUse::YES);
+}
+
+int TTFFont::readPointSizeFromVDMXTable(int height) const {
+	// The Vertical Device Metrics table matches font heights with point sizes.
+	// FreeType does not expose it, we have to parse it ourselves.
+	// See https://www.microsoft.com/typography/otspec/vdmx.htm
+
+	Common::ScopedPtr<Common::SeekableReadStream> vdmxBuf(readTTFTable(TTAG_VDMX));
+	if (!vdmxBuf) {
+		return 0;
+	}
+
+	// Read the main header
+	vdmxBuf->skip(4); // Skip the version
+	uint16 numRatios = vdmxBuf->readUint16BE();
+
+	// Compute the starting position for the group table positions table
+	int32 offsetTableStart = vdmxBuf->pos() + 4 * numRatios;
+
+	// Search the ratio table for the 1:1 ratio, or the default record (0, 0, 0)
+	int32 selectedRatio = -1;
+	for (uint16 i = 0; i < numRatios; i++) {
+		vdmxBuf->skip(1); // Skip the charset subset
+		uint8 xRatio = vdmxBuf->readByte();
+		uint8 yRatio1 = vdmxBuf->readByte();
+		uint8 yRatio2 = vdmxBuf->readByte();
+
+		if ((xRatio == 1 && yRatio1 <= 1 && yRatio2 >= 1)
+		    || (xRatio == 0 && yRatio1 == 0 && yRatio2 == 0)) {
+			selectedRatio = i;
+			break;
+		}
+	}
+	if (selectedRatio < 0) {
+		return 0;
+	}
+
+	// Read from group table positions table to get the group table offset
+	vdmxBuf->seek(offsetTableStart + sizeof(uint16) * selectedRatio);
+	uint16 groupOffset = vdmxBuf->readUint16BE();
+
+	// Read the group table header
+	vdmxBuf->seek(groupOffset);
+	uint16 numRecords = vdmxBuf->readUint16BE();
+	vdmxBuf->skip(2); // Skip the table bounds
+
+	// Search a record matching the required height
+	for (uint16 i = 0; i < numRecords; i++) {
+		uint16 pointSize = vdmxBuf->readUint16BE();
+		int16 yMax = vdmxBuf->readSint16BE();
+		int16 yMin = vdmxBuf->readSint16BE();
+
+		if (yMax + -yMin > height) {
+			return 0;
+		}
+		if (yMax + -yMin == height) {
+			return pointSize;
+		}
+	}
+
+	return 0;
+}
+
+int TTFFont::computePointSizeFromHeaders(int height) const {
+	TT_OS2 *os2Header = (TT_OS2 *)FT_Get_Sfnt_Table(_face, ft_sfnt_os2);
+	TT_HoriHeader *horiHeader = (TT_HoriHeader *)FT_Get_Sfnt_Table(_face, ft_sfnt_hhea);
+
+	if (os2Header && (os2Header->usWinAscent + os2Header->usWinDescent != 0)) {
+		return divRoundToNearest(_face->units_per_EM * height, os2Header->usWinAscent + os2Header->usWinDescent);
+	} else if (horiHeader && (horiHeader->Ascender + horiHeader->Descender != 0)) {
+		return divRoundToNearest(_face->units_per_EM * height, horiHeader->Ascender + horiHeader->Descender);
+	}
+
+	return 0;
 }
 
 int TTFFont::getFontHeight() const {
@@ -290,6 +463,19 @@ int TTFFont::getKerningOffset(uint32 left, uint32 right) const {
 	FT_Vector kerningVector;
 	FT_Get_Kerning(_face, leftGlyph, rightGlyph, FT_KERNING_DEFAULT, &kerningVector);
 	return (kerningVector.x / 64);
+}
+
+Common::Rect TTFFont::getBoundingBox(uint32 chr) const {
+	assureCached(chr);
+	GlyphCache::const_iterator glyphEntry = _glyphs.find(chr);
+	if (glyphEntry == _glyphs.end()) {
+		return Common::Rect();
+	} else {
+		const int xOffset = glyphEntry->_value.xOffset;
+		const int yOffset = glyphEntry->_value.yOffset;
+		const Graphics::Surface &image = glyphEntry->_value.image;
+		return Common::Rect(xOffset, yOffset, xOffset + image.w, yOffset + image.h);
+	}
 }
 
 namespace {
@@ -413,33 +599,19 @@ bool TTFFont::cacheGlyph(Glyph &glyph, uint32 chr) const {
 	// We use the light target and render mode to improve the looks of the
 	// glyphs. It is most noticable in FreeSansBold.ttf, where otherwise the
 	// 't' glyph looks like it is cut off on the right side.
-	if (FT_Load_Glyph(_face, slot, (_monochrome ? FT_LOAD_TARGET_MONO : FT_LOAD_TARGET_LIGHT)))
+	if (FT_Load_Glyph(_face, slot, _loadFlags))
 		return false;
 
-	if (FT_Render_Glyph(_face->glyph, (_monochrome ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_LIGHT)))
+	if (FT_Render_Glyph(_face->glyph, _renderMode))
 		return false;
 
 	if (_face->glyph->format != FT_GLYPH_FORMAT_BITMAP)
 		return false;
 
-	FT_Glyph_Metrics &metrics = _face->glyph->metrics;
-
 	glyph.xOffset = _face->glyph->bitmap_left;
-	int xMax = glyph.xOffset + ftCeil26_6(metrics.width);
 	glyph.yOffset = _ascent - _face->glyph->bitmap_top;
 
 	glyph.advance = ftCeil26_6(_face->glyph->advance.x);
-
-	// In case we got a negative xMin we adjust that, this might make some
-	// characters make a bit odd, but it's the only way we can assure no
-	// invalid memory writes with the current font API
-	if (glyph.xOffset < 0) {
-		xMax -= glyph.xOffset;
-		glyph.xOffset = 0;
-
-		if (xMax > glyph.advance)
-			glyph.advance = xMax;
-	}
 
 	const FT_Bitmap &bitmap = _face->glyph->bitmap;
 	glyph.image.create(bitmap.width, bitmap.rows, PixelFormat::createFormatCLUT8());
@@ -456,11 +628,11 @@ bool TTFFont::cacheGlyph(Glyph &glyph, uint32 chr) const {
 
 	switch (bitmap.pixel_mode) {
 	case FT_PIXEL_MODE_MONO:
-		for (int y = 0; y < bitmap.rows; ++y) {
+		for (int y = 0; y < (int)bitmap.rows; ++y) {
 			const uint8 *curSrc = src;
 			uint8 mask = 0;
 
-			for (int x = 0; x < bitmap.width; ++x) {
+			for (int x = 0; x < (int)bitmap.width; ++x) {
 				if ((x % 8) == 0)
 					mask = *curSrc++;
 
@@ -476,7 +648,7 @@ bool TTFFont::cacheGlyph(Glyph &glyph, uint32 chr) const {
 		break;
 
 	case FT_PIXEL_MODE_GRAY:
-		for (int y = 0; y < bitmap.rows; ++y) {
+		for (int y = 0; y < (int)bitmap.rows; ++y) {
 			memcpy(dst, src, bitmap.width);
 			dst += glyph.image.pitch;
 			src += srcPitch;
@@ -503,14 +675,41 @@ void TTFFont::assureCached(uint32 chr) const {
 	}
 }
 
-Font *loadTTFFont(Common::SeekableReadStream &stream, int size, uint dpi, bool monochrome, const uint32 *mapping) {
+Font *loadTTFFont(Common::SeekableReadStream &stream, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping, bool stemDarkening) {
 	TTFFont *font = new TTFFont();
 
-	if (!font->load(stream, size, dpi, monochrome, mapping)) {
+	if (!font->load(stream, size, sizeMode, dpi, renderMode, mapping, stemDarkening)) {
 		delete font;
 		return 0;
 	}
 
+	return font;
+}
+
+Font *loadTTFFontFromArchive(const Common::String &filename, int size, TTFSizeMode sizeMode, uint dpi, TTFRenderMode renderMode, const uint32 *mapping) {
+	Common::SeekableReadStream *archiveStream = nullptr;
+	if (ConfMan.hasKey("extrapath")) {
+		Common::FSDirectory extrapath(ConfMan.get("extrapath"));
+		archiveStream = extrapath.createReadStreamForMember("fonts.dat");
+	}
+
+	if (!archiveStream) {
+		archiveStream = SearchMan.createReadStreamForMember("fonts.dat");
+	}
+
+	Common::Archive *archive = Common::makeZipArchive(archiveStream);
+	if (!archive) {
+		return nullptr;
+	}
+
+	Common::File f;
+	if (!f.open(filename, *archive)) {
+		return nullptr;
+	}
+
+	Font *font = loadTTFFont(f, size, sizeMode, dpi, renderMode, mapping);
+
+	delete archive;
 	return font;
 }
 

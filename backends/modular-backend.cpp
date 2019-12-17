@@ -20,8 +20,6 @@
  *
  */
 
-#define FORBIDDEN_SYMBOL_EXCEPTION_exit
-
 #include "backends/modular-backend.h"
 
 #include "backends/graphics/graphics.h"
@@ -82,6 +80,34 @@ int ModularBackend::getGraphicsMode() const {
 	return _graphicsManager->getGraphicsMode();
 }
 
+const OSystem::GraphicsMode *ModularBackend::getSupportedShaders() const {
+	return _graphicsManager->getSupportedShaders();
+}
+
+bool ModularBackend::setShader(int id) {
+	return _graphicsManager->setShader(id);
+}
+
+int ModularBackend::getShader() const {
+	return _graphicsManager->getShader();
+}
+
+const OSystem::GraphicsMode *ModularBackend::getSupportedStretchModes() const {
+	return _graphicsManager->getSupportedStretchModes();
+}
+
+int ModularBackend::getDefaultStretchMode() const {
+	return _graphicsManager->getDefaultStretchMode();
+}
+
+bool ModularBackend::setStretchMode(int mode) {
+	return _graphicsManager->setStretchMode(mode);
+}
+
+int ModularBackend::getStretchMode() const {
+	return _graphicsManager->getStretchMode();
+}
+
 void ModularBackend::resetGraphicsScale() {
 	_graphicsManager->resetGraphicsScale();
 }
@@ -99,17 +125,26 @@ Common::List<Graphics::PixelFormat> ModularBackend::getSupportedFormats() const 
 #endif
 
 // ResidualVM specific method
-void ModularBackend::launcherInitSize(uint w, uint h) {
-	_graphicsManager->launcherInitSize(w, h);
+void ModularBackend::setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d) {
+	_graphicsManager->setupScreen(screenW, screenH, fullscreen, accel3d);
 }
 
 // ResidualVM specific method
-Graphics::PixelBuffer ModularBackend::setupScreen(int screenW, int screenH, bool fullscreen, bool accel3d) {
-	return _graphicsManager->setupScreen(screenW, screenH, fullscreen, accel3d);
+Graphics::PixelBuffer ModularBackend::getScreenPixelBuffer() {
+	return _graphicsManager->getScreenPixelBuffer();
+}
+
+// ResidualVM specific method
+void ModularBackend::suggestSideTextures(Graphics::Surface *left, Graphics::Surface *right) {
+	_graphicsManager->suggestSideTextures(left, right);
 }
 
 void ModularBackend::initSize(uint w, uint h, const Graphics::PixelFormat *format ) {
 	_graphicsManager->initSize(w, h, format);
+}
+
+void ModularBackend::initSizeHint(const Graphics::ModeList &modes) {
+	_graphicsManager->initSizeHint(modes);
 }
 
 int ModularBackend::getScreenChangeID() const {
@@ -217,6 +252,7 @@ bool ModularBackend::lockMouse(bool visible) {
 }
 
 void ModularBackend::warpMouse(int x, int y) {
+	_eventManager->purgeMouseEvents();
 	_graphicsManager->warpMouse(x, y);
 }
 
@@ -226,6 +262,10 @@ void ModularBackend::setMouseCursor(const void *buf, uint w, uint h, int hotspot
 
 void ModularBackend::setCursorPalette(const byte *colors, uint start, uint num) {
 	_graphicsManager->setCursorPalette(colors, start, num);
+}
+
+void ModularBackend::saveScreenshot() {
+    _graphicsManager->saveScreenshot();
 }
 
 OSystem::MutexRef ModularBackend::createMutex() {
@@ -257,6 +297,6 @@ void ModularBackend::displayMessageOnOSD(const char *msg) {
 	_graphicsManager->displayMessageOnOSD(msg);
 }
 
-void ModularBackend::quit() {
-	exit(0);
+void ModularBackend::displayActivityIconOnOSD(const Graphics::Surface *icon) {
+	_graphicsManager->displayActivityIconOnOSD(icon);
 }

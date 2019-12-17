@@ -87,9 +87,11 @@ static const byte s_mjpegValDC[12] = {
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 };
 
+#if 0
 static const byte s_mjpegBitsDCChrominance[17] = {
 	/* 0-base */ 0, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0
 };
+#endif
 
 static const byte s_mjpegBitsACLuminance[17] = {
 	/* 0-base */ 0, 0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 0x7d
@@ -198,6 +200,7 @@ const Graphics::Surface *MJPEGDecoder::decodeFrame(Common::SeekableReadStream &s
 
 	Common::MemoryReadStream convertedStream(data, outputSize, DisposeAfterUse::YES);
 	JPEGDecoder jpeg;
+	jpeg.setOutputPixelFormat(_pixelFormat);
 
 	if (!jpeg.loadStream(convertedStream)) {
 		warning("Failed to decode MJPEG frame");
@@ -209,7 +212,10 @@ const Graphics::Surface *MJPEGDecoder::decodeFrame(Common::SeekableReadStream &s
 		delete _surface;
 	}
 
-	_surface = jpeg.getSurface()->convertTo(_pixelFormat);
+	_surface = new Graphics::Surface();
+	_surface->copyFrom(*jpeg.getSurface());
+
+	assert(_surface->format == _pixelFormat);
 
 	return _surface;
 }

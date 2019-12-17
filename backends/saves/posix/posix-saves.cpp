@@ -21,45 +21,91 @@
  */
 
 
-// Enable getenv, mkdir and time.h stuff
-#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
-#define FORBIDDEN_SYMBOL_EXCEPTION_mkdir
+// Re-enable some forbidden symbols to avoid clashes with stat.h and unistd.h.
+// Also with clock() in sys/time.h in some Mac OS X SDKs.
 #define FORBIDDEN_SYMBOL_EXCEPTION_time_h	//On IRIX, sys/stat.h includes sys/time.h
+#define FORBIDDEN_SYMBOL_EXCEPTION_mkdir
+#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 
 #include "common/scummsys.h"
 
 #if defined(POSIX) && !defined(DISABLE_DEFAULT_SAVEFILEMANAGER)
 
 #include "backends/saves/posix/posix-saves.h"
+#include "backends/fs/posix/posix-fs.h"
 
 #include "common/config-manager.h"
 #include "common/savefile.h"
 #include "common/textconsole.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
 #include <sys/stat.h>
 
-
-#ifdef MACOSX
-#define DEFAULT_SAVE_PATH "Documents/ResidualVM Savegames"
-#else
-#define DEFAULT_SAVE_PATH ".residualvm"
-#endif
-
 POSIXSaveFileManager::POSIXSaveFileManager() {
-	// Register default savepath based on HOME
+	// Register default savepath.
 #if defined(SAMSUNGTV)
 	ConfMan.registerDefault("savepath", "/mtd_wiselink/residualvm savegames");
+#elif defined(NINTENDO_SWITCH)
+	Posix::assureDirectoryExists("./saves", nullptr);
+	ConfMan.registerDefault("savepath", "./saves");
 #else
 	Common::String savePath;
+
+#if defined(MACOSX)
 	const char *home = getenv("HOME");
 	if (home && *home && strlen(home) < MAXPATHLEN) {
 		savePath = home;
-		savePath += "/" DEFAULT_SAVE_PATH;
+		savePath += "/Documents/ResidualVM Savegames";
+
 		ConfMan.registerDefault("savepath", savePath);
 	}
+
+#else
+	const char *envVar;
+
+	// Previously we placed our default savepath in HOME. If the directory
+	// still exists, we will use it for backwards compatability.
+	envVar = getenv("HOME");
+	if (envVar && *envVar) {
+		savePath = envVar;
+		savePath += "/.residualvm";
+
+		struct stat sb;
+		if (stat(savePath.c_str(), &sb) != 0 || !S_ISDIR(sb.st_mode)) {
+			savePath.clear();
+		}
+	}
+
+	if (savePath.empty()) {
+		Common::String prefix;
+
+		// On POSIX systems we follow the XDG Base Directory Specification for
+		// where to store files. The version we based our code upon can be found
+		// over here: http://standards.freedesktop.org/basedir-spec/basedir-spec-0.8.html
+		envVar = getenv("XDG_DATA_HOME");
+		if (!envVar || !*envVar) {
+			envVar = getenv("HOME");
+			if (envVar && *envVar) {
+				prefix = envVar;
+				savePath = ".local/share/";
+			}
+		} else {
+			prefix = envVar;
+		}
+
+		// Our default save path is '$XDG_DATA_HOME/residualvm/saves'
+		savePath += "residualvm/saves";
+
+		if (!Posix::assureDirectoryExists(savePath, prefix.c_str())) {
+			savePath.clear();
+		} else {
+			savePath = prefix + '/' + savePath;
+		}
+	}
+
+	if (!savePath.empty() && savePath.size() < MAXPATHLEN) {
+		ConfMan.registerDefault("savepath", savePath);
+	}
+#endif
 
 	// The user can override the savepath with the SCUMMVM_SAVEPATH
 	// environment variable. This is weaker than a --savepath on the
@@ -82,71 +128,6 @@ POSIXSaveFileManager::POSIXSaveFileManager() {
 		}
 	}
 #endif
-}
-
-void POSIXSaveFileManager::checkPath(const Common::FSNode &dir) {
-	const Common::String path = dir.getPath();
-	clearError();
-
-	struct stat sb;
-
-	// Check whether the dir exists
-	if (stat(path.c_str(), &sb) == -1) {
-		// The dir does not exist, or stat failed for some other reason.
-		// If the problem was that the path pointed to nothing, try
-		// to create the dir (ENOENT case).
-		switch (errno) {
-		case EACCES:
-			setError(Common::kWritePermissionDenied, "Search or write permission denied: "+path);
-			break;
-		case ELOOP:
-			setError(Common::kUnknownError, "Too many symbolic links encountered while traversing the path: "+path);
-			break;
-		case ENAMETOOLONG:
-			setError(Common::kUnknownError, "The path name is too long: "+path);
-			break;
-		case ENOENT:
-			if (mkdir(path.c_str(), 0755) != 0) {
-				// mkdir could fail for various reasons: The parent dir doesn't exist,
-				// or is not writeable, the path could be completly bogus, etc.
-				warning("mkdir for '%s' failed", path.c_str());
-				perror("mkdir");
-
-				switch (errno) {
-				case EACCES:
-					setError(Common::kWritePermissionDenied, "Search or write permission denied: "+path);
-					break;
-				case EMLINK:
-					setError(Common::kUnknownError, "The link count of the parent directory would exceed {LINK_MAX}: "+path);
-					break;
-				case ELOOP:
-					setError(Common::kUnknownError, "Too many symbolic links encountered while traversing the path: "+path);
-					break;
-				case ENAMETOOLONG:
-					setError(Common::kUnknownError, "The path name is too long: "+path);
-					break;
-				case ENOENT:
-					setError(Common::kPathDoesNotExist, "A component of the path does not exist, or the path is an empty string: "+path);
-					break;
-				case ENOTDIR:
-					setError(Common::kPathDoesNotExist, "A component of the path prefix is not a directory: "+path);
-					break;
-				case EROFS:
-					setError(Common::kWritePermissionDenied, "The parent directory resides on a read-only file system:"+path);
-					break;
-				}
-			}
-			break;
-		case ENOTDIR:
-			setError(Common::kPathDoesNotExist, "A component of the path prefix is not a directory: "+path);
-			break;
-		}
-	} else {
-		// So stat() succeeded. But is the path actually pointing to a directory?
-		if (!S_ISDIR(sb.st_mode)) {
-			setError(Common::kPathDoesNotExist, "The given savepath is not a directory: "+path);
-		}
-	}
 }
 
 #endif

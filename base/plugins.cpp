@@ -22,6 +22,7 @@
 
 #include "base/plugins.h"
 
+#include "common/translation.h"
 #include "common/func.h"
 #include "common/debug.h"
 #include "common/config-manager.h"
@@ -90,57 +91,57 @@ public:
 		// Music plugins
 		// TODO: Use defines to disable or enable each MIDI driver as a
 		// static/dynamic plugin, like it's done for the engines
-		LINK_PLUGIN(AUTO)
-		LINK_PLUGIN(NULL)
-		#if defined(WIN32) && !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
-		LINK_PLUGIN(WINDOWS)
-		#endif
-		#if defined(USE_ALSA)
-		LINK_PLUGIN(ALSA)
-		#endif
-		#if defined(USE_SEQ_MIDI)
-		LINK_PLUGIN(SEQ)
-		#endif
-		#if defined(USE_SNDIO)
-		LINK_PLUGIN(SNDIO)
-		#endif
-		#if defined(__MINT__)
-		LINK_PLUGIN(STMIDI)
-		#endif
-		#if defined(IRIX)
-		LINK_PLUGIN(DMEDIA)
-		#endif
-		#if defined(__amigaos4__)
-		LINK_PLUGIN(CAMD)
-		#endif
-		#if defined(MACOSX)
-		LINK_PLUGIN(COREAUDIO)
-		LINK_PLUGIN(COREMIDI)
-		#endif
-		#ifdef USE_FLUIDSYNTH
-		LINK_PLUGIN(FLUIDSYNTH)
-		#endif
-		#ifdef USE_MT32EMU
-		LINK_PLUGIN(MT32)
-		#endif
-		LINK_PLUGIN(ADLIB)
 //ResidualVM: disabled belows:
+//		LINK_PLUGIN(AUTO)
+//		LINK_PLUGIN(NULL)
+//		#if defined(WIN32) && !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
+//		LINK_PLUGIN(WINDOWS)
+//		#endif
+//		#if defined(USE_ALSA)
+//		LINK_PLUGIN(ALSA)
+//		#endif
+//		#if defined(USE_SEQ_MIDI)
+//		LINK_PLUGIN(SEQ)
+//		#endif
+//		#if defined(USE_SNDIO)
+//		LINK_PLUGIN(SNDIO)
+//		#endif
+//		#if defined(__MINT__)
+//		LINK_PLUGIN(STMIDI)
+//		#endif
+//		#if defined(IRIX)
+//		LINK_PLUGIN(DMEDIA)
+//		#endif
+//		#if defined(__amigaos4__)
+//		LINK_PLUGIN(CAMD)
+//		#endif
+//		#if defined(MACOSX)
+//		LINK_PLUGIN(COREAUDIO)
+//		LINK_PLUGIN(COREMIDI)
+//		#endif
+//		#ifdef USE_FLUIDSYNTH
+//		LINK_PLUGIN(FLUIDSYNTH)
+//		#endif
+//		#ifdef USE_MT32EMU
+//		LINK_PLUGIN(MT32)
+//		#endif
+//		LINK_PLUGIN(ADLIB)
 //		LINK_PLUGIN(PCSPK)
 //		LINK_PLUGIN(PCJR)
 //		LINK_PLUGIN(CMS)
-		#if defined(__ANDROID__)
+//		#if defined(__ANDROID__)
 //		LINK_PLUGIN(EAS)
-		#endif
-		#ifndef DISABLE_SID
+//		#endif
+//		#ifndef DISABLE_SID
 //		LINK_PLUGIN(C64)
-		#endif
+//		#endif
 //		LINK_PLUGIN(AMIGA)
 //		LINK_PLUGIN(APPLEIIGS)
 //		LINK_PLUGIN(TOWNS)
 //		LINK_PLUGIN(PC98)
-		#if defined(USE_TIMIDITY)
-		LINK_PLUGIN(TIMIDITY)
-		#endif
+//		#if defined(USE_TIMIDITY)
+//		LINK_PLUGIN(TIMIDITY)
+//		#endif
 
 		return pl;
 	}
@@ -258,7 +259,7 @@ void PluginManagerUncached::init() {
 	unloadAllPlugins();
 	_allEnginePlugins.clear();
 
-	unloadPluginsExcept(PLUGIN_TYPE_ENGINE, NULL, false);	// empty the engine plugins
+	unloadPluginsExcept(PLUGIN_TYPE_ENGINE, NULL, false); // empty the engine plugins
 
 	for (ProviderList::iterator pp = _providers.begin();
 	                            pp != _providers.end();
@@ -287,14 +288,14 @@ void PluginManagerUncached::init() {
 
 /**
  * Try to load the plugin by searching in the ConfigManager for a matching
- * gameId under the domain 'plugin_files'.
+ * engine ID under the domain 'engine_plugin_files'.
  **/
-bool PluginManagerUncached::loadPluginFromGameId(const Common::String &gameId) {
-	Common::ConfigManager::Domain *domain = ConfMan.getDomain("plugin_files");
+bool PluginManagerUncached::loadPluginFromEngineId(const Common::String &engineId) {
+	Common::ConfigManager::Domain *domain = ConfMan.getDomain("engine_plugin_files");
 
 	if (domain) {
-		if (domain->contains(gameId)) {
-			Common::String filename = (*domain)[gameId];
+		if (domain->contains(engineId)) {
+			Common::String filename = (*domain)[engineId];
 
 			if (loadPluginByFileName(filename)) {
 				return true;
@@ -326,17 +327,17 @@ bool PluginManagerUncached::loadPluginByFileName(const Common::String &filename)
 
 /**
  * Update the config manager with a plugin file name that we found can handle
- * the game.
+ * the engine.
  **/
-void PluginManagerUncached::updateConfigWithFileName(const Common::String &gameId) {
+void PluginManagerUncached::updateConfigWithFileName(const Common::String &engineId) {
 	// Check if we have a filename for the current plugin
 	if ((*_currentPlugin)->getFileName()) {
-		if (!ConfMan.hasMiscDomain("plugin_files"))
-			ConfMan.addMiscDomain("plugin_files");
+		if (!ConfMan.hasMiscDomain("engine_plugin_files"))
+			ConfMan.addMiscDomain("engine_plugin_files");
 
-		Common::ConfigManager::Domain *domain = ConfMan.getDomain("plugin_files");
+		Common::ConfigManager::Domain *domain = ConfMan.getDomain("engine_plugin_files");
 		assert(domain);
-		(*domain)[gameId] = (*_currentPlugin)->getFileName();
+		(*domain)[engineId] = (*_currentPlugin)->getFileName();
 
 		ConfMan.flushToDisk();
 	}
@@ -363,7 +364,7 @@ bool PluginManagerUncached::loadNextPlugin() {
 			return true;
 		}
 	}
-	return false;	// no more in list
+	return false; // no more in list
 }
 
 /**
@@ -376,6 +377,30 @@ void PluginManager::loadAllPlugins() {
 	                            ++pp) {
 		PluginList pl((*pp)->getPlugins());
 		Common::for_each(pl.begin(), pl.end(), Common::bind1st(Common::mem_fun(&PluginManager::tryLoadPlugin), this));
+	}
+}
+
+void PluginManager::loadAllPluginsOfType(PluginType type) {
+	for (ProviderList::iterator pp = _providers.begin();
+	                            pp != _providers.end();
+	                            ++pp) {
+		PluginList pl((*pp)->getPlugins());
+		for (PluginList::iterator p = pl.begin();
+				                  p != pl.end();
+								  ++p) {
+			if ((*p)->loadPlugin()) {
+				if ((*p)->getType() == type) {
+					addToPluginsInMemList((*p));
+				} else {
+					// Plugin is wrong type
+					(*p)->unloadPlugin();
+					delete (*p);
+				}
+			} else {
+				// Plugin did not load
+				delete (*p);
+			}
+		}
 	}
 }
 
@@ -455,86 +480,299 @@ DECLARE_SINGLETON(EngineManager);
  * This function works for both cached and uncached PluginManagers.
  * For the cached version, most of the logic here will short circuit.
  *
- * For the uncached version, we first try to find the plugin using the gameId
+ * For the uncached version, we first try to find the plugin using the engineId
  * and only if we can't find it there, we loop through the plugins.
  **/
-GameDescriptor EngineManager::findGame(const Common::String &gameName, const EnginePlugin **plugin) const {
-	GameDescriptor result;
+QualifiedGameList EngineManager::findGamesMatching(const Common::String &engineId, const Common::String &gameId) const {
+	QualifiedGameList results;
 
-	// First look for the game using the plugins in memory. This is critical
-	// for calls coming from inside games
-	result = findGameInLoadedPlugins(gameName, plugin);
-	if (!result.gameid().empty()) {
-		return result;
+	if (!engineId.empty()) {
+		// If we got an engine name, look for THE game only in that engine
+		const Plugin *p = EngineMan.findPlugin(engineId);
+		if (p) {
+			const MetaEngine &engine = p->get<MetaEngine>();
+
+			PlainGameDescriptor pluginResult = engine.findGame(gameId.c_str());
+			if (pluginResult.gameId) {
+				results.push_back(QualifiedGameDescriptor(engine.getEngineId(), pluginResult));
+			}
+		}
+	} else {
+		// This is a slow path, we have to scan the list of plugins
+		PluginMan.loadFirstPlugin();
+		do {
+			results.push_back(findGameInLoadedPlugins(gameId));
+		} while (PluginMan.loadNextPlugin());
 	}
 
-	// Now look for the game using the gameId. This is much faster than scanning plugin
-	// by plugin
-	if (PluginMan.loadPluginFromGameId(gameName))  {
-		result = findGameInLoadedPlugins(gameName, plugin);
-		if (!result.gameid().empty()) {
-			return result;
-		}
-	}
-
-	// We failed to find it using the gameid. Scan the list of plugins
-	PluginMan.loadFirstPlugin();
-	do {
-		result = findGameInLoadedPlugins(gameName, plugin);
-		if (!result.gameid().empty()) {
-			// Update with new plugin file name
-			PluginMan.updateConfigWithFileName(gameName);
-			break;
-		}
-	} while (PluginMan.loadNextPlugin());
-
-	return result;
+	return results;
 }
 
 /**
  * Find the game within the plugins loaded in memory
  **/
-GameDescriptor EngineManager::findGameInLoadedPlugins(const Common::String &gameName, const EnginePlugin **plugin) const {
+QualifiedGameList EngineManager::findGameInLoadedPlugins(const Common::String &gameId) const {
 	// Find the GameDescriptor for this target
-	const EnginePlugin::List &plugins = getPlugins();
-	GameDescriptor result;
+	const PluginList &plugins = getPlugins();
 
-	if (plugin)
-		*plugin = 0;
-
-	EnginePlugin::List::const_iterator iter;
+	QualifiedGameList results;
+	PluginList::const_iterator iter;
 
 	for (iter = plugins.begin(); iter != plugins.end(); ++iter) {
-		result = (**iter)->findGame(gameName.c_str());
-		if (!result.gameid().empty()) {
-			if (plugin)
-				*plugin = *iter;
-			return result;
+		const MetaEngine &engine = (*iter)->get<MetaEngine>();
+		PlainGameDescriptor pluginResult = engine.findGame(gameId.c_str());
+
+		if (pluginResult.gameId) {
+			results.push_back(QualifiedGameDescriptor(engine.getEngineId(), pluginResult));
 		}
 	}
-	return result;
+
+	return results;
 }
 
-GameList EngineManager::detectGames(const Common::FSList &fslist) const {
-	GameList candidates;
-	EnginePlugin::List plugins;
-	EnginePlugin::List::const_iterator iter;
+DetectionResults EngineManager::detectGames(const Common::FSList &fslist) const {
+	DetectedGames candidates;
+	PluginList plugins;
+	PluginList::const_iterator iter;
 	PluginManager::instance().loadFirstPlugin();
 	do {
 		plugins = getPlugins();
 		// Iterate over all known games and for each check if it might be
 		// the game in the presented directory.
 		for (iter = plugins.begin(); iter != plugins.end(); ++iter) {
-			candidates.push_back((**iter)->detectGames(fslist));
+			const MetaEngine &metaEngine = (*iter)->get<MetaEngine>();
+			DetectedGames engineCandidates = metaEngine.detectGames(fslist);
+
+			for (uint i = 0; i < engineCandidates.size(); i++) {
+				engineCandidates[i].path = fslist.begin()->getParent().getPath();
+				engineCandidates[i].shortPath = fslist.begin()->getParent().getDisplayName();
+				candidates.push_back(engineCandidates[i]);
+			}
+
 		}
 	} while (PluginManager::instance().loadNextPlugin());
-	return candidates;
+
+	return DetectionResults(candidates);
 }
 
-const EnginePlugin::List &EngineManager::getPlugins() const {
-	return (const EnginePlugin::List &)PluginManager::instance().getPlugins(PLUGIN_TYPE_ENGINE);
+const PluginList &EngineManager::getPlugins() const {
+	return PluginManager::instance().getPlugins(PLUGIN_TYPE_ENGINE);
 }
 
+namespace {
+
+void addStringToConf(const Common::String &key, const Common::String &value, const Common::String &domain) {
+	if (!value.empty())
+		ConfMan.set(key, value, domain);
+}
+
+} // End of anonymous namespace
+
+Common::String EngineManager::createTargetForGame(const DetectedGame &game) {
+	// The auto detector or the user made a choice.
+	// Pick a domain name which does not yet exist (after all, we
+	// are *adding* a game to the config, not replacing).
+	Common::String domain = game.preferredTarget;
+
+	assert(!domain.empty());
+	if (ConfMan.hasGameDomain(domain)) {
+		int suffixN = 1;
+		Common::String gameid(domain);
+
+		while (ConfMan.hasGameDomain(domain)) {
+			domain = gameid + Common::String::format("-%d", suffixN);
+			suffixN++;
+		}
+	}
+
+	// Add the name domain
+	ConfMan.addGameDomain(domain);
+
+	// Copy all non-empty relevant values into the new domain
+	addStringToConf("engineid", game.engineId, domain);
+	addStringToConf("gameid", game.gameId, domain);
+	addStringToConf("description", game.description, domain);
+	addStringToConf("language", Common::getLanguageCode(game.language), domain);
+	addStringToConf("platform", Common::getPlatformCode(game.platform), domain);
+	addStringToConf("path", game.path, domain);
+	addStringToConf("extra", game.extra, domain);
+	addStringToConf("guioptions", game.getGUIOptions(), domain);
+
+	// Add any extra configuration keys
+	for (Common::StringMap::iterator i = game._extraConfigEntries.begin();
+			i != game._extraConfigEntries.end(); ++i)
+		addStringToConf((*i)._key, (*i)._value, domain);
+
+	// TODO: Setting the description field here has the drawback
+	// that the user does never notice when we upgrade our descriptions.
+	// It might be nice to leave this field empty, and only set it to
+	// a value when the user edits the description string.
+	// However, at this point, that's impractical. Once we have a method
+	// to query all backends for the proper & full description of a given
+	// game target, we can change this (currently, you can only query
+	// for the generic gameid description; it's not possible to obtain
+	// a description which contains extended information like language, etc.).
+
+	return domain;
+}
+
+const Plugin *EngineManager::findLoadedPlugin(const Common::String &engineId) const {
+	const PluginList &plugins = getPlugins();
+
+	for (PluginList::const_iterator iter = plugins.begin(); iter != plugins.end(); iter++)
+		if (engineId == (*iter)->get<MetaEngine>().getEngineId())
+			return *iter;
+
+	return 0;
+}
+
+const Plugin *EngineManager::findPlugin(const Common::String &engineId) const {
+	// First look for the game using the plugins in memory. This is critical
+	// for calls coming from inside games
+	const Plugin *plugin = findLoadedPlugin(engineId);
+	if (plugin)
+		return plugin;
+
+	// Now look for the plugin using the engine ID. This is much faster than scanning plugin
+	// by plugin
+	if (PluginMan.loadPluginFromEngineId(engineId))  {
+		plugin = findLoadedPlugin(engineId);
+		if (plugin)
+			return plugin;
+	}
+
+	// We failed to find it using the engine ID. Scan the list of plugins
+	const PluginList &plugins = getPlugins();
+	if (!plugins.empty()) {
+		PluginMan.loadFirstPlugin();
+		do {
+			plugin = findLoadedPlugin(engineId);
+			if (plugin) {
+				// Update with new plugin file name
+				PluginMan.updateConfigWithFileName(engineId);
+				return plugin;
+			}
+		} while (PluginMan.loadNextPlugin());
+	}
+
+	return 0;
+}
+
+QualifiedGameDescriptor EngineManager::findTarget(const Common::String &target, const Plugin **plugin) const {
+	// Ignore empty targets
+	if (target.empty())
+		return QualifiedGameDescriptor();
+
+	// Lookup the domain. If we have no domain, fallback on the old function [ultra-deprecated].
+	const Common::ConfigManager::Domain *domain = ConfMan.getDomain(target);
+	if (!domain || !domain->contains("gameid") || !domain->contains("engineid"))
+		return QualifiedGameDescriptor();
+
+	// Look for the engine ID
+	const Plugin *foundPlugin = findPlugin(domain->getVal("engineid"));
+	if (!foundPlugin) {
+		return QualifiedGameDescriptor();
+	}
+
+	// Make sure it does support the game ID
+	const MetaEngine &engine = foundPlugin->get<MetaEngine>();
+	PlainGameDescriptor desc = engine.findGame(domain->getVal("gameid").c_str());
+	if (!desc.gameId) {
+		return QualifiedGameDescriptor();
+	}
+
+	if (plugin)
+		*plugin = foundPlugin;
+
+	return QualifiedGameDescriptor(engine.getEngineId(), desc);
+}
+
+void EngineManager::upgradeTargetIfNecessary(const Common::String &target) const {
+	Common::ConfigManager::Domain *domain = ConfMan.getDomain(target);
+	assert(domain);
+
+	if (!domain->contains("engineid")) {
+		upgradeTargetForEngineId(target);
+	}
+}
+
+void EngineManager::upgradeTargetForEngineId(const Common::String &target) const {
+	Common::ConfigManager::Domain *domain = ConfMan.getDomain(target);
+	assert(domain);
+
+	debug("Target '%s' lacks an engine ID, upgrading...", target.c_str());
+
+	Common::String oldGameId = domain->getVal("gameid");
+	Common::String path = domain->getVal("path");
+
+	// At this point the game ID and game path must be known
+	if (oldGameId.empty()) {
+		warning("The game ID is required to upgrade target '%s'", target.c_str());
+		return;
+	}
+	if (path.empty()) {
+		warning("The game path is required to upgrade target '%s'", target.c_str());
+		return;
+	}
+
+	// Game descriptor for the upgraded target
+	Common::String engineId;
+	Common::String newGameId;
+
+	// First, try to update entries for engines that previously used the "single id" system
+	// Search for an engine whose ID is the game ID
+	const Plugin *plugin = findPlugin(oldGameId);
+	if (plugin) {
+		// Run detection on the game path
+		Common::FSNode dir(path);
+		Common::FSList files;
+		if (!dir.getChildren(files, Common::FSNode::kListAll)) {
+			warning("Failed to access path '%s' when upgrading target '%s'", path.c_str(), target.c_str());
+			return;
+		}
+
+		// Take the first detection entry
+		const MetaEngine &metaEngine = plugin->get<MetaEngine>();
+		DetectedGames candidates = metaEngine.detectGames(files);
+		if (candidates.empty()) {
+			warning("No games supported by the engine '%s' were found in path '%s' when upgrading target '%s'",
+			        metaEngine.getEngineId(), path.c_str(), target.c_str());
+			return;
+		}
+
+		engineId = candidates[0].engineId;
+		newGameId = candidates[0].gameId;
+	}
+
+	// Next, try to find an engine with the game ID in its supported games list
+	if (engineId.empty()) {
+		QualifiedGameList candidates = findGamesMatching("", oldGameId);
+		if (candidates.size() > 1) {
+			warning("Multiple matching engines were found when upgrading target '%s'", target.c_str());
+			return;
+		} else if (!candidates.empty()) {
+			engineId = candidates[0].engineId;
+			newGameId = candidates[0].gameId;
+		}
+	}
+
+	if (engineId.empty() || newGameId.empty()) {
+		warning("No matching engine was found when upgrading target '%s'", target.c_str());
+		return;
+	}
+
+	domain->setVal("engineid", engineId);
+	domain->setVal("gameid", newGameId);
+
+	// Save a backup of the pre-upgrade gameId to the config file
+	if (newGameId != oldGameId) {
+		domain->setVal("oldgameid", oldGameId);
+	}
+
+	debug("Upgrade complete (engine ID '%s', game ID '%s')", engineId.c_str(), newGameId.c_str());
+
+	ConfMan.flushToDisk();
+}
 
 // Music plugins
 
@@ -544,6 +782,6 @@ namespace Common {
 DECLARE_SINGLETON(MusicManager);
 }
 
-const MusicPlugin::List &MusicManager::getPlugins() const {
-	return (const MusicPlugin::List &)PluginManager::instance().getPlugins(PLUGIN_TYPE_MUSIC);
+const PluginList &MusicManager::getPlugins() const {
+	return PluginManager::instance().getPlugins(PLUGIN_TYPE_MUSIC);
 }

@@ -93,7 +93,10 @@ void Lua_V1::GetActorTalkColor() {
 		return;
 	}
 	Actor *actor = getactor(actorObj);
-	lua_pushusertag(actor->getTalkColor().toEncodedValue(), MKTAG('C','O','L','R'));
+	int32 cTag = actor->getTalkColor().toEncodedValue();
+	if (g_grim->getGameType() == GType_MONKEY4)
+		cTag |= (0xFF << 24);
+	lua_pushusertag(cTag, MKTAG('C','O','L','R'));
 }
 
 void Lua_V1::SetActorRestChore() {
@@ -668,7 +671,7 @@ void Lua_V1::GetActorNodeLocation() {
 
 	Math::Matrix4 matrix;
 	matrix.setPosition(actor->getPos());
-	matrix.buildFromXYZ(actor->getYaw(), actor->getPitch(), actor->getRoll(), Math::EO_ZXY);
+	matrix.buildFromEuler(actor->getYaw(), actor->getPitch(), actor->getRoll(), Math::EO_ZXY);
 	root->setMatrix(matrix);
 	root->update();
 
@@ -1179,7 +1182,7 @@ void Lua_V1::TurnActorTo() {
 
 	if (lua_isuserdata(xObj) && lua_tag(xObj) == MKTAG('A','C','T','R')) {
 		Actor *destActor = getactor(xObj);
-		const Math::Vector3d &pos = destActor->getPos();
+		const Math::Vector3d &pos = destActor->getWorldPos();
 		x = pos.x();
 		y = pos.y();
 		z = pos.z();

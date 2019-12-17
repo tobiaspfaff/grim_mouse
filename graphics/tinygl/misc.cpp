@@ -1,3 +1,30 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 #include "graphics/tinygl/zgl.h"
 
@@ -60,6 +87,13 @@ void glopEnableDisable(GLContext *c, GLParam *p) {
 		break;
 	case TGL_DEPTH_TEST:
 		c->depth_test = v;
+		c->fb->enableDepthTest(v);
+		break;
+	case TGL_ALPHA_TEST:
+		c->fb->enableAlphaTest(v);
+		break;
+	case TGL_BLEND:
+		c->fb->enableBlending(v);
 		break;
 	case TGL_POLYGON_OFFSET_FILL:
 		if (v)
@@ -101,6 +135,23 @@ void glopEnableDisable(GLContext *c, GLParam *p) {
 	}
 }
 
+void glopBlendFunc(GLContext *c, GLParam *p) {
+	TGLenum sfactor = p[1].i;
+	TGLenum dfactor = p[2].i;
+	c->fb->setBlendingFactors(sfactor, dfactor);
+}
+
+void glopAlphaFunc(GLContext *c, GLParam *p) {
+	TGLenum func = p[1].i;
+	float ref = p[2].f;
+	c->fb->setAlphaTestFunc(func, (int)(ref * 255));
+}
+
+void glopDepthFunc(GLContext *c, GLParam *p) {
+	TGLenum func = p[1].i;
+	c->fb->setDepthFunc(func);
+}
+
 void glopShadeModel(GLContext *c, GLParam *p) {
 	int code = p[1].i;
 	c->current_shade_model = code;
@@ -140,13 +191,17 @@ void glopHint(GLContext *, GLParam *) {
 	// do nothing
 }
 
-void  glopPolygonOffset(GLContext *c, GLParam *p) {
+void glopPolygonOffset(GLContext *c, GLParam *p) {
 	c->offset_factor = p[1].f;
 	c->offset_units = p[2].f;
 }
 
 void glopColorMask(GLContext *c, TinyGL::GLParam *p) {
 	c->color_mask = p[1].i;
+}
+
+void glopDepthMask(GLContext *c, TinyGL::GLParam *p) {
+	c->fb->enableDepthWrite(p[1].i);
 }
 
 } // end of namespace TinyGL

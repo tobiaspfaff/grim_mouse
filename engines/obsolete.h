@@ -66,11 +66,10 @@ void upgradeTargetIfNecessary(const ObsoleteGameID *obsoleteList);
  * Optionally can take a list of obsolete game ids into account in order
  * to support obsolete gameids.
  */
-GameDescriptor findGameID(
+PlainGameDescriptor findGameID(
 	const char *gameid,
 	const PlainGameDescriptor *gameids,
-	const ObsoleteGameID *obsoleteList = 0
-	);
+	const ObsoleteGameID *obsoleteList = 0);
 
 
 } // End of namespace Engines

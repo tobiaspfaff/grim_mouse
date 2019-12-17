@@ -78,8 +78,9 @@ private:
 	Common::Array<AmbientSound> _sounds;
 
 	AmbientSound _cueSheet;
-	uint32 _cueStartFrame;
+	uint32 _cueStartTick;
 };
 
-} /* namespace Myst3 */
-#endif /* AMBIENT_H_ */
+} // End of namespace Myst3
+
+#endif // AMBIENT_H_

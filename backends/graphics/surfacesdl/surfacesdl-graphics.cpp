@@ -27,469 +27,242 @@
 
 #include "backends/graphics/surfacesdl/surfacesdl-graphics.h"
 #include "backends/events/sdl/sdl-events.h"
-#include "backends/platform/sdl/sdl.h"
 #include "common/config-manager.h"
-#include "common/mutex.h"
-#include "common/textconsole.h"
-#include "common/translation.h"
-#include "common/util.h"
-#ifdef USE_RGB_COLOR
-#include "common/list.h"
-#endif
-#include "graphics/font.h"
-#include "graphics/fontman.h"
-#include "graphics/scaler.h"
-#include "graphics/surface.h"
+#include "common/file.h"
+#include "engines/engine.h"
 #include "graphics/pixelbuffer.h"
-#include "gui/EventRecorder.h"
-
-static const OSystem::GraphicsMode s_supportedGraphicsModes[] = {
-	{0, 0, 0}
-};
-
-SurfaceSdlGraphicsManager::SurfaceSdlGraphicsManager(SdlEventSource *sdlEventSource)
-	:
-	SdlGraphicsManager(sdlEventSource),
-	_screen(0),
-	_overlayVisible(false),
-	_overlayscreen(0),
-	_overlayWidth(0), _overlayHeight(0),
-	_overlayDirty(true),
-	_screenChangeCount(0)
-#ifdef USE_OPENGL
-	, _overlayNumTex(0), _overlayTexIds(0)
+#include "graphics/surface.h"
+#ifdef USE_PNG
+#include "image/png.h"
 #endif
+
+SurfaceSdlGraphicsManager::SurfaceSdlGraphicsManager(SdlEventSource *sdlEventSource, SdlWindow *window, const Capabilities &capabilities)
+	:
+	ResVmSdlGraphicsManager(sdlEventSource, window, capabilities),
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	_renderer(nullptr), _screenTexture(nullptr),
+#endif
+	_screen(0),
+	_subScreen(0),
+	_overlayscreen(0),
+	_overlayDirty(true),
+	_gameRect()
 	{
+		_sideSurfaces[0] = _sideSurfaces[1] = nullptr;
 }
 
 SurfaceSdlGraphicsManager::~SurfaceSdlGraphicsManager() {
 	closeOverlay();
-}
 
-void SurfaceSdlGraphicsManager::activateManager() {
-	SdlGraphicsManager::activateManager();
-
-	// Register the graphics manager as a event observer
-	g_system->getEventManager()->getEventDispatcher()->registerObserver(this, 10, false);
-}
-
-void SurfaceSdlGraphicsManager::deactivateManager() {
-	// Unregister the event observer
-	if (g_system->getEventManager()->getEventDispatcher()) {
-		g_system->getEventManager()->getEventDispatcher()->unregisterObserver(this);
+	if (_subScreen) {
+		SDL_FreeSurface(_subScreen);
+		_subScreen = nullptr;
 	}
 
-	SdlGraphicsManager::deactivateManager();
-}
-
-void SurfaceSdlGraphicsManager::resetGraphicsScale() {
-	setGraphicsMode(0);
-}
-
-bool SurfaceSdlGraphicsManager::hasFeature(OSystem::Feature f) {
-	return
-		(f == OSystem::kFeatureFullscreenMode) ||
-#ifdef USE_OPENGL
-		(f == OSystem::kFeatureOpenGL);
-#else
-	false;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	deinitializeRenderer();
 #endif
+}
+
+bool SurfaceSdlGraphicsManager::hasFeature(OSystem::Feature f) const {
+	return
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		(f == OSystem::kFeatureFullscreenToggleKeepsContext) ||
+#endif
+		(f == OSystem::kFeatureFullscreenMode);
 }
 
 void SurfaceSdlGraphicsManager::setFeatureState(OSystem::Feature f, bool enable) {
 	switch (f) {
-	case OSystem::kFeatureFullscreenMode:
-		_fullscreen = enable;
-		break;
-	default:
-		break;
-	}
-}
-
-bool SurfaceSdlGraphicsManager::getFeatureState(OSystem::Feature f) {
-	switch (f) {
 		case OSystem::kFeatureFullscreenMode:
-			return _fullscreen;
+			if (_fullscreen != enable) {
+				_fullscreen = enable;
+				createOrUpdateScreen();
+			}
+			break;
 		default:
-			return false;
+			ResVmSdlGraphicsManager::setFeatureState(f, enable);
+			break;
 	}
 }
 
-const OSystem::GraphicsMode *SurfaceSdlGraphicsManager::getSupportedGraphicsModes() const {
-	return s_supportedGraphicsModes;
-}
+void SurfaceSdlGraphicsManager::setupScreen(uint gameWidth, uint gameHeight, bool fullscreen, bool accel3d) {
+	assert(!accel3d);
 
-int SurfaceSdlGraphicsManager::getDefaultGraphicsMode() const {
-	return 0;// ResidualVM: not use it
-}
+	if (_subScreen) {
+		SDL_FreeSurface(_subScreen);
+		_subScreen = nullptr;
+	}
 
-void SurfaceSdlGraphicsManager::beginGFXTransaction() {
-	// ResidualVM: not use it
-}
-
-OSystem::TransactionError SurfaceSdlGraphicsManager::endGFXTransaction() {
-	// ResidualVM: not use it
-	return OSystem::kTransactionSuccess;
-}
-
-#ifdef USE_RGB_COLOR
-Common::List<Graphics::PixelFormat> SurfaceSdlGraphicsManager::getSupportedFormats() const {
-	// ResidualVM: not use it
-	return _supportedFormats;
-}
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	deinitializeRenderer();
 #endif
 
-bool SurfaceSdlGraphicsManager::setGraphicsMode(int mode) {
-	// ResidualVM: not use it
-	return true;
-}
-
-int SurfaceSdlGraphicsManager::getGraphicsMode() const {
-	// ResidualVM: not use it
-	return 0;
-}
-
-void SurfaceSdlGraphicsManager::initSize(uint w, uint h, const Graphics::PixelFormat *format) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::launcherInitSize(uint w, uint h) {
-	closeOverlay();
-	setupScreen(w, h, false, false);
-}
-
-Graphics::PixelBuffer SurfaceSdlGraphicsManager::setupScreen(int screenW, int screenH, bool fullscreen, bool accel3d) {
-	uint32 sdlflags;
-	int bpp;
-
-	closeOverlay();
-
-#ifdef USE_OPENGL
-	_opengl = accel3d;
-	_antialiasing = 0;
-#endif
+	_engineRequestedWidth = gameWidth;
+	_engineRequestedHeight = gameHeight;
 	_fullscreen = fullscreen;
+	_lockAspectRatio = ConfMan.getBool("aspect_ratio");
 
-#ifdef USE_OPENGL
-	if (_opengl) {
-		if (ConfMan.hasKey("antialiasing"))
-			_antialiasing = ConfMan.getInt("antialiasing");
+	createOrUpdateScreen();
 
-		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-		setAntialiasing(true);
+	SDL_PixelFormat *f = _screen->format;
+	_subScreen = SDL_CreateRGBSurface(SDL_SWSURFACE, gameWidth, gameHeight, f->BitsPerPixel, f->Rmask, f->Gmask, f->Bmask, f->Amask);
 
-		sdlflags = SDL_OPENGL;
-		bpp = 24;
-	} else
-#endif
-	{
-		bpp = 16;
-		#ifdef __amigaos4__
-			sdlflags = SDL_SWSURFACE;
-			// ResidualVM requires direct access to the SDL_surface's pixel data,
-			// but with AmigaOS4 hardware surfaces you can only do that if the
-			// P96 bitmap is locked. So we replace SDL_HWSURFACE with SDL_SWSURFACE.
-			// https://code.google.com/p/os4sdl/source/browse/trunk/src/video/amigaos4/SDL_os4surface.c
-		#else
-			sdlflags = SDL_HWSURFACE;
-		#endif
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_SetSurfaceBlendMode(_subScreen, SDL_BLENDMODE_NONE);
+#endif // SDL_VERSION_ATLEAST(2, 0, 0)
+}
+
+void SurfaceSdlGraphicsManager::createOrUpdateScreen() {
+	closeOverlay();
+
+	// Choose the effective window size or fullscreen mode
+	uint effectiveWidth;
+	uint effectiveHeight;
+	if (_fullscreen && _lockAspectRatio) {
+		Common::Rect fullscreenResolution = getPreferredFullscreenResolution();
+		effectiveWidth = fullscreenResolution.width();
+		effectiveHeight = fullscreenResolution.height();
+	} else {
+		effectiveWidth = _engineRequestedWidth;
+		effectiveHeight = _engineRequestedHeight;
 	}
 
+	// The game is centered inside the effective screen
+	_gameRect = Math::Rect2d(
+			Math::Vector2d((effectiveWidth - _engineRequestedWidth) / 2, (effectiveHeight - _engineRequestedHeight) / 2),
+			Math::Vector2d((effectiveWidth + _engineRequestedWidth) / 2, (effectiveHeight + _engineRequestedHeight) / 2)
+	);
+
+	uint32 sdlflags = SDL_SWSURFACE;
 	if (_fullscreen)
 		sdlflags |= SDL_FULLSCREEN;
 
-	_screen = SDL_SetVideoMode(screenW, screenH, bpp, sdlflags);
-#ifdef USE_OPENGL
-	// If 32-bit with antialiasing failed, try 32-bit without antialiasing
-	if (!_screen && _opengl && _antialiasing) {
-		warning("Couldn't create 32-bit visual with AA, trying 32-bit without AA");
-		setAntialiasing(false);
-		_screen = SDL_SetVideoMode(screenW, screenH, bpp, sdlflags);
+	_screen = SDL_SetVideoMode(effectiveWidth, effectiveHeight, ConfMan.getInt("bpp"), sdlflags);
+	if (!_screen) {
+		warning("SDL_SetVideoMode failed: %s", SDL_GetError());
+		g_system->quit();
 	}
 
-	// If 32-bit failed, try 16-bit
-	if (!_screen && _opengl) {
-		warning("Couldn't create 32-bit visual, trying 16-bit");
-		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5);
-		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 5);
-		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5);
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 1);
-		setAntialiasing(true);
-		_screen = SDL_SetVideoMode(screenW, screenH, 0, sdlflags);
+	SDL_PixelFormat *f = _screen->format;
+	_overlayscreen = SDL_CreateRGBSurface(SDL_SWSURFACE, effectiveWidth, effectiveHeight, f->BitsPerPixel,
+	                                      f->Rmask, f->Gmask, f->Bmask, f->Amask);
+
+	_overlayFormat = Graphics::PixelFormat(f->BytesPerPixel, 8 - f->Rloss, 8 - f->Gloss, 8 - f->Bloss, 0,
+	                                       f->Rshift, f->Gshift, f->Bshift, f->Ashift);
+
+	if (!_overlayscreen) {
+		warning("SDL_RGBSurface failed: %s", SDL_GetError());
+		g_system->quit();
 	}
 
-	// If 16-bit with antialiasing failed, try 16-bit without antialiasing
-	if (!_screen && _opengl && _antialiasing) {
-		warning("Couldn't create 16-bit visual with AA, trying 16-bit without AA");
-		setAntialiasing(false);
-		_screen = SDL_SetVideoMode(screenW, screenH, 0, sdlflags);
-	}
-#endif
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_SetSurfaceBlendMode(_overlayscreen, SDL_BLENDMODE_NONE);
+#endif // SDL_VERSION_ATLEAST(2, 0, 0)
 
-	if (!_screen)
-		error("Could not initialize video: %s", SDL_GetError());
-
-#ifdef USE_OPENGL
-	if (_opengl) {
-		int glflag;
-
-		// apply atribute again for sure based on SDL docs
-		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-
-		SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &glflag);
-		warning("INFO: GL RED bits: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &glflag);
-		warning("INFO: GL GREEN bits: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &glflag);
-		warning("INFO: GL BLUE bits: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &glflag);
-		warning("INFO: GL APLHA bits: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &glflag);
-		warning("INFO: GL Z buffer depth bits: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_DOUBLEBUFFER, &glflag);
-		warning("INFO: GL Double Buffer: %d", glflag);
-		SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &glflag);
-		warning("INFO: GL Stencil buffer bits: %d", glflag);
-	}
-#endif
-
-	_overlayWidth = screenW;
-	_overlayHeight = screenH;
-
-#ifdef USE_OPENGL
-	if (_opengl) {
-		uint32 rmask, gmask, bmask, amask;
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		rmask = 0x00001f00;
-		gmask = 0x000007e0;
-		bmask = 0x000000f8;
-		amask = 0x00000000;
-#else
-		rmask = 0x0000f800;
-		gmask = 0x000007e0;
-		bmask = 0x0000001f;
-		amask = 0x00000000;
-#endif
-		_overlayscreen = SDL_CreateRGBSurface(SDL_SWSURFACE, _overlayWidth, _overlayHeight, 16,
-						rmask, gmask, bmask, amask);
-	} else
-#endif
-	{
-		_overlayscreen = SDL_CreateRGBSurface(SDL_SWSURFACE, _overlayWidth, _overlayHeight, 16,
-					_screen->format->Rmask, _screen->format->Gmask, _screen->format->Bmask, _screen->format->Amask);
-	}
-
-	if (!_overlayscreen)
-		error("allocating _overlayscreen failed");
-
-	/*_overlayFormat.bytesPerPixel = _overlayscreen->format->BytesPerPixel;
-
-// 	For some reason the values below aren't right, at least on my system
-	_overlayFormat.rLoss = _overlayscreen->format->Rloss;
-	_overlayFormat.gLoss = _overlayscreen->format->Gloss;
-	_overlayFormat.bLoss = _overlayscreen->format->Bloss;
-	_overlayFormat.aLoss = _overlayscreen->format->Aloss;
-
-	_overlayFormat.rShift = _overlayscreen->format->Rshift;
-	_overlayFormat.gShift = _overlayscreen->format->Gshift;
-	_overlayFormat.bShift = _overlayscreen->format->Bshift;
-	_overlayFormat.aShift = _overlayscreen->format->Ashift;*/
-
-	_overlayFormat = Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0);
+	_screenFormat = _overlayFormat;
 
 	_screenChangeCount++;
 
-	SDL_PixelFormat *f = _screen->format;
-	_screenFormat = Graphics::PixelFormat(f->BytesPerPixel, 8 - f->Rloss, 8 - f->Gloss, 8 - f->Bloss, 0,
-										f->Rshift, f->Gshift, f->Bshift, f->Ashift);
-
-	return Graphics::PixelBuffer(_screenFormat, (byte *)_screen->pixels);
+	_eventSource->resetKeyboardEmulation(_gameRect.getWidth() - 1, _gameRect.getHeight() - 1);
 }
 
-#define BITMAP_TEXTURE_SIZE 256
+Graphics::PixelBuffer SurfaceSdlGraphicsManager::getScreenPixelBuffer() {
+	return Graphics::PixelBuffer(_screenFormat, (byte *)_subScreen->pixels);
+}
 
-void SurfaceSdlGraphicsManager::updateScreen() {
-#ifdef USE_OPENGL
-	if (_opengl) {
-#ifndef USE_OPENGL_SHADERS
-		if (_overlayVisible) {
-			if (_overlayDirty) {
-				// remove if already exist
-				if (_overlayNumTex > 0) {
-					glDeleteTextures(_overlayNumTex, _overlayTexIds);
-					delete[] _overlayTexIds;
-					_overlayNumTex = 0;
-				}
-
-				_overlayNumTex = ((_overlayWidth + (BITMAP_TEXTURE_SIZE - 1)) / BITMAP_TEXTURE_SIZE) *
-								((_overlayHeight + (BITMAP_TEXTURE_SIZE - 1)) / BITMAP_TEXTURE_SIZE);
-				_overlayTexIds = new GLuint[_overlayNumTex];
-				glGenTextures(_overlayNumTex, _overlayTexIds);
-				for (int i = 0; i < _overlayNumTex; i++) {
-					glBindTexture(GL_TEXTURE_2D, _overlayTexIds[i]);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
-				}
-
-				glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
-				glPixelStorei(GL_UNPACK_ROW_LENGTH, _overlayWidth);
-
-				int curTexIdx = 0;
-				for (int y = 0; y < _overlayHeight; y += BITMAP_TEXTURE_SIZE) {
-					for (int x = 0; x < _overlayWidth; x += BITMAP_TEXTURE_SIZE) {
-						int t_width = (x + BITMAP_TEXTURE_SIZE >= _overlayWidth) ? (_overlayWidth - x) : BITMAP_TEXTURE_SIZE;
-						int t_height = (y + BITMAP_TEXTURE_SIZE >= _overlayHeight) ? (_overlayHeight - y) : BITMAP_TEXTURE_SIZE;
-						glBindTexture(GL_TEXTURE_2D, _overlayTexIds[curTexIdx]);
-						glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t_width, t_height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (byte *)_overlayscreen->pixels + (y * 2 * _overlayWidth) + (2 * x));
-						curTexIdx++;
-					}
-				}
-				glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-				glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-			}
-
-			// Save current state
-			glPushAttrib(GL_TRANSFORM_BIT | GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_SCISSOR_BIT);
-
-			// prepare view
-			glMatrixMode(GL_PROJECTION);
-			glPushMatrix();
-			glLoadIdentity();
-			glOrtho(0, _overlayWidth, _overlayHeight, 0, 0, 1);
-
-			glMatrixMode(GL_MODELVIEW);
-			glPushMatrix();
-			glLoadIdentity();
-
-			glMatrixMode(GL_TEXTURE);
-			glPushMatrix();
-			glLoadIdentity();
-
-			glDisable(GL_LIGHTING);
-			glEnable(GL_TEXTURE_2D);
-			glDisable(GL_DEPTH_TEST);
-			glDepthMask(GL_FALSE);
-			glEnable(GL_SCISSOR_TEST);
-
-			glScissor(0, 0, _overlayWidth, _overlayHeight);
-
-			int curTexIdx = 0;
-			for (int y = 0; y < _overlayHeight; y += BITMAP_TEXTURE_SIZE) {
-				for (int x = 0; x < _overlayWidth; x += BITMAP_TEXTURE_SIZE) {
-					glBindTexture(GL_TEXTURE_2D, _overlayTexIds[curTexIdx]);
-					glBegin(GL_QUADS);
-					glTexCoord2f(0, 0);
-					glVertex2i(x, y);
-					glTexCoord2f(1.0f, 0.0f);
-					glVertex2i(x + BITMAP_TEXTURE_SIZE, y);
-					glTexCoord2f(1.0f, 1.0f);
-					glVertex2i(x + BITMAP_TEXTURE_SIZE, y + BITMAP_TEXTURE_SIZE);
-					glTexCoord2f(0.0f, 1.0f);
-					glVertex2i(x, y + BITMAP_TEXTURE_SIZE);
-					glEnd();
-					curTexIdx++;
-				}
-			}
-
-			// Restore previous state
-			glMatrixMode(GL_PROJECTION);
-			glPopMatrix();
-
-			glMatrixMode(GL_MODELVIEW);
-			glPopMatrix();
-
-			glMatrixMode(GL_TEXTURE);
-			glPopMatrix();
-
-			glPopAttrib();
+void SurfaceSdlGraphicsManager::drawSideTextures() {
+	if (_fullscreen && _lockAspectRatio) {
+		if (_sideSurfaces[0]) {
+			SDL_Rect dstrect;
+			dstrect.x = _gameRect.getTopLeft().getX() - _sideSurfaces[0]->w;
+			dstrect.y = _gameRect.getTopLeft().getY();
+			dstrect.w = _sideSurfaces[0]->w;
+			dstrect.h = _sideSurfaces[0]->h;
+			SDL_BlitSurface(_sideSurfaces[0], NULL, _screen, &dstrect);
 		}
-#endif
-		SDL_GL_SwapBuffers();
-	} else
-#endif
-	{
-		if (_overlayVisible) {
-			SDL_LockSurface(_screen);
-			SDL_LockSurface(_overlayscreen);
-			Graphics::PixelBuffer srcBuf(_overlayFormat, (byte *)_overlayscreen->pixels);
-			Graphics::PixelBuffer dstBuf(_screenFormat, (byte *)_screen->pixels);
-			int h = _overlayHeight;
-
-			do {
-				dstBuf.copyBuffer(0, _overlayWidth, srcBuf);
-
-				srcBuf.shiftBy(_overlayWidth);
-				dstBuf.shiftBy(_overlayWidth);
-			} while (--h);
-			SDL_UnlockSurface(_screen);
-			SDL_UnlockSurface(_overlayscreen);
+		if (_sideSurfaces[1]) {
+			SDL_Rect dstrect;
+			dstrect.x = _gameRect.getTopRight().getX();
+			dstrect.y = _gameRect.getTopLeft().getY();
+			dstrect.w = _sideSurfaces[1]->w;
+			dstrect.h = _sideSurfaces[1]->h;
+			SDL_BlitSurface(_sideSurfaces[1], NULL, _screen, &dstrect);
 		}
-		SDL_Flip(_screen);
 	}
 }
 
-void SurfaceSdlGraphicsManager::copyRectToScreen(const void *src, int pitch, int x, int y, int w, int h) {
-	// ResidualVM: not use it
+void SurfaceSdlGraphicsManager::drawOverlay() {
+	if (!_overlayscreen)
+		return;
+
+	SDL_BlitSurface(_overlayscreen, NULL, _screen, NULL);
 }
 
-Graphics::Surface *SurfaceSdlGraphicsManager::lockScreen() {
-	return NULL; // ResidualVM: not use it
+void SurfaceSdlGraphicsManager::updateScreen() {
+	SDL_Rect dstrect;
+	dstrect.x = _gameRect.getTopLeft().getX();
+	dstrect.y = _gameRect.getTopLeft().getY();
+	dstrect.w = _gameRect.getWidth();
+	dstrect.h = _gameRect.getHeight();
+	SDL_BlitSurface(_subScreen, NULL, _screen, &dstrect);
+
+	if (_overlayVisible) {
+		drawOverlay();
+	}
+	drawSideTextures();
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_UpdateTexture(_screenTexture, nullptr, _screen->pixels, _screen->pitch);
+
+	SDL_RenderClear(_renderer);
+	SDL_RenderCopy(_renderer, _screenTexture, nullptr, nullptr);
+	SDL_RenderPresent(_renderer);
+#else
+	SDL_Flip(_screen);
+#endif
 }
 
-void SurfaceSdlGraphicsManager::unlockScreen() {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::fillScreen(uint32 col) {
-	// ResidualVM: not use it
-}
-
-int16 SurfaceSdlGraphicsManager::getHeight() {
+int16 SurfaceSdlGraphicsManager::getHeight() const {
 	// ResidualVM specific
-	return _screen->h;
+	return _subScreen->h;
 }
 
-int16 SurfaceSdlGraphicsManager::getWidth() {
+int16 SurfaceSdlGraphicsManager::getWidth() const {
 	// ResidualVM specific
-	return _screen->w;
-}
-
-void SurfaceSdlGraphicsManager::setPalette(const byte *colors, uint start, uint num) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::grabPalette(byte *colors, uint start, uint num) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::setCursorPalette(const byte *colors, uint start, uint num) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::setShakePos(int shake_pos) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::setFocusRectangle(const Common::Rect &rect) {
-	// ResidualVM: not use it
-}
-
-void SurfaceSdlGraphicsManager::clearFocusRectangle() {
-	// ResidualVM: not use it
+	return _subScreen->w;
 }
 
 #pragma mark -
 #pragma mark --- Overlays ---
 #pragma mark -
+
+void SurfaceSdlGraphicsManager::clearOverlay() {
+	if (!_overlayscreen)
+		return;
+
+	if (!_overlayVisible)
+		return;
+
+	SDL_BlitSurface(_screen, NULL, _overlayscreen, NULL);
+
+	_overlayDirty = true;
+}
+
+void SurfaceSdlGraphicsManager::suggestSideTextures(Graphics::Surface *left, Graphics::Surface *right) {
+	delete _sideSurfaces[0];
+	_sideSurfaces[0] = nullptr;
+	delete _sideSurfaces[1];
+	_sideSurfaces[1] = nullptr;
+	if (left) {
+		_sideSurfaces[0] = SDL_CreateRGBSurface(SDL_SWSURFACE, left->w, left->h, 32, 0xff << left->format.rShift, 0xff << left->format.gShift, 0xff << left->format.bShift, 0xff << left->format.aShift);
+		memcpy(_sideSurfaces[0]->pixels, left->getPixels(), left->w * left->h * 4);
+	}
+	if (right) {
+		_sideSurfaces[1] = SDL_CreateRGBSurface(SDL_SWSURFACE, right->w, right->h, 32, 0xff << right->format.rShift, 0xff << right->format.gShift, 0xff << right->format.bShift, 0xff << right->format.aShift);
+		memcpy(_sideSurfaces[1]->pixels, right->getPixels(), right->w * right->h * 4);
+	}
+}
 
 void SurfaceSdlGraphicsManager::showOverlay() {
 	if (_overlayVisible)
@@ -498,70 +271,22 @@ void SurfaceSdlGraphicsManager::showOverlay() {
 	_overlayVisible = true;
 
 	clearOverlay();
+
+	_eventSource->resetKeyboardEmulation(getOverlayWidth() - 1, getOverlayHeight() - 1);
 }
 
 void SurfaceSdlGraphicsManager::hideOverlay() {
-
 	if (!_overlayVisible)
 		return;
 
 	_overlayVisible = false;
 
 	clearOverlay();
+
+	_eventSource->resetKeyboardEmulation(_gameRect.getWidth() - 1, _gameRect.getHeight() - 1);
 }
 
-void SurfaceSdlGraphicsManager::clearOverlay() {
-
-	if (!_overlayVisible)
-		return;
-
-#ifdef USE_OPENGL
-	if (_opengl) {
-		SDL_Surface *tmp = SDL_CreateRGBSurface(SDL_SWSURFACE, _overlayWidth, _overlayHeight, 16,
-				_overlayscreen->format->Rmask, _overlayscreen->format->Gmask,
-				_overlayscreen->format->Bmask, _overlayscreen->format->Amask);
-
-		SDL_LockSurface(tmp);
-		SDL_LockSurface(_overlayscreen);
-
-		glReadPixels(0, 0, _overlayWidth, _overlayHeight, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, tmp->pixels);
-
-		// Flip pixels vertically
-		byte *src = (byte *)tmp->pixels;
-		byte *buf = (byte *)_overlayscreen->pixels + (_overlayHeight - 1) * _overlayscreen->pitch;
-		int h = _overlayHeight;
-		do {
-			memcpy(buf, src, _overlayWidth * _overlayscreen->format->BytesPerPixel);
-			src += tmp->pitch;
-			buf -= _overlayscreen->pitch;
-		} while (--h);
-
-		SDL_UnlockSurface(_overlayscreen);
-		SDL_UnlockSurface(tmp);
-
-		SDL_FreeSurface(tmp);
-	} else
-#endif
-	{
-		SDL_LockSurface(_screen);
-		SDL_LockSurface(_overlayscreen);
-		Graphics::PixelBuffer srcBuf(_screenFormat, (byte *)_screen->pixels);
-		Graphics::PixelBuffer dstBuf(_overlayFormat, (byte *)_overlayscreen->pixels);
-		int h = _overlayHeight;
-
-		do {
-			dstBuf.copyBuffer(0, _overlayWidth, srcBuf);
-
-			srcBuf.shiftBy(_overlayWidth);
-			dstBuf.shiftBy(_overlayWidth);
-		} while (--h);
-		SDL_UnlockSurface(_screen);
-		SDL_UnlockSurface(_overlayscreen);
-	}
-	_overlayDirty = true;
-}
-
-void SurfaceSdlGraphicsManager::grabOverlay(void *buf, int pitch) {
+void SurfaceSdlGraphicsManager::grabOverlay(void *buf, int pitch) const {
 	if (_overlayscreen == NULL)
 		return;
 
@@ -570,9 +295,9 @@ void SurfaceSdlGraphicsManager::grabOverlay(void *buf, int pitch) {
 
 	byte *src = (byte *)_overlayscreen->pixels;
 	byte *dst = (byte *)buf;
-	int h = _overlayHeight;
+	int h = _overlayscreen->h;
 	do {
-		memcpy(dst, src, _overlayWidth * _overlayscreen->format->BytesPerPixel);
+		memcpy(dst, src, _overlayscreen->w * _overlayscreen->format->BytesPerPixel);
 		src += _overlayscreen->pitch;
 		dst += pitch;
 	} while (--h);
@@ -584,12 +309,12 @@ void SurfaceSdlGraphicsManager::copyRectToOverlay(const void *buf, int pitch, in
 	if (_overlayscreen == NULL)
 		return;
 
-	const byte *src = (const byte*)buf;
+	const byte *src = (const byte *)buf;
 
 	// Clip the coordinates
 	if (x < 0) {
 		w += x;
-		src -= x * 2;
+		src -= x * _overlayscreen->format->BytesPerPixel;
 		x = 0;
 	}
 
@@ -599,12 +324,12 @@ void SurfaceSdlGraphicsManager::copyRectToOverlay(const void *buf, int pitch, in
 		y = 0;
 	}
 
-	if (w > _overlayWidth - x) {
-		w = _overlayWidth - x;
+	if (w > _overlayscreen->w - x) {
+		w = _overlayscreen->w - x;
 	}
 
-	if (h > _overlayHeight - y) {
-		h = _overlayHeight - y;
+	if (h > _overlayscreen->h - y) {
+		h = _overlayscreen->h - y;
 	}
 
 	if (w <= 0 || h <= 0)
@@ -624,101 +349,185 @@ void SurfaceSdlGraphicsManager::copyRectToOverlay(const void *buf, int pitch, in
 }
 
 void SurfaceSdlGraphicsManager::closeOverlay() {
+	SDL_FreeSurface(_sideSurfaces[0]);
+	SDL_FreeSurface(_sideSurfaces[1]);
+	_sideSurfaces[0] = _sideSurfaces[1] = nullptr;
 	if (_overlayscreen) {
 		SDL_FreeSurface(_overlayscreen);
-		_overlayscreen = NULL;
-#ifdef USE_OPENGL
-		if (_overlayNumTex > 0) {
-			glDeleteTextures(_overlayNumTex, _overlayTexIds);
-			delete[] _overlayTexIds;
-			_overlayNumTex = 0;
-		}
-#endif
+		_overlayscreen = nullptr;
 	}
-}
-
-#pragma mark -
-#pragma mark --- Mouse ---
-#pragma mark -
-
-bool SurfaceSdlGraphicsManager::showMouse(bool visible) {
-	SDL_ShowCursor(visible);
-	return true;
-}
-
-// ResidualVM specific method
-bool SurfaceSdlGraphicsManager::lockMouse(bool lock) {
-	if (lock)
-		SDL_WM_GrabInput(SDL_GRAB_ON);
-	else
-		SDL_WM_GrabInput(SDL_GRAB_OFF);
-	return true;
+	if (_screen) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		SDL_FreeSurface(_screen);
+#endif
+		_screen = nullptr;
+	}
 }
 
 void SurfaceSdlGraphicsManager::warpMouse(int x, int y) {
 	//ResidualVM specific
-	SDL_WarpMouse(x, y);
-}
+	// Scale from game coordinates to screen coordinates
+	x = (x * _gameRect.getWidth()) / _subScreen->w;
+	y = (y * _gameRect.getHeight()) / _subScreen->h;
 
-void SurfaceSdlGraphicsManager::setMouseCursor(const void *buf, uint w, uint h, int hotspot_x, int hotspot_y, uint32 keycolor, bool dontScale, const Graphics::PixelFormat *format) {
-	// ResidualVM: not use it
-}
+	x += _gameRect.getTopLeft().getX();
+	y += _gameRect.getTopLeft().getY();
 
-#pragma mark -
-#pragma mark --- On Screen Display ---
-#pragma mark -
-
-#ifdef USE_OSD
-void SurfaceSdlGraphicsManager::displayMessageOnOSD(const char *msg) {
-	// ResidualVM: not use it
-}
-#endif
-
-
-#ifdef USE_OPENGL
-void SurfaceSdlGraphicsManager::setAntialiasing(bool enable) {
-	// Antialiasing works without setting MULTISAMPLEBUFFERS, but as SDL's official
-	// tests set both values, this seems to be the standard way to do it. It could
-	// just be that in current OpenGL implementations setting SDL_GL_MULTISAMPLESAMPLES
-	// implicitly sets SDL_GL_MULTISAMPLEBUFFERS as well.
-	if (_antialiasing && enable) {
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, _antialiasing);
-	} else {
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-	}
-}
-#endif
-
-bool SurfaceSdlGraphicsManager::notifyEvent(const Common::Event &event) {
-	//ResidualVM specific:
-	switch ((int)event.type) {
-	case Common::EVENT_KEYDOWN:
-		break;
-	case Common::EVENT_KEYUP:
-		break;
-	default:
-		break;
-	}
-
-	return false;
-}
-
-void SurfaceSdlGraphicsManager::notifyVideoExpose() {
-	_forceFull = true;
-	//ResidualVM specific:
-	updateScreen();
+	_window->warpMouseInWindow(x, y);
 }
 
 void SurfaceSdlGraphicsManager::transformMouseCoordinates(Common::Point &point) {
-	return; // ResidualVM: not use it
+	if (_overlayVisible)
+		return;
+
+	// Scale from screen coordinates to game coordinates
+	point.x -= _gameRect.getTopLeft().getX();
+	point.y -= _gameRect.getTopLeft().getY();
+
+	point.x = (point.x * _subScreen->w) / _gameRect.getWidth();
+	point.y = (point.y * _subScreen->h) / _gameRect.getHeight();
+
+	// Make sure we only supply valid coordinates.
+	point.x = CLIP<int16>(point.x, 0, _subScreen->w - 1);
+	point.y = CLIP<int16>(point.y, 0, _subScreen->h - 1);
 }
 
-void SurfaceSdlGraphicsManager::notifyMousePos(Common::Point mouse) {
-	transformMouseCoordinates(mouse);
-	// ResidualVM: not use that:
-	//setMousePos(mouse.x, mouse.y);
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+void SurfaceSdlGraphicsManager::deinitializeRenderer() {
+	SDL_DestroyTexture(_screenTexture);
+	_screenTexture = nullptr;
+
+	SDL_DestroyRenderer(_renderer);
+	_renderer = nullptr;
+}
+
+SDL_Surface *SurfaceSdlGraphicsManager::SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags) {
+	deinitializeRenderer();
+
+	uint32 createWindowFlags = 0;
+	Uint32 rmask, gmask, bmask, amask, format;
+	int depth;
+#ifdef USE_SDL_RESIZABLE_WINDOW
+	createWindowFlags |= SDL_WINDOW_RESIZABLE;
+#endif
+	if ((flags & SDL_FULLSCREEN) != 0) {
+		// On Linux/X11, when toggling to fullscreen, the window manager saves
+		// the window size to be able to restore it when going back to windowed mode.
+		// If the user configured ResidualVM to start in fullscreen mode, we first
+		// create a window and then toggle it to fullscreen to give the window manager
+		// a chance to save the window size. That way if the user switches back
+		// to windowed mode, the window manager has a window size to apply instead
+		// of leaving the window at the fullscreen resolution size.
+		if (!_window->getSDLWindow()) {
+			_window->createOrUpdateWindow(width, height, createWindowFlags);
+		}
+
+		createWindowFlags |= SDL_WINDOW_FULLSCREEN;
+	}
+
+	if (!_window->createOrUpdateWindow(width, height, createWindowFlags)) {
+		return nullptr;
+	}
+
+	_renderer = SDL_CreateRenderer(_window->getSDLWindow(), -1, 0);
+	if (!_renderer) {
+		deinitializeRenderer();
+		return nullptr;
+	}
+
+	SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_NONE);
+
+	switch (bpp) {
+	case 0:
+	case 32:
+		format = SDL_PIXELFORMAT_ARGB8888;
+		break;
+	case 16:
+		format = SDL_PIXELFORMAT_RGB565;
+		break;
+	default:
+		warning("Unsupported bpp value: %i", bpp);
+		deinitializeRenderer();
+		return nullptr;
+	}
+
+	_screenTexture = SDL_CreateTexture(_renderer, format, SDL_TEXTUREACCESS_STREAMING, width, height);
+	if (!_screenTexture) {
+		deinitializeRenderer();
+		return nullptr;
+	}
+
+	if (!SDL_PixelFormatEnumToMasks(format, &depth, &rmask, &gmask, &bmask, &amask)) {
+		deinitializeRenderer();
+		return nullptr;
+	}
+
+	SDL_Surface *screen = SDL_CreateRGBSurface(0, width, height, depth, rmask, gmask, bmask, amask);
+	if (!screen) {
+		deinitializeRenderer();
+		return nullptr;
+	} else {
+		SDL_SetSurfaceBlendMode(screen, SDL_BLENDMODE_NONE);
+		return screen;
+	}
+}
+#endif // SDL_VERSION_ATLEAST(2, 0, 0)
+
+bool SurfaceSdlGraphicsManager::saveScreenshot(const Common::String &file) const {
+	// Based on the implementation from ScummVM
+	bool success;
+	SDL_Surface *screen = nullptr;
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	int width, height;
+	SDL_GetRendererOutputSize(_renderer, &width, &height);
+
+	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,
+								  width,
+								  height,
+								  24,
+#ifdef SCUMM_LITTLE_ENDIAN
+								  0x0000FF, 0x00FF00, 0xFF0000,
+#else
+								  0xFF0000, 0x00FF00, 0x0000FF,
+#endif // SCUMM_LITTLE_ENDIAN
+								  0);
+
+	SDL_RenderReadPixels(_renderer, nullptr, SDL_PIXELFORMAT_RGB24, screen->pixels, screen->pitch);
+#else
+	screen = _screen;
+#endif // SDL_VERSION_ATLEAST(2, 0, 0)
+
+#ifdef USE_PNG
+	Common::DumpFile out;
+	if (!out.open(file)) {
+		success = false;
+	} else {
+		if (SDL_LockSurface(screen) < 0) {
+			warning("Could not lock the screen surface");
+			success = false;
+		}
+
+#ifdef SCUMM_LITTLE_ENDIAN
+		const Graphics::PixelFormat format(3, 8, 8, 8, 0, 0, 8, 16, 0);
+#else
+		const Graphics::PixelFormat format(3, 8, 8, 8, 0, 16, 8, 0, 0);
+#endif
+		Graphics::Surface data;
+		data.init(screen->w, screen->h, screen->pitch, screen->pixels, format);
+		success = Image::writePNG(out, data);
+
+		SDL_UnlockSurface(screen);
+	}
+#else
+	success = SDL_SaveBMP(screen, file.c_str()) == 0;
+#endif
+
+	if (screen && screen != _screen) {
+		SDL_FreeSurface(screen);
+	}
+
+	return success;
 }
 
 #endif

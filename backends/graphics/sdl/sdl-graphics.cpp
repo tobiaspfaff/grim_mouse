@@ -1,6 +1,6 @@
-/* ScummVM - Graphic Adventure Engine
+/* ResidualVM - A 3D game interpreter
  *
- * ScummVM is the legal property of its developers, whose names
+ * ResidualVM is the legal property of its developers, whose names
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
@@ -22,10 +22,12 @@
 
 #include "backends/graphics/sdl/sdl-graphics.h"
 
+#include "backends/platform/sdl/sdl-sys.h"
 #include "backends/events/sdl/sdl-events.h"
+#include "common/textconsole.h"
 
-SdlGraphicsManager::SdlGraphicsManager(SdlEventSource *source)
-	: _eventSource(source) {
+SdlGraphicsManager::SdlGraphicsManager(SdlEventSource *source, SdlWindow *window)
+	: _eventSource(source), _window(window) {
 }
 
 SdlGraphicsManager::~SdlGraphicsManager() {
@@ -38,3 +40,36 @@ void SdlGraphicsManager::activateManager() {
 void SdlGraphicsManager::deactivateManager() {
 	_eventSource->setGraphicsManager(0);
 }
+
+SdlGraphicsManager::State SdlGraphicsManager::getState() const {
+	State state;
+
+	state.screenWidth   = getWidth();
+	state.screenHeight  = getHeight();
+	state.aspectRatio   = getFeatureState(OSystem::kFeatureAspectRatioCorrection);
+	state.fullscreen    = getFeatureState(OSystem::kFeatureFullscreenMode);
+	state.cursorPalette = getFeatureState(OSystem::kFeatureCursorPalette);
+#ifdef USE_RGB_COLOR
+	state.pixelFormat   = getScreenFormat();
+#endif
+	return state;
+}
+
+bool SdlGraphicsManager::setState(const State &state) {
+	beginGFXTransaction();
+#ifdef USE_RGB_COLOR
+		initSize(state.screenWidth, state.screenHeight, &state.pixelFormat);
+#else
+		initSize(state.screenWidth, state.screenHeight, nullptr);
+#endif
+		setFeatureState(OSystem::kFeatureAspectRatioCorrection, state.aspectRatio);
+		setFeatureState(OSystem::kFeatureFullscreenMode, state.fullscreen);
+		setFeatureState(OSystem::kFeatureCursorPalette, state.cursorPalette);
+
+	if (endGFXTransaction() != OSystem::kTransactionSuccess) {
+		return false;
+	} else {
+		return true;
+	}
+}
+

@@ -30,7 +30,7 @@ namespace Myst3 {
 
 Ambient::Ambient(Myst3Engine *vm) :
 	_vm(vm),
-	_cueStartFrame(0) {
+	_cueStartTick(0) {
 	_cueSheet.reset();
 }
 
@@ -63,7 +63,7 @@ void Ambient::loadNode(uint32 node, uint32 room, uint32 age) {
 	_sounds.clear();
 	_cueSheet.reset();
 
-	if (node == 0)
+	if (!node)
 		node = _vm->_state->getLocationNode();
 
 	_vm->_state->setAmbiantPreviousFadeOutDelay(_vm->_state->getAmbiantFadeOutDelay());
@@ -146,11 +146,11 @@ uint32 Ambient::nextCueSound(uint32 id) {
 
 void Ambient::updateCue() {
 	if (_cueSheet.id) {
-		if (!_cueStartFrame) {
-			_cueStartFrame = _vm->_state->getFrameCount() + delayForCue(_cueSheet.id);
+		if (!_cueStartTick) {
+			_cueStartTick = _vm->_state->getTickCount() + delayForCue(_cueSheet.id);
 		}
-		if (_vm->_state->getFrameCount() >= _cueStartFrame) {
-			_cueStartFrame = 0;
+		if (_vm->_state->getTickCount() >= _cueStartTick) {
+			_cueStartTick = 0;
 			uint32 soundId = nextCueSound(_cueSheet.id);
 
 			uint heading;
@@ -166,7 +166,7 @@ void Ambient::updateCue() {
 
 void Ambient::applySounds(uint32 fadeOutDelay) {
 	// Reset the random sounds
-	_cueStartFrame = 0;
+	_cueStartTick = 0;
 	if (!_cueSheet.id) {
 		_vm->_sound->stopCue(fadeOutDelay);
 	}
@@ -201,4 +201,4 @@ void Ambient::applySounds(uint32 fadeOutDelay) {
 	_vm->_sound->fadeOutOldSounds(fadeOutDelay);
 }
 
-} /* namespace Myst3 */
+} // End of namespace Myst3

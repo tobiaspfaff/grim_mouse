@@ -57,7 +57,7 @@ void KeyframeAnim::loadBinary(Common::SeekableReadStream *data) {
 	// Next four bytes are the frames per second
 	// The fps value seems to be ignored and causes the animation the first time manny
 	// enters the kitchen of the Blue Casket to go out of sync. So we force it to 15.
-//  _fps = get_float(data + 52);
+//  _fps = data->readFloatLE();
 	_fps = 15.;
 	// Next four bytes are the number of frames
 	data->seek(56, SEEK_SET);
@@ -71,9 +71,7 @@ void KeyframeAnim::loadBinary(Common::SeekableReadStream *data) {
 	_markers = new Marker[_numMarkers];
 	data->seek(72, SEEK_SET);
 	for (int i = 0; i < _numMarkers; i++) {
-		char f[4];
-		data->read(f, 4);
-		_markers[i].frame = get_float(f);
+		_markers[i].frame = data->readFloatLE();
 	}
 
 	data->seek(104, SEEK_SET);
@@ -160,7 +158,7 @@ KeyframeAnim::~KeyframeAnim() {
 	g_resourceloader->uncacheKeyframe(this);
 }
 
-bool KeyframeAnim::animate(ModelNode *nodes, int num, float time, float fade, bool tagged) const {
+bool KeyframeAnim::isNodeAnimated(ModelNode *nodes, int num, float time, bool tagged) const {
 	// Without this sending the bread down the tube in "mo" often crashes,
 	// because it goes outside the bounds of the array of the nodes.
 	if (num >= _numJoints)
@@ -172,9 +170,25 @@ bool KeyframeAnim::animate(ModelNode *nodes, int num, float time, float fade, bo
 		frame = _numFrames;
 
 	if (_nodes[num] && tagged == ((_type & nodes[num]._type) != 0)) {
-		return _nodes[num]->animate(nodes[num], frame, fade, (_flags & 256) == 0);
+		return _nodes[num]->_numEntries != 0;
 	} else {
 		return false;
+	}
+}
+
+void KeyframeAnim::animate(ModelNode *nodes, int num, float time, float fade, bool tagged) const {
+	// Without this sending the bread down the tube in "mo" often crashes,
+	// because it goes outside the bounds of the array of the nodes.
+	if (num >= _numJoints)
+		return;
+
+	float frame = time * _fps;
+
+	if (frame > _numFrames)
+		frame = _numFrames;
+
+	if (_nodes[num] && tagged == ((_type & nodes[num]._type) != 0)) {
+		_nodes[num]->animate(nodes[num], frame, fade, (_flags & 256) == 0);
 	}
 }
 
@@ -194,17 +208,17 @@ int KeyframeAnim::getMarker(float startTime, float stopTime) const {
 	return 0;
 }
 
-void KeyframeAnim::KeyframeEntry::loadBinary(const char *data) {
-	_frame = get_float(data);
-	_flags = READ_LE_UINT32(data + 4);
-	_pos = Math::Vector3d::get_vector3d(data + 8);
-	_pitch = get_float(data + 20);
-	_yaw = get_float(data + 24);
-	_roll = get_float(data + 28);
-	_dpos = Math::Vector3d::get_vector3d(data + 32);
-	_dpitch = get_float(data + 44);
-	_dyaw = get_float(data + 48);
-	_droll = get_float(data + 52);
+void KeyframeAnim::KeyframeEntry::loadBinary(Common::SeekableReadStream *data) {
+	_frame = data->readFloatLE();
+	_flags = data->readUint32LE();
+	_pos.readFromStream(data);
+	_pitch = data->readFloatLE();
+	_yaw = data->readFloatLE();
+	_roll = data->readFloatLE();
+	_dpos.readFromStream(data);
+	_dpitch = data->readFloatLE();
+	_dyaw = data->readFloatLE();
+	_droll = data->readFloatLE();
 }
 
 void KeyframeAnim::KeyframeNode::loadBinary(Common::SeekableReadStream *data, char *meshName) {
@@ -213,10 +227,8 @@ void KeyframeAnim::KeyframeNode::loadBinary(Common::SeekableReadStream *data, ch
 	_numEntries = data->readUint32LE();
 	data->seek(4, SEEK_CUR);
 	_entries = new KeyframeEntry[_numEntries];
-	char kfEntry[56];
 	for (int i = 0; i < _numEntries; i++) {
-		data->read(kfEntry, 56);
-		_entries[i].loadBinary(kfEntry);
+		_entries[i].loadBinary(data);
 	}
 }
 
@@ -247,9 +259,9 @@ KeyframeAnim::KeyframeNode::~KeyframeNode() {
 	delete[] _entries;
 }
 
-bool KeyframeAnim::KeyframeNode::animate(ModelNode &node, float frame, float fade, bool useDelta) const {
+void KeyframeAnim::KeyframeNode::animate(ModelNode &node, float frame, float fade, bool useDelta) const {
 	if (_numEntries == 0)
-		return false;
+		return;
 
 	// Do a binary search for the nearest previous frame
 	// Loop invariant: entries_[low].frame_ <= frame < entries_[high].frame_
@@ -283,16 +295,9 @@ bool KeyframeAnim::KeyframeNode::animate(ModelNode &node, float frame, float fad
 
 	node._animPos += (pos - node._pos) * fade;
 
-	Math::Angle dpitch = pitch - node._pitch;
-	node._animPitch += dpitch.normalize(-180) * fade;
-
-	Math::Angle dyaw = yaw - node._yaw;
-	node._animYaw += dyaw.normalize(-180) * fade;
-
-	Math::Angle droll = roll - node._roll;
-	node._animRoll += droll.normalize(-180) * fade;
-
-	return true;
+	Math::Quaternion rotQuat = Math::Quaternion::fromEuler(yaw, pitch, roll, Math::EO_ZXY);
+	rotQuat = node._animRot * node._rot.inverse() * rotQuat;
+	node._animRot = node._animRot.slerpQuat(rotQuat, fade);
 }
 
 } // end of namespace Grim

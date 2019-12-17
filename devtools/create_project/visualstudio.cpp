@@ -29,11 +29,11 @@
 namespace CreateProjectTool {
 
 //////////////////////////////////////////////////////////////////////////
-// Visual Studio Provider (Visual Studio 2005 & 2008)
+// Visual Studio Provider (Visual Studio 2008)
 //////////////////////////////////////////////////////////////////////////
 
-VisualStudioProvider::VisualStudioProvider(StringList &global_warnings, std::map<std::string, StringList> &project_warnings, const int version)
-	: MSVCProvider(global_warnings, project_warnings, version) {
+VisualStudioProvider::VisualStudioProvider(StringList &global_warnings, std::map<std::string, StringList> &project_warnings, const int version, const MSVCVersion& msvc)
+	: MSVCProvider(global_warnings, project_warnings, version, msvc) {
 }
 
 const char *VisualStudioProvider::getProjectExtension() {
@@ -42,16 +42,6 @@ const char *VisualStudioProvider::getProjectExtension() {
 
 const char *VisualStudioProvider::getPropertiesExtension() {
 	return ".vsprops";
-}
-
-int VisualStudioProvider::getVisualStudioVersion() {
-	if (_version == 9)
-		return 2008;
-
-	if (_version == 8)
-		return 2005;
-
-	error("Unsupported version passed to getVisualStudioVersion");
 }
 
 void VisualStudioProvider::createProjectFile(const std::string &name, const std::string &uuid, const BuildSetup &setup, const std::string &moduleDir,
@@ -70,8 +60,7 @@ void VisualStudioProvider::createProjectFile(const std::string &name, const std:
 	           "\tRootNamespace=\"" << name << "\"\n"
 	           "\tKeyword=\"Win32Proj\"\n";
 
-	if (_version >= 9)
-		project << "\tTargetFrameworkVersion=\"131072\"\n";
+	project << "\tTargetFrameworkVersion=\"131072\"\n";
 
 	project << "\t>\n"
 	           "\t<Platforms>\n"
@@ -105,7 +94,7 @@ void VisualStudioProvider::createProjectFile(const std::string &name, const std:
 		outputConfiguration(project, setup, libraries, "Release", "x64", "64", false);
 
 	} else {
-		bool enableLanguageExtensions = find(_enableLanguageExtensions.begin(), _enableLanguageExtensions.end(), name) != _enableLanguageExtensions.end();
+		bool enableLanguageExtensions = true; // ResidualVM
 		bool disableEditAndContinue = find(_disableEditAndContinue.begin(), _disableEditAndContinue.end(), name) != _disableEditAndContinue.end();
 
 		std::string warnings = "";
@@ -175,7 +164,7 @@ void VisualStudioProvider::outputBuildEvents(std::ostream &project, const BuildS
 		           "\t\t\t\tCommandLine=\"" << getPreBuildEvent() << "\"\n"
 		           "\t\t\t/>\n"
 		           "\t\t\t<Tool\tName=\"VCPostBuildEventTool\"\n"
-		           "\t\t\t\tCommandLine=\"" << getPostBuildEvent(isWin32, setup.createInstaller) << "\"\n"
+		           "\t\t\t\tCommandLine=\"" << getPostBuildEvent(isWin32, setup) << "\"\n"
 		           "\t\t\t/>\n";
 	}
 
@@ -232,9 +221,9 @@ void VisualStudioProvider::outputGlobalPropFile(const BuildSetup &setup, std::of
 	              "\t\tName=\"VCCLCompilerTool\"\n"
 	              "\t\tDisableLanguageExtensions=\"" << (setup.devTools ? "false" : "true") << "\"\n"
 	              "\t\tDisableSpecificWarnings=\"" << warnings << "\"\n"
-	              "\t\tAdditionalIncludeDirectories=\".\\;" << prefix << ";" << prefix << "\\engines;$(" << LIBS_DEFINE << ")\\include;" << (setup.tests ? prefix + "\\test\\cxxtest;" : "") << "$(TargetDir)\"\n"
+	              "\t\tAdditionalIncludeDirectories=\".\\;" << prefix << ";" << prefix << "\\engines;$(" << LIBS_DEFINE << ")\\include;$(" << LIBS_DEFINE << ")\\include\\SDL;" << (setup.tests ? prefix + "\\test\\cxxtest;" : "") << "\"\n"
 	              "\t\tPreprocessorDefinitions=\"" << definesList << "\"\n"
-	              "\t\tExceptionHandling=\"" << ((setup.devTools || setup.tests) ? "1" : "0") << "\"\n";
+	              "\t\tExceptionHandling=\"" << ((setup.devTools || setup.tests || _version == 14) ? "1" : "0") << "\"\n";
 
 #if NEEDS_RTTI
 	properties << "\t\tRuntimeTypeInfo=\"true\"\n";
@@ -262,7 +251,8 @@ void VisualStudioProvider::outputGlobalPropFile(const BuildSetup &setup, std::of
 	              "\t/>\n"
 	              "\t<Tool\n"
 	              "\t\tName=\"VCResourceCompilerTool\"\n"
-	              "\t\tAdditionalIncludeDirectories=\"" << prefix << "\"\n"
+	              "\t\tAdditionalIncludeDirectories=\".\\;" << prefix << "\"\n"
+	              "\t\tPreprocessorDefinitions=\"" << definesList << "\"\n"
 	              "\t/>\n"
 	              "</VisualStudioPropertySheet>\n";
 
@@ -299,6 +289,7 @@ void VisualStudioProvider::createBuildProp(const BuildSetup &setup, bool isRelea
 		              "\t<Tool\n"
 		              "\t\tName=\"VCLinkerTool\"\n"
 		              "\t\tLinkIncremental=\"1\"\n"
+		              "\t\tGenerateManifest=\"false\"\n"
 		              "\t\tIgnoreDefaultLibraryNames=\"\"\n"
 		              "\t\tSetChecksum=\"true\"\n";
 	} else {
@@ -315,6 +306,7 @@ void VisualStudioProvider::createBuildProp(const BuildSetup &setup, bool isRelea
 		              "\t<Tool\n"
 		              "\t\tName=\"VCLinkerTool\"\n"
 		              "\t\tLinkIncremental=\"2\"\n"
+		              "\t\tGenerateManifest=\"false\"\n"
 		              "\t\tGenerateDebugInformation=\"true\"\n"
 		              "\t\tIgnoreDefaultLibraryNames=\"libcmt.lib\"\n";
 	}
@@ -342,7 +334,9 @@ void VisualStudioProvider::writeFileListToProject(const FileNode &dir, std::ofst
 			if (producesObjectFile(node->name)) {
 				std::string name, ext;
 				splitFilename(node->name, name, ext);
-				const bool isDuplicate = (std::find(duplicate.begin(), duplicate.end(), name + ".o") != duplicate.end());
+				name += ".o";
+				std::transform(name.begin(), name.end(), name.begin(), tolower);
+				const bool isDuplicate = (std::find(duplicate.begin(), duplicate.end(), name) != duplicate.end());
 
 				if (ext == "asm") {
 					std::string objFileName = "$(IntDir)\\";

@@ -38,7 +38,8 @@ Sector::Sector() :
  }
 
 Sector::Sector(const Sector &other) :
-		_vertices(nullptr), _origVertices(nullptr), _sortplanes(nullptr) {
+		_vertices(nullptr), _origVertices(nullptr), _sortplanes(nullptr),
+		_numSortplanes(0) {
 	*this = other;
 }
 
@@ -177,9 +178,7 @@ void Sector::loadBinary(Common::SeekableReadStream *data) {
 	_numVertices = data->readUint32LE();
 	_vertices = new Math::Vector3d[_numVertices + 1];
 	for (int i = 0; i < _numVertices; i++) {
-		char v3[4 * 3];
-		data->read(v3, 4 * 3);
-		_vertices[i] = Math::Vector3d::get_vector3d(v3);
+		_vertices[i].readFromStream(data);
 	}
 
 	// Repeat the last vertex for convenience
@@ -209,9 +208,7 @@ void Sector::loadBinary(Common::SeekableReadStream *data) {
 		_sortplanes[i] = data->readUint32LE();
 	}
 
-	char f[4];
-	data->read(f, 4);
-	_height = get_float(f);
+	_height = data->readFloatLE();
 }
 
 void Sector::setVisible(bool vis) {
@@ -390,8 +387,18 @@ Common::List<Math::Line3d> Sector::getBridgesTo(Sector *sector) const {
 	it = bridges.begin();
 	while (it != bridges.end()) {
 		if (g_grim->getGameType() == GType_MONKEY4) {
-			if (fabs(getProjectionToPlane((*it).begin()).y() - sector->getProjectionToPlane((*it).begin()).y()) > 0.01f ||
-					fabs(getProjectionToPlane((*it).end()).y() - sector->getProjectionToPlane((*it).end()).y()) > 0.01f) {
+			// Set pac contains sectors which are not parallel to any
+			// other sector or share any edge. Since one sector isn't
+			// a plane, finding the intersections in 3D would be complicated.
+			//
+			// Checking for bridges using a projection in 2D and having a height
+			// threshold to avoid that characters jump from lower to higher floors
+			// seems to be a good compromise.
+			//
+			// The value of at least 0.1 was chosen to fix a path finding issue
+			// in set pac when guybrush tried to reach the pile of rocks.
+			if (fabs(getProjectionToPlane((*it).begin()).y() - sector->getProjectionToPlane((*it).begin()).y()) > 0.1f ||
+					fabs(getProjectionToPlane((*it).end()).y() - sector->getProjectionToPlane((*it).end()).y()) > 0.1f) {
 				it = bridges.erase(it);
 				continue;
 			}

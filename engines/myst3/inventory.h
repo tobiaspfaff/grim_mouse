@@ -36,10 +36,14 @@ namespace Myst3 {
 class Myst3Engine;
 class Texture;
 
-class Inventory {
+class Inventory : public Window {
 public:
 	Inventory(Myst3Engine *vm);
 	virtual ~Inventory();
+
+	// Window API
+	Common::Rect getPosition() const override;
+	Common::Rect getOriginalPosition() const override;
 
 	void loadFromState();
 	void updateState();
@@ -50,10 +54,19 @@ public:
 	void removeItem(uint16 var);
 	void reset();
 
+	/** Is the mouse inside the inventory area */
+	bool isMouseInside();
+
+	/** Change the cursor when it is hovering an item */
+	void updateCursor();
+
+	void reflow();
+
 	uint16 hoveredItem();
 	void useItem(uint16 var);
 
-	void draw();
+	void draw() override;
+
 private:
 	struct InventoryItem {
 		uint16 var;
@@ -80,7 +93,6 @@ private:
 	void initializeTexture();
 
 	bool hasItem(uint16 var);
-	void reflow();
 
 	void openBook(uint16 age, uint16 room, uint16 node);
 	void closeAllBooks();
@@ -90,7 +102,7 @@ class DragItem : public Drawable {
 public:
 	DragItem(Myst3Engine *vm, uint id);
 	~DragItem();
-	void drawOverlay();
+	void drawOverlay() override;
 	void setFrame(uint16 frame);
 
 private:
@@ -105,5 +117,6 @@ private:
 	Common::Rect getPosition();
 };
 
-} /* namespace Myst3 */
-#endif /* INVENTORY_H_ */
+} // End of namespace Myst3
+
+#endif // INVENTORY_H_

@@ -20,267 +20,273 @@
  *
  */
 
-#include "engines/myst3/myst3.h"
 #include "engines/myst3/script.h"
-#include "engines/myst3/hotspot.h"
-#include "engines/myst3/state.h"
-#include "engines/myst3/cursor.h"
-#include "engines/myst3/inventory.h"
-#include "engines/myst3/puzzles.h"
-#include "engines/myst3/sound.h"
+
 #include "engines/myst3/ambient.h"
+#include "engines/myst3/cursor.h"
+#include "engines/myst3/database.h"
+#include "engines/myst3/hotspot.h"
+#include "engines/myst3/inventory.h"
+#include "engines/myst3/myst3.h"
+#include "engines/myst3/puzzles.h"
+#include "engines/myst3/scene.h"
+#include "engines/myst3/sound.h"
+#include "engines/myst3/state.h"
 
 #include "common/events.h"
 
 namespace Myst3 {
 
 Script::Script(Myst3Engine *vm):
-	_vm(vm) {
-
+		_vm(vm) {
 	_puzzles = new Puzzles(_vm);
 
-#define OP_0(op, x) _commands.push_back(Command(op, &Script::x, #x, 0))
-#define OP_1(op, x, type1) _commands.push_back(Command(op, &Script::x, #x, 1, type1))
-#define OP_2(op, x, type1, type2) _commands.push_back(Command(op, &Script::x, #x, 2, type1, type2))
-#define OP_3(op, x, type1, type2, type3) _commands.push_back(Command(op, &Script::x, #x, 3, type1, type2, type3))
-#define OP_4(op, x, type1, type2, type3, type4) _commands.push_back(Command(op, &Script::x, #x, 4, type1, type2, type3, type4))
-#define OP_5(op, x, type1, type2, type3, type4, type5) _commands.push_back(Command(op, &Script::x, #x, 5, type1, type2, type3, type4, type5))
+#define OP(op, x, s) _commands.push_back(Command(op, &Script::x, #x, s))
 
 	// TODO: Implement these remaining opcodes
 	// 5: I'm pretty sure it's useless
-	// 144: drawTransition
 	// 247: quit
 
-	OP_0(  0, badOpcode																					);
-	OP_1(  4, nodeCubeInit, 				kEvalValue													);
-	OP_5(  6, nodeCubeInitIndex, 			kVar, 		kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue	);
-	OP_1(  7, nodeFrameInit, 				kEvalValue													);
-	OP_3(  8, nodeFrameInitCond, 			kCondition,	kEvalValue,	kEvalValue							);
-	OP_5(  9, nodeFrameInitIndex,			kVar,		kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue	);
-	OP_1( 10, nodeMenuInit, 				kEvalValue													);
-	OP_0( 11, stopWholeScript																			);
-	OP_1( 13, spotItemAdd,					kValue														);
-	OP_2( 14, spotItemAddCond,				kValue,		kCondition										);
-	OP_2( 15, spotItemAddCondFade,			kValue,		kCondition										);
-	OP_5( 16, spotItemAddMenu,				kValue,		kCondition,		kValue,		kValue, 	kValue	); // Six args
-	OP_1( 17, movieInitLooping, 			kEvalValue													);
-	OP_2( 18, movieInitCondLooping,			kEvalValue,	kCondition										);
-	OP_2( 19, movieInitCond,				kEvalValue,	kCondition										);
-	OP_1( 20, movieInitPreloadLooping,		kEvalValue													);
-	OP_2( 21, movieInitCondPreloadLooping,	kEvalValue,	kCondition										);
-	OP_2( 22, movieInitCondPreload, 		kEvalValue,	kCondition										);
-	OP_2( 23, movieInitFrameVar, 			kEvalValue,	kVar											);
-	OP_2( 24, movieInitFrameVarPreload,		kEvalValue,	kVar											);
-	OP_4( 25, movieInitOverrridePosition,	kEvalValue,	kCondition,	kValue,		kValue					);
-	OP_3( 26, movieInitScriptedPosition,	kEvalValue,	kVar,		kVar								);
-	OP_1( 27, movieRemove,					kEvalValue													);
-	OP_0( 28, movieRemoveAll																			);
-	OP_1( 29, movieSetLooping,				kValue														);
-	OP_1( 30, movieSetNotLooping,			kValue														);
-	OP_1( 31, waterEffectSetSpeed,			kValue														);
-	OP_1( 32, waterEffectSetAttenuation,	kValue														);
-	OP_2( 33, waterEffectSetWave,			kValue,		kValue											);
-	OP_2( 34, shakeEffectSet,				kEvalValue,	kEvalValue										);
-	OP_2( 35, sunspotAdd,					kValue,		kValue											);
-	OP_3( 36, sunspotAddIntensity,			kValue,		kValue,		kValue								);
-	OP_4( 37, sunspotAddVarIntensity,		kValue,		kValue,		kValue,		kVar					);
-	OP_4( 38, sunspotAddIntensityColor,		kValue,		kValue,		kValue,		kValue					);
-	OP_5( 39, sunspotAddVarIntensityColor,	kValue,		kValue,		kValue,		kValue, 	kVar		);
-	OP_4( 40, sunspotAddIntensityRadius,	kValue,		kValue,		kValue,		kValue					);
-	OP_5( 41, sunspotAddVarIntensityRadius,	kValue,		kValue,		kValue,		kVar, 		kValue		);
-	OP_5( 42, sunspotAddIntColorRadius,		kValue,		kValue,		kValue,		kValue, 	kValue		);
-	OP_5( 43, sunspotAddVarIntColorRadius,	kValue,		kValue,		kValue,		kValue, 	kVar		); // Six args
-	OP_2( 44, inventoryAddFront,			kVar,		kValue											);
-	OP_2( 45, inventoryAddBack,				kVar,		kValue											);
-	OP_1( 46, inventoryRemove,				kVar														);
-	OP_0( 47, inventoryReset																			);
-	OP_1( 48, inventoryAddSaavChapter,		kVar														);
-	OP_1( 49, varSetZero,					kVar														);
-	OP_1( 50, varSetOne,					kVar														);
-	OP_1( 51, varSetTwo,					kVar														);
-	OP_1( 52, varSetOneHundred,				kVar														);
-	OP_2( 53, varSetValue,					kVar,		kValue											);
-	OP_1( 54, varToggle,					kVar														);
-	OP_1( 55, varSetOneIfNotZero,				kVar														);
-	OP_1( 56, varOpposite,					kVar														);
-	OP_1( 57, varAbsolute,					kVar														);
-	OP_1( 58, varDereference,				kVar														);
-	OP_1( 59, varReferenceSetZero,			kVar														);
-	OP_2( 60, varReferenceSetValue,			kVar,		kValue											);
-	OP_3( 61, varRandRange,					kVar,		kValue,		kValue								);
-	OP_5( 62, polarToRectSimple,			kVar,		kVar,		kValue,		kValue, 	kValue		); // Seven args
-	OP_5( 63, polarToRect,					kVar,		kVar,		kValue,		kValue, 	kValue		); // Ten args
-	OP_4( 64, varSetDistanceToZone,			kVar,		kValue,		kValue,		kValue					);
-	OP_4( 65, varSetMinDistanceToZone,		kVar,		kValue,		kValue,		kValue					);
-	OP_2( 67, varRemoveBits,				kVar,		kValue											);
-	OP_2( 68, varToggleBits,				kVar,		kValue											);
-	OP_2( 69, varCopy,						kVar,		kVar											);
-	OP_2( 70, varSetBitsFromVar,			kVar,		kVar											);
-	OP_2( 71, varSetBits,					kVar,		kValue											);
-	OP_2( 72, varApplyMask,					kVar,		kValue											);
-	OP_2( 73, varSwap,						kVar,		kVar											);
-	OP_1( 74, varIncrement,					kVar														);
-	OP_2( 75, varIncrementMax,				kVar,		kValue											);
-	OP_3( 76, varIncrementMaxLooping,		kVar,		kValue,		kValue								);
-	OP_4( 77, varAddValueMaxLooping,		kValue,		kVar,		kValue,		kValue					);
-	OP_1( 78, varDecrement,					kVar														);
-	OP_2( 79, varDecrementMin,				kVar,		kValue											);
-	OP_3( 80, varAddValueMax,				kValue,		kVar,		kValue								);
-	OP_3( 81, varSubValueMin,				kValue,		kVar,		kValue								);
-	OP_2( 82, varZeroRange,					kVar,		kVar											);
-	OP_3( 83, varCopyRange,					kVar,		kVar,		kValue								);
-	OP_3( 84, varSetRange,					kVar,		kVar,		kValue								);
-	OP_1( 85, varIncrementMaxTen,			kVar														);
-	OP_2( 86, varAddValue,					kValue,		kVar											);
-	OP_3( 87, varArrayAddValue, 			kValue, 	kVar, 		kVar								);
-	OP_2( 88, varAddVarValue,				kVar,		kVar											);
-	OP_2( 89, varSubValue,					kValue,		kVar											);
-	OP_2( 90, varSubVarValue,				kVar,		kVar											);
-	OP_2( 91, varModValue,					kVar,		kValue											);
-	OP_2( 92, varMultValue,					kVar,		kValue											);
-	OP_2( 93, varMultVarValue,				kVar,		kVar											);
-	OP_2( 94, varDivValue,					kVar,		kValue											);
-	OP_2( 95, varDivVarValue,				kVar,		kVar											);
-	OP_5( 96, varCrossMultiplication,		kVar,		kValue,		kValue,		kValue,		kValue		);
-	OP_2( 97, varMinValue,					kVar,		kValue											);
-	OP_3( 98, varClipValue,					kVar,		kValue,		kValue								);
-	OP_3( 99, varClipChangeBound,			kVar,		kValue,		kValue								);
-	OP_2(100, varAbsoluteSubValue,			kVar,		kValue											);
-	OP_2(101, varAbsoluteSubVar,			kVar,		kVar											);
-	OP_3(102, varRatioToPercents,			kVar,		kValue,		kValue								);
-	OP_4(103, varRotateValue3,				kVar,		kValue,		kValue, 	kValue					);
-	OP_0(104, ifElse																					);
-	OP_1(105, ifCondition, 					kCondition													);
-	OP_2(106, ifCond1AndCond2, 				kCondition,	kCondition										);
-	OP_2(107, ifCond1OrCond2, 				kCondition,	kCondition										);
-	OP_2(108, ifOneVarSetInRange,			kVar,		kVar											);
-	OP_2(109, ifVarEqualsValue,				kVar,		kValue											);
-	OP_2(110, ifVarNotEqualsValue,			kVar,		kValue											);
-	OP_2(111, ifVar1EqualsVar2,				kVar,		kVar											);
-	OP_2(112, ifVar1NotEqualsVar2,			kVar,		kVar											);
-	OP_2(113, ifVarSupEqValue,				kVar,		kValue											);
-	OP_2(114, ifVarInfEqValue,				kVar,		kValue											);
-	OP_3(115, ifVarInRange,					kVar,		kValue,		kValue								);
-	OP_3(116, ifVarNotInRange,				kVar,		kValue,		kValue								);
-	OP_2(117, ifVar1SupEqVar2,				kVar,		kVar											);
-	OP_2(118, ifVar1SupVar2,				kVar,		kVar											);
-	OP_2(119, ifVar1InfEqVar2,				kVar,		kVar											);
-	OP_2(120, ifVarHasAllBitsSet,			kVar,		kValue											);
-	OP_2(121, ifVarHasNoBitsSet,			kVar,		kValue											);
-	OP_3(122, ifVarHasSomeBitsSet,			kVar,		kValue,		kValue								);
-	OP_2(123, ifHeadingInRange,				kValue,		kValue											);
-	OP_2(124, ifPitchInRange,				kValue,		kValue											);
-	OP_4(125, ifHeadingPitchInRect,			kValue,		kValue,		kValue,		kValue					);
-	OP_4(126, ifMouseIsInRect,				kValue,		kValue,		kValue,		kValue					);
-	OP_5(127, leverDrag,					kValue,		kValue,		kValue,		kValue, 	kVar		); // Six args
-	OP_5(130, leverDragXY,					kVar, 		kVar,		kValue,		kValue,		kValue		);
-	OP_5(131, itemDrag,						kVar, 		kValue,		kValue,		kValue,		kVar		);
-	OP_2(132, leverDragPositions,			kVar, 		kValue											); // Variable args
-	OP_5(134, runScriptWhileDragging,		kVar, 		kVar,		kValue,		kValue, 	kVar		); // Eight args
-	OP_3(135, chooseNextNode,				kCondition, kValue,		kValue								);
-	OP_2(136, goToNodeTransition,			kValue,		kValue											);
-	OP_1(137, goToNodeTrans2,				kValue														);
-	OP_1(138, goToNodeTrans1,				kValue														);
-	OP_2(139, goToRoomNode,					kValue,		kValue											);
-	OP_1(140, zipToNode,					kValue														);
-	OP_2(141, zipToRoomNode,				kValue,		kValue											);
-	OP_0(145, reloadNode																				);
-	OP_0(146, redrawFrame																				);
-	OP_1(147, moviePlay, 					kEvalValue													);
-	OP_1(148, moviePlaySynchronized,		kEvalValue													);
-	OP_1(149, moviePlayFullFrame,			kEvalValue													);
-	OP_1(150, moviePlayFullFrameTrans,		kEvalValue													);
-	OP_2(151, moviePlayChangeNode,			kEvalValue,	kEvalValue										);
-	OP_2(152, moviePlayChangeNodeTrans,		kEvalValue,	kEvalValue										);
-	OP_2(153, lootAt,						kValue, 	kValue											);
-	OP_3(154, lootAtInXFrames,				kValue, 	kValue,		kValue								);
-	OP_1(155, lootAtMovieStart,				kEvalValue													);
-	OP_2(156, lootAtMovieStartInXFrames,	kEvalValue,	kValue											);
-	OP_4(157, cameraLimitMovement,			kValue,		kValue,		kValue,		kValue					);
-	OP_0(158, cameraFreeMovement																		);
-	OP_2(159, cameraLookAt,					kValue,		kValue											);
-	OP_1(160, cameraLookAtVar,				kVar														);
-	OP_1(161, cameraGetLookAt,				kVar														);
-	OP_1(162, lootAtMovieStartImmediate,	kEvalValue													);
-	OP_1(163, cameraSetFOV,					kEvalValue													);
-	OP_1(164, changeNode,					kValue														);
-	OP_2(165, changeNodeRoom,				kValue,		kValue											);
-	OP_3(166, changeNodeRoomAge,			kValue,		kValue,		kValue								);
-	OP_0(168, uselessOpcode																				);
-	OP_1(169, drawXFrames,					kValue														);
-	OP_1(171, drawWhileCond,				kCondition													);
-	OP_1(172, whileStart,					kCondition													);
-	OP_0(173, whileEnd																					);
-	OP_2(174, runScriptWhileCond,			kCondition,	kValue											);
-	OP_3(175, runScriptWhileCondEachXFrames,kCondition,	kValue,		kValue								);
-	OP_4(176, runScriptForVar,				kVar,		kValue,		kValue,		kValue					);
-	OP_5(177, runScriptForVarEachXFrames,	kVar,		kValue,		kValue,		kValue,		kValue		);
-	OP_4(178, runScriptForVarStartVar,		kVar,		kVar,		kValue,		kValue					);
-	OP_5(179, runScriptForVarStartVarEachXFrames, kVar,	kVar,		kValue,		kValue,		kValue		);
-	OP_4(180, runScriptForVarEndVar,		kVar,		kValue,		kVar,		kValue					);
-	OP_5(181, runScriptForVarEndVarEachXFrames,	kVar,	kValue,		kVar,		kValue,		kValue		);
-	OP_4(182, runScriptForVarStartEndVar,	kVar,		kVar,		kVar,		kValue					);
-	OP_5(183, runScriptForVarStartEndVarEachXFrames, kVar, kVar,	kVar,		kValue,		kValue		);
-	OP_4(184, drawFramesForVar,				kVar,		kValue,		kValue,		kValue					);
-	OP_3(185, drawFramesForVarEachTwoFrames,			kVar,		kValue,		kValue					);
-	OP_3(186, drawFramesForVarStartEndVarEachTwoFrames, kVar, 		kVar,		kVar					);
-	OP_1(187, runScript,					kEvalValue													);
-	OP_2(188, runScriptWithVar,				kEvalValue, kValue											);
-	OP_1(189, runCommonScript,				kValue														);
-	OP_2(190, runCommonScriptWithVar,		kEvalValue, kValue											);
-	OP_1(194, runPuzzle1,					kValue														);
-	OP_2(195, runPuzzle2,					kValue,		kValue											);
-	OP_3(196, runPuzzle3,					kValue,		kValue,		kValue								);
-	OP_4(197, runPuzzle4,					kValue,		kValue,		kValue,		kValue					);
-	OP_3(198, ambientLoadNode,				kValue,		kValue,		kValue								);
-	OP_1(199, ambientReloadCurrentNode,		kEvalValue													);
-	OP_2(200, ambientPlayCurrentNode,		kValue,		kValue											);
-	OP_0(201, ambientApply																				);
-	OP_1(202, ambientApplyWithFadeDelay,	kEvalValue													);
-	OP_1(205, soundPlay,					kEvalValue													);
-	OP_2(206, soundPlayVolume,				kEvalValue,	kEvalValue										);
-	OP_3(207, soundPlayVolumeDirection,		kEvalValue,	kEvalValue,	kEvalValue							);
-	OP_4(208, soundPlayVolumeDirectionAtt,	kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue				);
-	OP_1(209, soundStopEffect,				kEvalValue													);
-	OP_2(210, soundFadeOutEffect,			kEvalValue,	kEvalValue										);
-	OP_1(212, soundPlayLooping,				kEvalValue													);
-	OP_5(213, soundPlayFadeInOut,			kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue	);
-	OP_5(214, soundChooseNext,				kVar,		kValue,		kValue,		kEvalValue,	kEvalValue	);
-	OP_5(215, soundRandomizeNext,			kVar,		kValue,		kValue,		kEvalValue,	kEvalValue	);
-	OP_5(216, soundChooseNextAfterOther,	kVar,		kValue,		kValue,		kEvalValue,	kEvalValue	); // Seven args
-	OP_5(217, soundRandomizeNextAfterOther,	kVar,		kValue,		kValue,		kEvalValue,	kEvalValue	); // Seven args
-	OP_1(218, ambientSetFadeOutDelay,		kValue														);
-	OP_2(219, ambientAddSound1,				kEvalValue,	kEvalValue										);
-	OP_3(220, ambientAddSound2,				kEvalValue,	kEvalValue,	kValue								);
-	OP_3(222, ambientAddSound3,				kEvalValue,	kEvalValue,	kValue								);
-	OP_4(223, ambientAddSound4,				kEvalValue,	kEvalValue,	kValue,		kValue					);
-	OP_3(224, ambientAddSound5,				kEvalValue,	kEvalValue,	kEvalValue							);
-	OP_2(225, ambientSetCue1,				kValue,		kEvalValue										);
-	OP_3(226, ambientSetCue2,				kValue,		kEvalValue,	kValue								);
-	OP_4(227, ambientSetCue3,				kValue,		kEvalValue,	kValue, kValue						);
-	OP_2(228, ambientSetCue4,				kValue,		kEvalValue										);
-	OP_1(229, runAmbientScriptNode,			kEvalValue													);
-	OP_4(230, runAmbientScriptNodeRoomAge,	kEvalValue,	kEvalValue,	kEvalValue,	kEvalValue				);
-	OP_1(231, runSoundScriptNode,			kEvalValue													);
-	OP_2(232, runSoundScriptNodeRoom,		kEvalValue,	kEvalValue										);
-	OP_3(233, runSoundScriptNodeRoomAge,	kEvalValue,	kEvalValue,	kEvalValue							);
-	OP_1(234, soundStopMusic,				kEvalValue													);
-	OP_2(236, movieSetStartupSound,			kEvalValue,	kEvalValue										);
-	OP_0(239, drawOneFrame																				);
-	OP_0(240, cursorHide																				);
-	OP_0(241, cursorShow																				);
-	OP_1(242, cursorSet,					kValue														);
-	OP_0(243, cursorLock																				);
-	OP_0(244, cursorUnlock																				);
-	OP_1(248, dialogOpen,					kEvalValue													);
-	OP_0(249, newGame																					);
+	OP(  0, badOpcode,                                ""      );
+	OP(  4, nodeCubeInit,                             "e"     );
+	OP(  6, nodeCubeInitIndex,                        "veeee" );
+	OP(  7, nodeFrameInit,                            "e"     );
+	OP(  8, nodeFrameInitCond,                        "cee"   );
+	OP(  9, nodeFrameInitIndex,                       "veeee" );
+	OP( 10, nodeMenuInit,                             "e"     );
+	OP( 11, stopWholeScript,                          ""      );
+	OP( 13, spotItemAdd,                              "i"     );
+	OP( 14, spotItemAddCond,                          "ic"    );
+	OP( 15, spotItemAddCondFade,                      "ic"    );
+	OP( 16, spotItemAddMenu,                          "iciii" ); // Six args
+	OP( 17, movieInitLooping,                         "e"     );
+	OP( 18, movieInitCondLooping,                     "ec"    );
+	OP( 19, movieInitCond,                            "ec"    );
+	OP( 20, movieInitPreloadLooping,                  "e"     );
+	OP( 21, movieInitCondPreloadLooping,              "ec"    );
+	OP( 22, movieInitCondPreload,                     "ec"    );
+	OP( 23, movieInitFrameVar,                        "ev"    );
+	OP( 24, movieInitFrameVarPreload,                 "ev"    );
+	OP( 25, movieInitOverrridePosition,               "ecii"  );
+	OP( 26, movieInitScriptedPosition,                "evv"   );
+	OP( 27, movieRemove,                              "e"     );
+	OP( 28, movieRemoveAll,                           ""      );
+	OP( 29, movieSetLooping,                          "i"     );
+	OP( 30, movieSetNotLooping,                       "i"     );
+	OP( 31, waterEffectSetSpeed,                      "i"     );
+	OP( 32, waterEffectSetAttenuation,                "i"     );
+	OP( 33, waterEffectSetWave,                       "ii"    );
+	OP( 34, shakeEffectSet,                           "ee"    );
+	OP( 35, sunspotAdd,                               "ii"    );
+	OP( 36, sunspotAddIntensity,                      "iii"   );
+	OP( 37, sunspotAddVarIntensity,                   "iiiv"  );
+	OP( 38, sunspotAddIntensityColor,                 "iiii"  );
+	OP( 39, sunspotAddVarIntensityColor,              "iiiiv" );
+	OP( 40, sunspotAddIntensityRadius,                "iiii"  );
+	OP( 41, sunspotAddVarIntensityRadius,             "iiivi" );
+	OP( 42, sunspotAddIntColorRadius,                 "iiiii" );
+	OP( 43, sunspotAddVarIntColorRadius,              "iiiiv" ); // Six args
+	OP( 44, inventoryAddFront,                        "vi"    );
+	OP( 45, inventoryAddBack,                         "vi"    );
+	OP( 46, inventoryRemove,                          "v"     );
+	OP( 47, inventoryReset,                           ""      );
+	OP( 48, inventoryAddSaavChapter,                  "v"     );
+	OP( 49, varSetZero,                               "v"     );
+	OP( 50, varSetOne,                                "v"     );
+	OP( 51, varSetTwo,                                "v"     );
+	OP( 52, varSetOneHundred,                         "v"     );
+	OP( 53, varSetValue,                              "vi"    );
+	OP( 54, varToggle,                                "v"     );
+	OP( 55, varSetOneIfNotZero,                       "v"     );
+	OP( 56, varOpposite,                              "v"     );
+	OP( 57, varAbsolute,                              "v"     );
+	OP( 58, varDereference,                           "v"     );
+	OP( 59, varReferenceSetZero,                      "v"     );
+	OP( 60, varReferenceSetValue,                     "vi"    );
+	OP( 61, varRandRange,                             "vii"   );
+	OP( 62, polarToRectSimple,                        "vviii" ); // Seven args
+	OP( 63, polarToRect,                              "vviii" ); // Ten args
+	OP( 64, varSetDistanceToZone,                     "viii"  );
+	OP( 65, varSetMinDistanceToZone,                  "viii"  );
+	OP( 67, varRemoveBits,                            "vi"    );
+	OP( 68, varToggleBits,                            "vi"    );
+	OP( 69, varCopy,                                  "vv"    );
+	OP( 70, varSetBitsFromVar,                        "vv"    );
+	OP( 71, varSetBits,                               "vi"    );
+	OP( 72, varApplyMask,                             "vi"    );
+	OP( 73, varSwap,                                  "vv"    );
+	OP( 74, varIncrement,                             "v"     );
+	OP( 75, varIncrementMax,                          "vi"    );
+	OP( 76, varIncrementMaxLooping,                   "vii"   );
+	OP( 77, varAddValueMaxLooping,                    "ivii"  );
+	OP( 78, varDecrement,                             "v"     );
+	OP( 79, varDecrementMin,                          "vi"    );
+	OP( 80, varAddValueMax,                           "ivi"   );
+	OP( 81, varSubValueMin,                           "ivi"   );
+	OP( 82, varZeroRange,                             "vv"    );
+	OP( 83, varCopyRange,                             "vvi"   );
+	OP( 84, varSetRange,                              "vvi"   );
+	OP( 85, varIncrementMaxTen,                       "v"     );
+	OP( 86, varAddValue,                              "iv"    );
+	OP( 87, varArrayAddValue,                         "ivv"   );
+	OP( 88, varAddVarValue,                           "vv"    );
+	OP( 89, varSubValue,                              "iv"    );
+	OP( 90, varSubVarValue,                           "vv"    );
+	OP( 91, varModValue,                              "vi"    );
+	OP( 92, varMultValue,                             "vi"    );
+	OP( 93, varMultVarValue,                          "vv"    );
+	OP( 94, varDivValue,                              "vi"    );
+	OP( 95, varDivVarValue,                           "vv"    );
+	OP( 96, varCrossMultiplication,                   "viiii" );
+	OP( 97, varMinValue,                              "vi"    );
+	OP( 98, varClipValue,                             "vii"   );
+	OP( 99, varClipChangeBound,                       "vii"   );
+	OP(100, varAbsoluteSubValue,                      "vi"    );
+	OP(101, varAbsoluteSubVar,                        "vv"    );
+	OP(102, varRatioToPercents,                       "vii"   );
+	OP(103, varRotateValue3,                          "viii"  );
+	OP(104, ifElse,                                   ""      );
+	OP(105, ifCondition,                              "c"     );
+	OP(106, ifCond1AndCond2,                          "cc"    );
+	OP(107, ifCond1OrCond2,                           "cc"    );
+	OP(108, ifOneVarSetInRange,                       "vv"    );
+	OP(109, ifVarEqualsValue,                         "vi"    );
+	OP(110, ifVarNotEqualsValue,                      "vi"    );
+	OP(111, ifVar1EqualsVar2,                         "vv"    );
+	OP(112, ifVar1NotEqualsVar2,                      "vv"    );
+	OP(113, ifVarSupEqValue,                          "vi"    );
+	OP(114, ifVarInfEqValue,                          "vi"    );
+	OP(115, ifVarInRange,                             "vii"   );
+	OP(116, ifVarNotInRange,                          "vii"   );
+	OP(117, ifVar1SupEqVar2,                          "vv"    );
+	OP(118, ifVar1SupVar2,                            "vv"    );
+	OP(119, ifVar1InfEqVar2,                          "vv"    );
+	OP(120, ifVarHasAllBitsSet,                       "vi"    );
+	OP(121, ifVarHasNoBitsSet,                        "vi"    );
+	OP(122, ifVarHasSomeBitsSet,                      "vii"   );
+	OP(123, ifHeadingInRange,                         "ii"    );
+	OP(124, ifPitchInRange,                           "ii"    );
+	OP(125, ifHeadingPitchInRect,                     "iiii"  );
+	OP(126, ifMouseIsInRect,                          "iiii"  );
+	OP(127, leverDrag,                                "iiiiv" ); // Six args
+	OP(130, leverDragXY,                              "vviii" );
+	OP(131, itemDrag,                                 "viiiv" );
+	OP(132, leverDragPositions,                       "vi"    ); // Variable args
+	OP(134, runScriptWhileDragging,                   "vviiv" ); // Eight args
+	OP(135, chooseNextNode,                           "cii"   );
+	OP(136, goToNodeTransition,                       "ii"    );
+	OP(137, goToNodeTrans2,                           "i"     );
+	OP(138, goToNodeTrans1,                           "i"     );
+	OP(139, goToRoomNode,                             "ii"    );
+	OP(140, zipToNode,                                "i"     );
+	OP(141, zipToRoomNode,                            "ii"    );
+	OP(144, drawTransition,                           ""      );
+	OP(145, reloadNode,                               ""      );
+	OP(146, redrawFrame,                              ""      );
+	OP(147, moviePlay,                                "e"     );
+	OP(148, moviePlaySynchronized,                    "e"     );
+	OP(149, moviePlayFullFrame,                       "e"     );
+	OP(150, moviePlayFullFrameTrans,                  "e"     );
+	OP(151, moviePlayChangeNode,                      "ee"    );
+	OP(152, moviePlayChangeNodeTrans,                 "ee"    );
+	OP(153, lookAt,                                   "ii"    );
+	OP(154, lookAtInXFrames,                          "iii"   );
+	OP(155, lookAtMovieStart,                         "e"     );
+	OP(156, lookAtMovieStartInXFrames,                "ei"    );
+	OP(157, cameraLimitMovement,                      "iiii"  );
+	OP(158, cameraFreeMovement,                       ""      );
+	OP(159, cameraLookAt,                             "ii"    );
+	OP(160, cameraLookAtVar,                          "v"     );
+	OP(161, cameraGetLookAt,                          "v"     );
+	OP(162, lookAtMovieStartImmediate,                "e"     );
+	OP(163, cameraSetFOV,                             "e"     );
+	OP(164, changeNode,                               "i"     );
+	OP(165, changeNodeRoom,                           "ii"    );
+	OP(166, changeNodeRoomAge,                        "iii"   );
+	OP(168, uselessOpcode,                            ""      );
+	OP(169, drawXTicks,                               "i"     );
+	OP(171, drawWhileCond,                            "c"     );
+	OP(172, whileStart,                               "c"     );
+	OP(173, whileEnd,                                 ""      );
+	OP(174, runScriptWhileCond,                       "ci"    );
+	OP(175, runScriptWhileCondEachXFrames,            "cii"   );
+	OP(176, runScriptForVar,                          "viii"  );
+	OP(177, runScriptForVarEachXFrames,               "viiii" );
+	OP(178, runScriptForVarStartVar,                  "vvii"  );
+	OP(179, runScriptForVarStartVarEachXFrames,       "vviii" );
+	OP(180, runScriptForVarEndVar,                    "vivi"  );
+	OP(181, runScriptForVarEndVarEachXFrames,         "vivii" );
+	OP(182, runScriptForVarStartEndVar,               "vvvi"  );
+	OP(183, runScriptForVarStartEndVarEachXFrames,    "vvvii" );
+	OP(184, drawFramesForVar,                         "viii"  );
+	OP(185, drawFramesForVarEachTwoFrames,            "vii"   );
+	OP(186, drawFramesForVarStartEndVarEachTwoFrames, "vvv"   );
+	OP(187, runScript,                                "e"     );
+	OP(188, runScriptWithVar,                         "ei"    );
+	OP(189, runCommonScript,                          "i"     );
+	OP(190, runCommonScriptWithVar,                   "ei"    );
+	OP(194, runPuzzle1,                               "i"     );
+	OP(195, runPuzzle2,                               "ii"    );
+	OP(196, runPuzzle3,                               "iii"   );
+	OP(197, runPuzzle4,                               "iiii"  );
+	OP(198, ambientLoadNode,                          "iii"   );
+	OP(199, ambientReloadCurrentNode,                 "e"     );
+	OP(200, ambientPlayCurrentNode,                   "ii"    );
+	OP(201, ambientApply,                             ""      );
+	OP(202, ambientApplyWithFadeDelay,                "e"     );
+	OP(203, soundPlayBadClick,                        ""      );
+	OP(204, soundPlayBlocking,                        "eeeei" );
+	OP(205, soundPlay,                                "e"     );
+	OP(206, soundPlayVolume,                          "ee"    );
+	OP(207, soundPlayVolumeDirection,                 "eee"   );
+	OP(208, soundPlayVolumeDirectionAtt,              "eeee"  );
+	OP(209, soundStopEffect,                          "e"     );
+	OP(210, soundFadeOutEffect,                       "ee"    );
+	OP(212, soundPlayLooping,                         "e"     );
+	OP(213, soundPlayFadeInOut,                       "eeeee" );
+	OP(214, soundChooseNext,                          "viiee" );
+	OP(215, soundRandomizeNext,                       "viiee" );
+	OP(216, soundChooseNextAfterOther,                "viiee" ); // Seven args
+	OP(217, soundRandomizeNextAfterOther,             "viiee" ); // Seven args
+	OP(218, ambientSetFadeOutDelay,                   "i"     );
+	OP(219, ambientAddSound1,                         "ee"    );
+	OP(220, ambientAddSound2,                         "eei"   );
+	OP(222, ambientAddSound3,                         "eei"   );
+	OP(223, ambientAddSound4,                         "eeii"  );
+	OP(224, ambientAddSound5,                         "eee"   );
+	OP(225, ambientSetCue1,                           "ie"    );
+	OP(226, ambientSetCue2,                           "iei"   );
+	OP(227, ambientSetCue3,                           "ieii"  );
+	OP(228, ambientSetCue4,                           "ie"    );
+	OP(229, runAmbientScriptNode,                     "e"     );
+	OP(230, runAmbientScriptNodeRoomAge,              "eeee"  );
+	OP(231, runSoundScriptNode,                       "e"     );
+	OP(232, runSoundScriptNodeRoom,                   "ee"    );
+	OP(233, runSoundScriptNodeRoomAge,                "eee"   );
+	OP(234, soundStopMusic,                           "e"     );
+	OP(235, movieSetStartupSound,                     "e"     );
+	OP(236, movieSetStartupSoundVolume,               "ee"    );
+	OP(237, movieSetStartupSoundVolumeH,              "eee"   );
+	OP(239, drawOneFrame,                             ""      );
+	OP(240, cursorHide,                               ""      );
+	OP(241, cursorShow,                               ""      );
+	OP(242, cursorSet,                                "i"     );
+	OP(243, cursorLock,                               ""      );
+	OP(244, cursorUnlock,                             ""      );
+	OP(248, dialogOpen,                               "e"     );
+	OP(249, newGame,                                  ""      );
 
-#undef OP_0
-#undef OP_1
-#undef OP_2
-#undef OP_3
-#undef OP_4
-#undef OP_5
+	if (_vm->getPlatform() == Common::kPlatformXbox) {
+		// The Xbox version inserted two new opcodes, one at position
+		// 27, the other at position 77, shifting all the other opcodes
+		shiftCommands(77, 1);
+		OP(77, varDecrementMinLooping,	              "vii"   );
+
+		shiftCommands(27, 1);
+		OP(27, movieInitCondScriptedPosition,         "ecvv"  );
+	}
+
+#undef OP
 }
 
 Script::~Script() {
@@ -296,7 +302,7 @@ bool Script::run(const Common::Array<Opcode> *script) {
 	c.script = script;
 	c.op = script->begin();
 
-	while (c.op != script->end()) {
+	while (c.op != script->end() && !_vm->shouldQuit()) {
 		runOp(c, *c.op);
 
 		if (c.endScript || c.op == script->end())
@@ -319,13 +325,28 @@ const Script::Command &Script::findCommand(uint16 op) {
 	return findCommand(0);
 }
 
+const Script::Command &Script::findCommandByProc(CommandProc proc) {
+	for (uint16 i = 0; i < _commands.size(); i++)
+		if (_commands[i].proc == proc)
+			return _commands[i];
+
+	// Return the invalid opcode if not found
+	return findCommand(0);
+}
+
+void Script::shiftCommands(uint16 base, int32 value) {
+	for (uint16 i = 0; i < _commands.size(); i++)
+		if (_commands[i].op >= base)
+			_commands[i].op += value;
+}
+
 void Script::runOp(Context &c, const Opcode &op) {
 	const Script::Command &cmd = findCommand(op.op);
 
 	if (cmd.op != 0)
 		(this->*(cmd.proc))(c, op);
 	else
-		warning("Trying to run invalid opcode %d", op.op);
+		debugC(kDebugScript, "Trying to run invalid opcode %d", op.op);
 }
 
 void Script::runSingleOp(const Opcode &op) {
@@ -349,8 +370,8 @@ const Common::String Script::describeOpcode(const Opcode &opcode) {
 			describeCommand(opcode.op).c_str());
 
 	for(uint k = 0; k < opcode.args.size(); k++) {
-		if (cmd.op != 0 && k < 5)
-			d += describeArgument(cmd.argType[k], opcode.args[k]) + " ";
+		if (cmd.op != 0 && k < strlen(cmd.signature))
+			d += describeArgument(cmd.signature[k], opcode.args[k]) + " ";
 		else
 			d += Common::String::format("%d ", opcode.args[k]);
 	}
@@ -360,7 +381,7 @@ const Common::String Script::describeOpcode(const Opcode &opcode) {
 	return d;
 }
 
-const Common::String Script::describeArgument(ArgumentType type, int16 value) {
+const Common::String Script::describeArgument(char type, int16 value) {
 	switch (type) {
 	case kVar:
 		return _vm->_state->describeVar(value);
@@ -400,7 +421,6 @@ void Script::nodeCubeInit(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(cmd.args[0]);
 	_vm->loadNodeCubeFaces(nodeId);
-	// TODO: Load rects
 }
 
 void Script::nodeCubeInitIndex(Context &c, const Opcode &cmd) {
@@ -416,7 +436,6 @@ void Script::nodeCubeInitIndex(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(value);
 	_vm->loadNodeCubeFaces(nodeId);
-	// TODO: Load rects
 }
 
 void Script::nodeFrameInit(Context &c, const Opcode &cmd) {
@@ -424,7 +443,6 @@ void Script::nodeFrameInit(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(cmd.args[0]);
 	_vm->loadNodeFrame(nodeId);
-	// TODO: Load rects
 }
 
 void Script::nodeFrameInitCond(Context &c, const Opcode &cmd) {
@@ -439,7 +457,6 @@ void Script::nodeFrameInitCond(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(value);
 	_vm->loadNodeFrame(nodeId);
-	// TODO: Load rects
 }
 
 void Script::nodeFrameInitIndex(Context &c, const Opcode &cmd) {
@@ -455,7 +472,6 @@ void Script::nodeFrameInitIndex(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(value);
 	_vm->loadNodeFrame(nodeId);
-	// TODO: Load rects
 }
 
 void Script::nodeMenuInit(Context &c, const Opcode &cmd) {
@@ -463,7 +479,6 @@ void Script::nodeMenuInit(Context &c, const Opcode &cmd) {
 
 	uint16 nodeId = _vm->_state->valueOrVarValue(cmd.args[0]);
 	_vm->loadNodeMenu(nodeId);
-	// TODO: Load rects
 }
 
 void Script::stopWholeScript(Context &c, const Opcode &cmd) {
@@ -610,6 +625,19 @@ void Script::movieInitScriptedPosition(Context &c, const Opcode &cmd) {
 	_vm->loadMovie(movieid, 1, false, true);
 }
 
+void Script::movieInitCondScriptedPosition(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Preload movie %d with condition %d, position U-var %d V-var %d",
+			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+
+	_vm->_state->setMoviePreloadToMemory(true);
+	_vm->_state->setMovieScriptDriven(true);
+	_vm->_state->setMovieUVar(cmd.args[2]);
+	_vm->_state->setMovieVVar(cmd.args[3]);
+
+	uint16 movieid = _vm->_state->valueOrVarValue(cmd.args[0]);
+	_vm->loadMovie(movieid, cmd.args[1], false, true);
+}
+
 void Script::movieRemove(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Remove movie %d ",
 			cmd.op, cmd.args[0]);
@@ -669,7 +697,7 @@ void Script::shakeEffectSet(Context &c, const Opcode &cmd) {
 	uint16 period = _vm->_state->valueOrVarValue(cmd.args[1]);
 
 	_vm->_state->setShakeEffectAmpl(ampl);
-	_vm->_state->setShakeEffectFramePeriod(period);
+	_vm->_state->setShakeEffectTickPeriod(period);
 }
 
 void Script::sunspotAdd(Context &c, const Opcode &cmd) {
@@ -959,7 +987,7 @@ void Script::varSetMinDistanceToZone(Context &c, const Opcode &cmd) {
 	float heading = _vm->_state->getLookAtHeading();
 	float pitch = _vm->_state->getLookAtPitch();
 	int16 distance = (int16)(100 * _vm->_scene->distanceToZone(cmd.args[2], cmd.args[1], cmd.args[3], heading, pitch));
-	if (distance < _vm->_state->getVar(cmd.args[0]))
+	if (distance >= _vm->_state->getVar(cmd.args[0]))
 		_vm->_state->setVar(cmd.args[0], distance);
 }
 
@@ -1099,6 +1127,20 @@ void Script::varDecrementMin(Context &c, const Opcode &cmd) {
 
 	if (value < cmd.args[1])
 		value = cmd.args[1];
+
+	_vm->_state->setVar(cmd.args[0], value);
+}
+
+void Script::varDecrementMinLooping(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Decrement var %d in range [%d, %d]",
+			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2]);
+
+	int32 value = _vm->_state->getVar(cmd.args[0]);
+
+	value--;
+
+	if (value < cmd.args[1])
+		value = cmd.args[2];
 
 	_vm->_state->setVar(cmd.args[0], value);
 }
@@ -1366,12 +1408,12 @@ void Script::ifElse(Context &c, const Opcode &cmd) {
 }
 
 void Script::goToElse(Context &c) {
+	const Command &elseCommand = findCommandByProc(&Script::ifElse);
 
 	// Go to next command until an else statement is met
 	do {
 		c.op++;
-	} while (c.op != c.script->end()
-			&& c.op->op != 104);
+	} while (c.op != c.script->end() && c.op->op != elseCommand.op);
 }
 
 void Script::ifCondition(Context &c, const Opcode &cmd) {
@@ -1410,7 +1452,7 @@ void Script::ifOneVarSetInRange(Context &c, const Opcode &cmd) {
 	uint16 var = cmd.args[0];
 	uint16 end = cmd.args[1];
 
-	if (end > var) {
+	if (var > end) {
 		goToElse(c);
 		return;
 	}
@@ -1498,7 +1540,7 @@ void Script::ifVarNotInRange(Context &c, const Opcode &cmd) {
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2]);
 
 	int32 value = _vm->_state->getVar(cmd.args[0]);
-	if(value < cmd.args[1] && value > cmd.args[2])
+	if(value < cmd.args[1] || value > cmd.args[2])
 		return;
 
 	goToElse(c);
@@ -1628,7 +1670,10 @@ void Script::ifMouseIsInRect(Context &c, const Opcode &cmd) {
 	Common::Rect r = Common::Rect(cmd.args[2], cmd.args[3]);
 	r.translate(cmd.args[0], cmd.args[1]);
 
-	if (r.contains(_vm->_cursor->getPosition()))
+	Common::Point mouse = _vm->_cursor->getPosition(false);
+	mouse = _vm->_scene->scalePoint(mouse);
+
+	if (r.contains(mouse))
 		return;
 
 	goToElse(c);
@@ -1644,11 +1689,10 @@ void Script::leverDrag(Context &c, const Opcode &cmd) {
 	int16 var = cmd.args[4];
 	int16 numPositions = cmd.args[5];
 	int16 script = cmd.args[6];
-	int16 topOffset = _vm->_state->getViewType() != kMenu ? 30 : 0;
 
 	_vm->_cursor->changeCursor(2);
 
-	bool mousePressed = true;
+	int16 previousPosition = -1;
 	while (true) {
 		float ratioPosition = 0.0;
 		// Compute the distance to the minimum lever point
@@ -1663,14 +1707,15 @@ void Script::leverDrag(Context &c, const Opcode &cmd) {
 
 			ratioPosition = distanceToMax < amplitude ? distanceToMin / amplitude : 0.0;
 		} else {
-			Common::Point mouse = _vm->_cursor->getPosition();
+			Common::Point mouse = _vm->_cursor->getPosition(false);
+			mouse = _vm->_scene->scalePoint(mouse);
 			int16 amplitude;
 			int16 pixelPosition;
 
 			if (minPosX == maxPosX) {
 				// Vertical slider
 				amplitude = maxPosY - minPosY;
-				pixelPosition = mouse.y - minPosY - topOffset;
+				pixelPosition = mouse.y - minPosY;
 			} else {
 				// Horizontal slider
 				amplitude = maxPosX - minPosX;
@@ -1693,23 +1738,29 @@ void Script::leverDrag(Context &c, const Opcode &cmd) {
 		_vm->_state->setVar(var, position);
 
 		// Draw a frame
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 
-		mousePressed = _vm->getEventManager()->getButtonState() & Common::EventManager::LBUTTON;
+		bool mousePressed = (_vm->getEventManager()->getButtonState() & Common::EventManager::LBUTTON) != 0;
 		_vm->_state->setDragEnded(!mousePressed);
 
 		if (_vm->_state->getDragLeverSpeed()) {
-			warning("Interaction with var 58 is missing in opcode 127.");
+			debugC(kDebugScript, "Interaction with var 58 is missing in opcode 127.");
 			return;
 		}
 
-		if (script) {
+		if (script && (position != previousPosition || !mousePressed)) {
 			_vm->_state->setVar(var, position);
 			_vm->runScriptsFromNode(abs(script));
 		}
 
-		if (!mousePressed)
+		if (script > 0) {
+			// In this case the script is executed only if the lever position changed.
+			// Otherwise it is executed every frame
+			previousPosition = position;
+		}
+
+		if (!mousePressed || _vm->shouldQuit())
 			break;
 	}
 
@@ -1729,13 +1780,13 @@ void Script::leverDragPositions(Context &c, const Opcode &cmd) {
 
 	_vm->_cursor->changeCursor(2);
 
-	bool mousePressed = true;
+	int16 previousPosition = -1;
 	while (true) {
 		float pitch, heading;
 		_vm->_cursor->getDirection(pitch, heading);
 
 		float minDistance = 180.0;
-		uint position = 0;
+		int16 position = 0;
 
 		// Find the lever position where the distance between the lever
 		// and the mouse is minimal, by trying every possible position.
@@ -1756,23 +1807,29 @@ void Script::leverDragPositions(Context &c, const Opcode &cmd) {
 		_vm->_state->setVar(var, position);
 
 		// Draw a frame
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 
-		mousePressed = _vm->inputValidatePressed();
+		bool mousePressed = _vm->inputValidatePressed();
 		_vm->_state->setDragEnded(!mousePressed);
 
 		if (_vm->_state->getDragLeverSpeed()) {
-			warning("Interaction with var 58 is missing in opcode 132.");
+			debugC(kDebugScript, "Interaction with var 58 is missing in opcode 132.");
 			return;
 		}
 
-		if (script) {
+		if (script && (position != previousPosition || !mousePressed)) {
 			_vm->_state->setVar(var, position);
 			_vm->runScriptsFromNode(abs(script));
 		}
 
-		if (!mousePressed)
+		if (script > 0) {
+			// In this case the script is executed only if the lever position changed.
+			// Otherwise it is executed every frame
+			previousPosition = position;
+		}
+
+		if (!mousePressed || _vm->shouldQuit())
 			break;
 	}
 
@@ -1788,13 +1845,15 @@ void Script::leverDragXY(Context &c, const Opcode &cmd) {
 	uint16 maxLeverPosition = cmd.args[3];
 	uint16 script = _vm->_state->valueOrVarValue(cmd.args[4]);
 
-	Common::Point mouseInit = _vm->_cursor->getPosition();
+	Common::Point mouseInit = _vm->_cursor->getPosition(false);
+	mouseInit = _vm->_scene->scalePoint(mouseInit);
 
 	_vm->_cursor->changeCursor(2);
 
 	bool mousePressed = true;
 	do {
-		Common::Point mouse = _vm->_cursor->getPosition();
+		Common::Point mouse = _vm->_cursor->getPosition(false);
+		mouse = _vm->_scene->scalePoint(mouse);
 		int16 distanceX = (mouseInit.x - mouse.x) / scale;
 		int16 distanceY = (mouseInit.y - mouse.y) / scale;
 
@@ -1806,7 +1865,7 @@ void Script::leverDragXY(Context &c, const Opcode &cmd) {
 		_vm->_state->setVar(varY, distanceY);
 
 		// Draw a frame
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 
 		mousePressed = _vm->getEventManager()->getButtonState() & Common::EventManager::LBUTTON;
@@ -1815,7 +1874,7 @@ void Script::leverDragXY(Context &c, const Opcode &cmd) {
 		// Run script
 		if (script)
 			_vm->runScriptsFromNode(script);
-	} while (mousePressed);
+	} while (mousePressed && !_vm->shouldQuit());
 }
 
 void Script::itemDrag(Context &c, const Opcode &cmd) {
@@ -1832,58 +1891,84 @@ void Script::runScriptWhileDragging(Context &c, const Opcode &cmd) {
 	int16 lastLeverPosition = _vm->_state->getVar(cmd.args[4]);
 	int16 leverHeight = cmd.args[3];
 	int16 leverWidth = cmd.args[2];
-	int16 topOffset = _vm->_state->getViewType() != kMenu ? 30 : 0;
 
 	_vm->_cursor->changeCursor(2);
 
-	bool mousePressed = true;
-	do {
-		mousePressed = _vm->getEventManager()->getButtonState() & Common::EventManager::LBUTTON;
-		_vm->_state->setDragEnded(!mousePressed);
+	bool dragWithDirectionKeys = _vm->_state->hasVarDragWithDirectionKeys()
+			&& _vm->_state->getDragWithDirectionKeys();
 
-		_vm->processInput(true);
+	bool dragging = true;
+	do {
+		dragging = _vm->getEventManager()->getButtonState() & Common::EventManager::LBUTTON;
+		dragging |= _vm->_state->hasVarGamePadActionPressed() && _vm->_state->getGamePadActionPressed();
+		_vm->_state->setDragEnded(!dragging);
+
+		_vm->processInput(false);
 		_vm->drawFrame();
 
-		// Distance between the mouse and the lever
-		Common::Point mouse = _vm->_cursor->getPosition();
-		int16 distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
-		int16 distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]) - topOffset;
-		float distance = sqrt((float) distanceX * distanceX + distanceY * distanceY);
+		if (!dragWithDirectionKeys) {
+			// Distance between the mouse and the lever
+			Common::Point mouse = _vm->_cursor->getPosition(false);
+			mouse = _vm->_scene->scalePoint(mouse);
+			int16 distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
+			int16 distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]);
+			float distance = sqrt((float) distanceX * distanceX + distanceY * distanceY);
 
-		uint16 bestPosition = lastLeverPosition;
-		if (distance > maxDistance) {
-			_vm->_state->setDragLeverPositionChanged(false);
-		} else {
-			// Find the lever position where the distance between the lever
-			// and the mouse is minimal, by trying every possible position.
-			float minDistance = 1000;
-			for (uint i = 0; i < maxLeverPosition; i++) {
-				_vm->_state->setDragPositionFound(false);
+			uint16 bestPosition = lastLeverPosition;
+			if (distance > maxDistance) {
+				_vm->_state->setDragLeverPositionChanged(false);
+			} else {
+				// Find the lever position where the distance between the lever
+				// and the mouse is minimal, by trying every possible position.
+				float minDistance = 1000;
+				for (uint i = 0; i < maxLeverPosition; i++) {
+					_vm->_state->setDragPositionFound(false);
 
-				_vm->_state->setVar(cmd.args[4], i);
-				_vm->runScriptsFromNode(script);
+					_vm->_state->setVar(cmd.args[4], i);
+					_vm->runScriptsFromNode(script);
 
-				mouse = _vm->_cursor->getPosition();
-				distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
-				distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]) - topOffset;
-				distance = sqrt((float) distanceX * distanceX + distanceY * distanceY);
+					mouse = _vm->_cursor->getPosition(false);
+					mouse = _vm->_scene->scalePoint(mouse);
+					distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
+					distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]);
+					distance = sqrt((float) distanceX * distanceX + distanceY * distanceY);
 
-				if (distance < minDistance) {
-					minDistance = distance;
-					bestPosition = i;
+					if (distance < minDistance) {
+						minDistance = distance;
+						bestPosition = i;
+					}
 				}
+				_vm->_state->setDragLeverPositionChanged(bestPosition != lastLeverPosition);
 			}
-			_vm->_state->setDragLeverPositionChanged(bestPosition != lastLeverPosition);
+
+			// Set the lever position to the best position
+			_vm->_state->setDragPositionFound(true);
+			_vm->_state->setVar(cmd.args[4], bestPosition);
+		} else {
+			uint16 previousPosition = _vm->_state->getVar(cmd.args[4]);
+			uint16 position = previousPosition;
+
+			if (_vm->_state->getGamePadLeftPressed()) {
+				position--;
+			} else if (_vm->_state->getGamePadRightPressed()) {
+				position++;
+			}
+
+			position = CLIP<int16>(position, 0, maxLeverPosition);
+			_vm->_state->setVar(cmd.args[4], position);
+			_vm->_state->setDragLeverPositionChanged(position != previousPosition);
 		}
 
-		// Set the lever position to the best position
-		_vm->_state->setDragPositionFound(true);
-		_vm->_state->setVar(cmd.args[4], bestPosition);
-
 		_vm->runScriptsFromNode(script);
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
-	} while (mousePressed);
+	} while (dragging && !_vm->shouldQuit());
+
+	if (dragWithDirectionKeys) {
+		_vm->_state->setDragWithDirectionKeys(false);
+	}
+
+	_vm->_state->setDragPositionFound(false);
 }
 
 void Script::chooseNextNode(Context &c, const Opcode &cmd) {
@@ -1898,19 +1983,19 @@ void Script::chooseNextNode(Context &c, const Opcode &cmd) {
 void Script::goToNodeTransition(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Go to node %d with transition %d", cmd.op, cmd.args[0], cmd.args[1]);
 
-	_vm->goToNode(cmd.args[0], cmd.args[1]);
+	_vm->goToNode(cmd.args[0], static_cast<TransitionType>(cmd.args[1]));
 }
 
 void Script::goToNodeTrans2(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Go to node %d", cmd.op, cmd.args[0]);
 
-	_vm->goToNode(cmd.args[0], 2);
+	_vm->goToNode(cmd.args[0], kTransitionNone);
 }
 
 void Script::goToNodeTrans1(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Go to node %d", cmd.op, cmd.args[0]);
 
-	_vm->goToNode(cmd.args[0], 1);
+	_vm->goToNode(cmd.args[0], kTransitionFade);
 }
 
 void Script::goToRoomNode(Context &c, const Opcode &cmd) {
@@ -1919,13 +2004,13 @@ void Script::goToRoomNode(Context &c, const Opcode &cmd) {
 	_vm->_state->setLocationNextRoom(cmd.args[0]);
 	_vm->_state->setLocationNextNode(cmd.args[1]);
 
-	_vm->goToNode(0, 1);
+	_vm->goToNode(0, kTransitionFade);
 }
 
 void Script::zipToNode(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Zip to node %d", cmd.op, cmd.args[0]);
 
-	_vm->goToNode(cmd.args[0], 3);
+	_vm->goToNode(cmd.args[0], kTransitionZip);
 }
 
 void Script::zipToRoomNode(Context &c, const Opcode &cmd) {
@@ -1934,7 +2019,13 @@ void Script::zipToRoomNode(Context &c, const Opcode &cmd) {
 	_vm->_state->setLocationNextRoom(cmd.args[0]);
 	_vm->_state->setLocationNextNode(cmd.args[1]);
 
-	_vm->goToNode(0, 3);
+	_vm->goToNode(0, kTransitionZip);
+}
+
+void Script::drawTransition(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Draw transition", cmd.op);
+
+	_vm->drawTransition(kTransitionFade);
 }
 
 void Script::reloadNode(Context &c, const Opcode &cmd) {
@@ -2001,7 +2092,7 @@ void Script::cameraGetLookAt(Context &c, const Opcode &cmd) {
 	_vm->_state->setVar(cmd.args[0] + 1, (int32)heading);
 }
 
-void Script::lootAtMovieStartImmediate(Context &c, const Opcode &cmd) {
+void Script::lookAtMovieStartImmediate(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Look at movie %d start", cmd.op, cmd.args[0]);
 
 	uint16 movieId = _vm->_state->valueOrVarValue(cmd.args[0]);
@@ -2037,13 +2128,13 @@ void Script::changeNodeRoomAge(Context &c, const Opcode &cmd) {
 	_vm->loadNode(cmd.args[2], cmd.args[1], cmd.args[0]);
 }
 
-void Script::drawXFrames(Context &c, const Opcode &cmd) {
-	debugC(kDebugScript, "Opcode %d: Draw %d frames", cmd.op, cmd.args[0]);
+void Script::drawXTicks(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Draw %d ticks", cmd.op, cmd.args[0]);
 
-	uint32 endFrame = _vm->_state->getFrameCount() + cmd.args[0];
+	uint32 endTick = _vm->_state->getTickCount() + cmd.args[0];
 
-	while (_vm->_state->getFrameCount() < endFrame) {
-		_vm->processInput(true);
+	while (_vm->_state->getTickCount() < endTick && !_vm->shouldQuit()) {
+		_vm->processInput(false);
 		_vm->drawFrame();
 	}
 }
@@ -2051,14 +2142,15 @@ void Script::drawXFrames(Context &c, const Opcode &cmd) {
 void Script::drawWhileCond(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: While condition %d, draw", cmd.op, cmd.args[0]);
 
-	// TODO: Skippable with Escape
-	while (_vm->_state->evaluate(cmd.args[0])) {
-		_vm->processInput(true);
+	while (_vm->_state->evaluate(cmd.args[0]) && !_vm->inputEscapePressed() && !_vm->shouldQuit()) {
+		_vm->processInput(false);
 		_vm->drawFrame();
 	}
 }
 
 void Script::whileStart(Context &c, const Opcode &cmd) {
+	const Command &whileEndCommand = findCommandByProc(&Script::whileEnd);
+
 	c.whileStart = c.op - 1;
 
 	// Check the while condition
@@ -2066,11 +2158,10 @@ void Script::whileStart(Context &c, const Opcode &cmd) {
 		// Condition is false, go to the next opcode after the end of the while loop
 		do {
 			c.op++;
-		} while (c.op != c.script->end()
-				&& c.op->op != 173);
+		} while (c.op != c.script->end() && c.op->op != whileEndCommand.op);
 	}
 
-	_vm->processInput(true);
+	_vm->processInput(false);
 	_vm->drawFrame();
 }
 
@@ -2084,13 +2175,13 @@ void Script::whileEnd(Context &c, const Opcode &cmd) {
 void Script::runScriptWhileCond(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: While condition %d, run script %d", cmd.op, cmd.args[0], cmd.args[1]);
 
-	while (_vm->_state->evaluate(cmd.args[0])) {
+	while (_vm->_state->evaluate(cmd.args[0]) && !_vm->shouldQuit()) {
 		_vm->runScriptsFromNode(cmd.args[1]);
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 	}
 
-	_vm->processInput(true);
+	_vm->processInput(false);
 	_vm->drawFrame();
 }
 
@@ -2103,21 +2194,21 @@ void Script::runScriptWhileCondEachXFrames(Context &c, const Opcode &cmd) {
 	if (firstStep > 100)
 		firstStep /= 100;
 
-	uint nextScript = _vm->_state->getFrameCount() + firstStep;
+	uint nextScript = _vm->_state->getTickCount() + firstStep;
 
-	while (_vm->_state->evaluate(cmd.args[0])) {
+	while (_vm->_state->evaluate(cmd.args[0]) && !_vm->shouldQuit()) {
 
-		if (_vm->_state->getFrameCount() >= nextScript) {
-			nextScript = _vm->_state->getFrameCount() + step;
+		if (_vm->_state->getTickCount() >= nextScript) {
+			nextScript = _vm->_state->getTickCount() + step;
 
 			_vm->runScriptsFromNode(cmd.args[1]);
 		}
 
-		_vm->processInput(true);
+		_vm->processInput(false);
 		_vm->drawFrame();
 	}
 
-	_vm->processInput(true);
+	_vm->processInput(false);
 	_vm->drawFrame();
 }
 
@@ -2138,7 +2229,7 @@ void Script::moviePlayFullFrameTrans(Context &c, const Opcode &cmd) {
 	_vm->playMovieFullFrame(movieId);
 	_vm->_cursor->setVisible(true);
 
-	// TODO: Transition
+	_vm->drawTransition(kTransitionFade);
 }
 
 void Script::moviePlayChangeNode(Context &c, const Opcode &cmd) {
@@ -2160,22 +2251,22 @@ void Script::moviePlayChangeNodeTrans(Context &c, const Opcode &cmd) {
 	_vm->playMovieGoToNode(movieId, nodeId);
 	_vm->_cursor->setVisible(true);
 
-	// TODO: Transition
+	_vm->drawTransition(kTransitionFade);
 }
 
-void Script::lootAt(Context &c, const Opcode &cmd) {
+void Script::lookAt(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Look at %d, %d", cmd.op, cmd.args[0], cmd.args[1]);
 
 	_vm->animateDirectionChange(cmd.args[0], cmd.args[1], 0);
 }
 
-void Script::lootAtInXFrames(Context &c, const Opcode &cmd) {
+void Script::lookAtInXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Look at %d, %d in %d frames", cmd.op, cmd.args[0], cmd.args[1], cmd.args[2]);
 
 	_vm->animateDirectionChange(cmd.args[0], cmd.args[1], cmd.args[2]);
 }
 
-void Script::lootAtMovieStart(Context &c, const Opcode &cmd) {
+void Script::lookAtMovieStart(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Look at movie %d start", cmd.op, cmd.args[0]);
 
 	uint16 movieId = _vm->_state->valueOrVarValue(cmd.args[0]);
@@ -2185,7 +2276,7 @@ void Script::lootAtMovieStart(Context &c, const Opcode &cmd) {
 	_vm->animateDirectionChange(startPitch, startHeading, 0);
 }
 
-void Script::lootAtMovieStartInXFrames(Context &c, const Opcode &cmd) {
+void Script::lookAtMovieStartInXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Look at movie %d start in %d frames", cmd.op, cmd.args[0], cmd.args[1]);
 
 	uint16 movieId = _vm->_state->valueOrVarValue(cmd.args[0]);
@@ -2195,18 +2286,18 @@ void Script::lootAtMovieStartInXFrames(Context &c, const Opcode &cmd) {
 	_vm->animateDirectionChange(startPitch, startHeading, cmd.args[1]);
 }
 
-void Script::runScriptForVarDrawFramesHelper(uint16 var, int32 startValue, int32 endValue, uint16 script, int32 numFrames) {
-	if (numFrames < 0) {
-		numFrames = -numFrames;
-		uint startFrame = _vm->_state->getFrameCount();
-		uint currentFrame = startFrame;
-		uint endFrame = startFrame + numFrames;
+void Script::runScriptForVarDrawTicksHelper(uint16 var, int32 startValue, int32 endValue, uint16 script, int32 numTicks) {
+	if (numTicks < 0) {
+		numTicks = -numTicks;
+		uint startTick = _vm->_state->getTickCount();
+		uint currentTick = startTick;
+		uint endTick = startTick + numTicks;
 		uint numValues = abs(endValue - startValue);
 
-		if (startFrame < endFrame) {
+		if (startTick < endTick) {
 			int currentValue = -9999;
 			while (1) {
-				int nextValue = numValues * (currentFrame - startFrame) / numFrames;
+				int nextValue = numValues * (currentTick - startTick) / numTicks;
 				if (currentValue != nextValue) {
 					currentValue = nextValue;
 
@@ -2223,11 +2314,11 @@ void Script::runScriptForVarDrawFramesHelper(uint16 var, int32 startValue, int32
 					}
 				}
 
-				_vm->processInput(true);
+				_vm->processInput(false);
 				_vm->drawFrame();
-				currentFrame = _vm->_state->getFrameCount();
+				currentTick = _vm->_state->getTickCount();
 
-				if (currentFrame > endFrame)
+				if (currentTick > endTick)
 					break;
 			}
 		}
@@ -2235,13 +2326,13 @@ void Script::runScriptForVarDrawFramesHelper(uint16 var, int32 startValue, int32
 		_vm->_state->setVar(var, endValue);
 	} else {
 		int currentValue = startValue;
-		uint endFrame = 0;
+		uint endTick = 0;
 
 		bool positiveDirection = endValue > startValue;
 
 		while (1) {
-			if ((positiveDirection && (currentValue >= endValue))
-					|| (!positiveDirection && (currentValue <= endValue)))
+			if ((positiveDirection && (currentValue > endValue))
+					|| (!positiveDirection && (currentValue < endValue)))
 				break;
 
 			_vm->_state->setVar(var, currentValue);
@@ -2249,10 +2340,12 @@ void Script::runScriptForVarDrawFramesHelper(uint16 var, int32 startValue, int32
 			if (script)
 				_vm->runScriptsFromNode(script);
 
-			for (uint i = _vm->_state->getFrameCount(); i < endFrame; i = _vm->_state->getFrameCount())
+			for (uint i = _vm->_state->getTickCount(); i < endTick; i = _vm->_state->getTickCount()) {
+				_vm->processInput(false);
 				_vm->drawFrame();
+			}
 
-			endFrame = _vm->_state->getFrameCount() + numFrames;
+			endTick = _vm->_state->getTickCount() + numTicks;
 
 			currentValue += positiveDirection ? 1 : -1;
 		}
@@ -2263,63 +2356,65 @@ void Script::runScriptForVar(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from %d to %d, run script %d",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], 0);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], 0);
 }
 
 void Script::runScriptForVarEachXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from %d to %d, run script %d every %d frames",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
 }
 
 void Script::runScriptForVarStartVar(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from var %d value to %d, run script %d",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), cmd.args[2], cmd.args[3], 0);
+	runScriptForVarDrawTicksHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), cmd.args[2], cmd.args[3], 0);
 }
 
 void Script::runScriptForVarStartVarEachXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from var %d value to %d, run script %d every %d frames",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), cmd.args[2], cmd.args[3], cmd.args[4]);
+	runScriptForVarDrawTicksHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), cmd.args[2], cmd.args[3], cmd.args[4]);
 }
 
 void Script::runScriptForVarEndVar(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from %d to var %d value, run script %d",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], _vm->_state->getVar(cmd.args[2]), cmd.args[3], 0);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], _vm->_state->getVar(cmd.args[2]), cmd.args[3], 0);
 }
 
 void Script::runScriptForVarEndVarEachXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from var %d value to var %d value, run script %d every %d frames",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], _vm->_state->getVar(cmd.args[2]), cmd.args[3], cmd.args[4]);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], _vm->_state->getVar(cmd.args[2]), cmd.args[3], cmd.args[4]);
 }
 
 void Script::runScriptForVarStartEndVar(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from var %d value to var %d value, run script %d",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]), cmd.args[3], 0);
+	runScriptForVarDrawTicksHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]),
+	                               cmd.args[3], 0);
 }
 
 void Script::runScriptForVarStartEndVarEachXFrames(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from var %d value to var %d value, run script %d every %d frames",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]), cmd.args[3], cmd.args[4]);
+	runScriptForVarDrawTicksHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]),
+	                               cmd.args[3], cmd.args[4]);
 }
 
 void Script::drawFramesForVar(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: For var %d from %d to %d, every %d frames",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], cmd.args[2], 0, -cmd.args[3]);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], cmd.args[2], 0, -cmd.args[3]);
 }
 
 void Script::drawFramesForVarEachTwoFrames(Context &c, const Opcode &cmd) {
@@ -2328,7 +2423,7 @@ void Script::drawFramesForVarEachTwoFrames(Context &c, const Opcode &cmd) {
 
 	uint numFrames = 2 * (-1 - abs(cmd.args[2] - cmd.args[1]));
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], cmd.args[1], cmd.args[2], 0, numFrames);
+	runScriptForVarDrawTicksHelper(cmd.args[0], cmd.args[1], cmd.args[2], 0, numFrames);
 }
 
 void Script::drawFramesForVarStartEndVarEachTwoFrames(Context &c, const Opcode &cmd) {
@@ -2337,7 +2432,8 @@ void Script::drawFramesForVarStartEndVarEachTwoFrames(Context &c, const Opcode &
 
 	uint numFrames = 2 * (-1 - abs(cmd.args[2] - cmd.args[1]));
 
-	runScriptForVarDrawFramesHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]), 0, numFrames);
+	runScriptForVarDrawTicksHelper(cmd.args[0], _vm->_state->getVar(cmd.args[1]), _vm->_state->getVar(cmd.args[2]), 0,
+	                               numFrames);
 }
 
 void Script::runScript(Context &c, const Opcode &cmd) {
@@ -2360,7 +2456,7 @@ void Script::runScriptWithVar(Context &c, const Opcode &cmd) {
 void Script::runCommonScript(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Run common script %d", cmd.op, cmd.args[0]);
 
-	_vm->runScriptsFromNode(cmd.args[0], 101, 1);
+	_vm->runScriptsFromNode(cmd.args[0], kRoomShared, 1);
 }
 
 void Script::runCommonScriptWithVar(Context &c, const Opcode &cmd) {
@@ -2368,7 +2464,7 @@ void Script::runCommonScriptWithVar(Context &c, const Opcode &cmd) {
 
 	_vm->_state->setVar(26, cmd.args[1]);
 
-	_vm->runScriptsFromNode(cmd.args[0], 101, 1);
+	_vm->runScriptsFromNode(cmd.args[0], kRoomShared, 1);
 }
 
 void Script::runPuzzle1(Context &c, const Opcode &cmd) {
@@ -2426,6 +2522,32 @@ void Script::ambientApplyWithFadeDelay(Context &c, const Opcode &cmd) {
 	_vm->_ambient->applySounds(_vm->_state->valueOrVarValue(cmd.args[0]));
 }
 
+void Script::soundPlayBadClick(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Play bad click sound", cmd.op);
+
+	_vm->_sound->playEffect(697, 5);
+}
+
+void Script::soundPlayBlocking(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Play skippable sound %d", cmd.op, cmd.args[0]);
+
+	int16 soundId = cmd.args[0];
+	int32 volume = _vm->_state->valueOrVarValue(cmd.args[1]);
+	int32 heading = _vm->_state->valueOrVarValue(cmd.args[2]);
+	int32 att = _vm->_state->valueOrVarValue(cmd.args[3]);
+	bool nonBlocking = _vm->_state->valueOrVarValue(cmd.args[4]);
+	_vm->_sound->playEffect(soundId, volume, heading, att);
+
+	if (nonBlocking || !_vm->_sound->isPlaying(soundId)) {
+		return;
+	}
+
+	while (_vm->_sound->isPlaying(soundId) && !_vm->inputEscapePressed() && !_vm->shouldQuit()) {
+		_vm->processInput(false);
+		_vm->drawFrame();
+	}
+}
+
 void Script::soundPlay(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Play sound %d", cmd.op, cmd.args[0]);
 
@@ -2472,7 +2594,7 @@ void Script::soundFadeOutEffect(Context &c, const Opcode &cmd) {
 	int32 id = _vm->_state->valueOrVarValue(cmd.args[0]);
 	int32 fadeDuration = _vm->_state->valueOrVarValue(cmd.args[1]);
 
-	_vm->_sound->playEffect(id, fadeDuration);
+	_vm->_sound->stopEffect(id, fadeDuration);
 }
 
 void Script::soundPlayLooping(Context &c, const Opcode &cmd) {
@@ -2710,6 +2832,17 @@ void Script::movieSetStartupSound(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Set movie startup sound %d", cmd.op, cmd.args[0]);
 
 	int32 soundId = _vm->_state->valueOrVarValue(cmd.args[0]);
+
+	_vm->_state->setMovieStartSoundId(soundId);
+	_vm->_state->setMovieStartSoundVolume(100);
+	_vm->_state->setMovieStartSoundHeading(0);
+	_vm->_state->setMovieStartSoundAttenuation(0);
+}
+
+void Script::movieSetStartupSoundVolume(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Set movie startup sound %d", cmd.op, cmd.args[0]);
+
+	int32 soundId = _vm->_state->valueOrVarValue(cmd.args[0]);
 	int32 volume = _vm->_state->valueOrVarValue(cmd.args[1]);
 
 	_vm->_state->setMovieStartSoundId(soundId);
@@ -2718,10 +2851,23 @@ void Script::movieSetStartupSound(Context &c, const Opcode &cmd) {
 	_vm->_state->setMovieStartSoundAttenuation(0);
 }
 
+void Script::movieSetStartupSoundVolumeH(Context &c, const Opcode &cmd) {
+	debugC(kDebugScript, "Opcode %d: Set movie startup sound %d", cmd.op, cmd.args[0]);
+
+	int32 soundId = _vm->_state->valueOrVarValue(cmd.args[0]);
+	int32 volume = _vm->_state->valueOrVarValue(cmd.args[1]);
+	int32 heading = _vm->_state->valueOrVarValue(cmd.args[2]);
+
+	_vm->_state->setMovieStartSoundId(soundId);
+	_vm->_state->setMovieStartSoundVolume(volume);
+	_vm->_state->setMovieStartSoundHeading(heading);
+	_vm->_state->setMovieStartSoundAttenuation(0);
+}
+
 void Script::drawOneFrame(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Draw one frame", cmd.op);
 
-	_vm->processInput(true);
+	_vm->processInput(false);
 	_vm->drawFrame();
 }
 
@@ -2760,7 +2906,7 @@ void Script::dialogOpen(Context &c, const Opcode &cmd) {
 
 	uint16 dialog = _vm->_state->valueOrVarValue(cmd.args[0]);
 	int16 result = _vm->openDialog(dialog);
-	_vm->_state->setDialogResult(result + 1);
+	_vm->_state->setDialogResult(result);
 }
 
 void Script::newGame(Context &c, const Opcode &cmd) {
@@ -2770,4 +2916,4 @@ void Script::newGame(Context &c, const Opcode &cmd) {
 	_vm->_inventory->reset();
 }
 
-} /* namespace Myst3 */
+} // End of namespace Myst3

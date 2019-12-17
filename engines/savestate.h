@@ -27,7 +27,6 @@
 #include "common/str.h"
 #include "common/ptr.h"
 
-
 namespace Graphics {
 struct Surface;
 }
@@ -91,6 +90,24 @@ public:
 	bool getWriteProtectedFlag() const { return _isWriteProtected; }
 
 	/**
+	 * Defines whether the save state is "locked" because is being synced.
+	 */
+	void setLocked(bool state) {
+		_isLocked = state;
+
+		//just in case:
+		if (state) {
+			setDeletableFlag(false);
+			setWriteProtectedFlag(true);
+		}
+	}
+
+	/**
+	* Queries whether the save state is "locked" because is being synced.
+	*/
+	bool getLocked() const { return _isLocked; }
+
+	/**
 	 * Return a thumbnail graphics surface representing the savestate visually.
 	 * This is usually a scaled down version of the game graphics. The size
 	 * should be either 160x100 or 160x120 pixels, depending on the aspect
@@ -104,6 +121,7 @@ public:
 	 * Hence the caller must not delete the surface.
 	 */
 	void setThumbnail(Graphics::Surface *t);
+	void setThumbnail(Common::SharedPtr<Graphics::Surface> t) { _thumbnail = t; }
 
 	/**
 	 * Sets the date the save state was created.
@@ -140,7 +158,7 @@ public:
 	 * Sets the time the game was played before the save state was created.
 	 *
 	 * @param hours How many hours the user played the game so far.
-	 * @param min   How many minutes the user played the game so far.
+	 * @param minutes   How many minutes the user played the game so far.
 	 */
 	void setPlayTime(int hours, int minutes);
 
@@ -158,6 +176,14 @@ public:
 	 * This will return an empty string in case the value is not set.
 	 */
 	const Common::String &getPlayTime() const { return _playTime; }
+
+	/**
+	 * Returns the time the game was played before the save state was created
+	 * in milliseconds.
+	 *
+	 * It defaults to 0.
+	 */
+	uint32 getPlayTimeMSecs() const { return _playTimeMSecs; }
 
 private:
 	/**
@@ -181,6 +207,11 @@ private:
 	bool _isWriteProtected;
 
 	/**
+	 * Whether the save state is "locked" because is being synced.
+	 */
+	bool _isLocked;
+
+	/**
 	 * Human readable description of the date the save state was created.
 	 */
 	Common::String _saveDate;
@@ -197,6 +228,12 @@ private:
 	Common::String _playTime;
 
 	/**
+	 * The time the game was played before the save state was created
+	 * in milliseconds.
+	 */
+	uint32 _playTimeMSecs;
+
+	/**
 	 * The thumbnail of the save state.
 	 */
 	Common::SharedPtr<Graphics::Surface> _thumbnail;
@@ -205,5 +242,13 @@ private:
 /** List of savestates. */
 typedef Common::Array<SaveStateDescriptor> SaveStateList;
 
+/**
+ * Comparator object to compare SaveStateDescriptor's based on slot.
+ */
+struct SaveStateDescriptorSlotComparator {
+	bool operator()(const SaveStateDescriptor &x, const SaveStateDescriptor &y) const {
+		return x.getSaveSlot() < y.getSaveSlot();
+	}
+};
 
 #endif

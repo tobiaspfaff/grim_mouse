@@ -20,6 +20,9 @@
  *
  */
 
+#include "common/config-manager.h"
+#include "graphics/renderer.h"
+
 #include "engines/grim/debugger.h"
 #include "engines/grim/md5check.h"
 #include "engines/grim/grim.h"
@@ -29,9 +32,12 @@ namespace Grim {
 Debugger::Debugger() :
 		GUI::Debugger() {
 
-	DCmd_Register("check_gamedata", WRAP_METHOD(Debugger, cmd_checkFiles));
-	DCmd_Register("lua_do", WRAP_METHOD(Debugger, cmd_lua_do));
-	DCmd_Register("emi_jump", WRAP_METHOD(Debugger, cmd_emi_jump));
+	registerCmd("check_gamedata", WRAP_METHOD(Debugger, cmd_checkFiles));
+	registerCmd("lua_do", WRAP_METHOD(Debugger, cmd_lua_do));
+	registerCmd("jump", WRAP_METHOD(Debugger, cmd_jump));
+	registerCmd("set_renderer", WRAP_METHOD(Debugger, cmd_set_renderer));
+	registerCmd("save", WRAP_METHOD(Debugger, cmd_save));
+	registerCmd("load", WRAP_METHOD(Debugger, cmd_load));
 }
 
 Debugger::~Debugger() {
@@ -40,9 +46,9 @@ Debugger::~Debugger() {
 
 bool Debugger::cmd_checkFiles(int argc, const char **argv) {
 	if (MD5Check::checkFiles()) {
-		DebugPrintf("All files are ok.\n");
+		debugPrintf("All files are ok.\n");
 	} else {
-		DebugPrintf("Some files are corrupted or missing.\n");
+		debugPrintf("Some files are corrupted or missing.\n");
 	}
 
 	return true;
@@ -50,7 +56,7 @@ bool Debugger::cmd_checkFiles(int argc, const char **argv) {
 
 bool Debugger::cmd_lua_do(int argc, const char **argv) {
 	if (argc < 2) {
-		DebugPrintf("Usage: lua_do <lua command>\n");
+		debugPrintf("Usage: lua_do <lua command>\n");
 		return true;
 	}
 
@@ -60,19 +66,64 @@ bool Debugger::cmd_lua_do(int argc, const char **argv) {
 		cmd += " ";
 	}
 	cmd.deleteLastChar();
-	DebugPrintf("Executing command: <%s>\n", cmd.c_str());
+	debugPrintf("Executing command: <%s>\n", cmd.c_str());
 	cmd = Common::String::format("__temp_fn__ = function()\n%s\nend\nstart_script(__temp_fn__)", cmd.c_str());
 	g_grim->debugLua(cmd);
 	return true;
 }
 
-bool Debugger::cmd_emi_jump(int argc, const char **argv) {
+bool Debugger::cmd_jump(int argc, const char **argv) {
 	if (argc < 2) {
-		DebugPrintf("Usage: jump <jump target>\n");
+		debugPrintf("Usage: jump <jump target>\n");
 		return true;
 	}
-	Common::String cmd = Common::String::format("dofile(\"_jumpscripts.lua\")\nstart_script(jump_script,\"%s\")", argv[1]);
+	// Escape from Monkey Island keeps the jump script in a separate file, so load it first
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		Common::String loadJS = Common::String::format("dofile(\"_jumpscripts.lua\")\n");
+		g_grim->debugLua(loadJS.c_str());
+	}
+
+	// Start the jump_script Lua function with the desired target
+	Common::String cmd = Common::String::format("start_script(jump_script,\"%s\")", argv[1]);
 	g_grim->debugLua(cmd.c_str());
+	return true;
+}
+
+bool Debugger::cmd_set_renderer(int argc, const char **argv) {
+	if (argc < 2) {
+		debugPrintf("Usage: set_renderer <renderer>\n");
+		debugPrintf("Where <renderer> is 'software', 'opengl' or 'opengl_shaders'\n");
+		return true;
+	}
+
+	Graphics::RendererType renderer = Graphics::parseRendererTypeCode(argv[1]);
+	if (renderer == Graphics::kRendererTypeDefault) {
+		debugPrintf("Invalid renderer '%s'\n", argv[1]);
+		return true;
+	}
+
+	ConfMan.set("renderer", Graphics::getRendererTypeCode(renderer));
+	g_grim->changeHardwareState();
+	return false;
+}
+
+bool Debugger::cmd_save(int argc, const char **argv) {
+	if (argc < 2) {
+		debugPrintf("Usage: save <save name>\n");
+		return true;
+	}
+	Common::String file = Common::String::format("%s.gsv", argv[1]);
+	g_grim->saveGame(file);
+	return true;
+}
+
+bool Debugger::cmd_load(int argc, const char **argv) {
+	if (argc < 2) {
+		debugPrintf("Usage: load <save name>\n");
+		return true;
+	}
+	Common::String file = Common::String::format("%s.gsv", argv[1]);
+	g_grim->loadGame(file);
 	return true;
 }
 

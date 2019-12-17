@@ -33,6 +33,7 @@
 #include "engines/grim/gfx_base.h"
 
 #include "engines/grim/sound.h"
+#include "engines/grim/emi/sound/emisound.h"
 
 #include "math/frustum.h"
 
@@ -50,14 +51,16 @@ Set::Set(const Common::String &sceneName, Common::SeekableReadStream *data) :
 	} else {
 		loadBinary(data);
 	}
+	setupOverworldLights();
 }
 
 Set::Set() :
 		_cmaps(nullptr), _locked(false), _enableLights(false), _numSetups(0),
 		_numLights(0), _numSectors(0), _numObjectStates(0), _minVolume(0),
-		_maxVolume(0), _numCmaps(0), _currSetup(nullptr), _setups(nullptr),
-		_lights(nullptr), _sectors(nullptr) {
+		_maxVolume(0), _numCmaps(0), _numShadows(0), _currSetup(nullptr),
+		_setups(nullptr), _lights(nullptr), _sectors(nullptr), _shadows(nullptr) {
 
+	setupOverworldLights();
 }
 
 Set::~Set() {
@@ -79,7 +82,35 @@ Set::~Set() {
 			_states.pop_front();
 			delete s;
 		}
+		delete[] _shadows;
 	}
+	foreach (Light *l, _overworldLightsList) {
+		delete l;
+	}
+}
+
+void Set::setupOverworldLights() {
+	Light *l;
+
+	l = new Light();
+	l->_name = "Overworld Light 1";
+	l->_enabled = true;
+	l->_type = Light::Ambient;
+	l->_pos = Math::Vector3d(0, 0, 0);
+	l->_dir = Math::Vector3d(0, 0, 0);
+	l->_color = Color(255, 255, 255);
+	l->setIntensity(0.5f);
+	_overworldLightsList.push_back(l);
+
+	l = new Light();
+	l->_name = "Overworld Light 2";
+	l->_enabled = true;
+	l->_type = Light::Direct;
+	l->_pos = Math::Vector3d(0, 0, 0);
+	l->_dir = Math::Vector3d(0, 0, -1);
+	l->_color = Color(255, 255, 255);
+	l->setIntensity(0.6f);
+	_overworldLightsList.push_back(l);
 }
 
 void Set::loadText(TextSplitter &ts) {
@@ -112,10 +143,12 @@ void Set::loadText(TextSplitter &ts) {
 		_setups[i].load(this, i, ts);
 	_currSetup = _setups;
 
+	_numShadows = 0;
 	_numSectors = -1;
 	_numLights = -1;
 	_lights = nullptr;
 	_sectors = nullptr;
+	_shadows = nullptr;
 
 	_minVolume = 0;
 	_maxVolume = 0;
@@ -164,6 +197,8 @@ void Set::loadText(TextSplitter &ts) {
 void Set::loadBinary(Common::SeekableReadStream *data) {
 	// yes, an array of size 0
 	_cmaps = nullptr;//new CMapPtr[0];
+	_numCmaps = 0;
+	_numObjectStates = 0;
 
 
 	_numSetups = data->readUint32LE();
@@ -176,6 +211,7 @@ void Set::loadBinary(Common::SeekableReadStream *data) {
 	_numLights = 0;
 	_lights = nullptr;
 	_sectors = nullptr;
+	_shadows = nullptr;
 
 	_minVolume = 0;
 	_maxVolume = 0;
@@ -197,6 +233,16 @@ void Set::loadBinary(Common::SeekableReadStream *data) {
 		_sectors[i] = new Sector();
 		_sectors[i]->loadBinary(data);
 	}
+
+	_numShadows = data->readUint32LE();
+	_shadows = new SetShadow[_numShadows];
+
+	for (int i = 0; i < _numShadows; ++i) {
+		_shadows[i].loadBinary(data, this);
+	}
+
+	// Enable lights by default
+	_enableLights = true;
 }
 
 void Set::saveState(SaveGame *savedState) const {
@@ -234,6 +280,12 @@ void Set::saveState(SaveGame *savedState) const {
 	savedState->writeLESint32(_numLights);
 	for (int i = 0; i < _numLights; ++i) {
 		_lights[i].saveState(savedState);
+	}
+
+	//Shadows
+	savedState->writeLESint32(_numShadows);
+	for (int i = 0; i < _numShadows; ++i) {
+		_shadows[i].saveState(savedState);
 	}
 }
 
@@ -288,6 +340,14 @@ bool Set::restoreState(SaveGame *savedState) {
 		_lights[i].restoreState(savedState);
 		_lights[i]._id = i;
 		_lightsList.push_back(&_lights[i]);
+	}
+
+	if (savedState->saveMinorVersion() >= 19) {
+		_numShadows = savedState->readLESint32();
+		_shadows = new SetShadow[_numShadows];
+		for (int i = 0; i < _numShadows; ++i) {
+			_shadows[i].restoreState(savedState);
+		}
 	}
 
 	return true;
@@ -352,18 +412,15 @@ void Set::Setup::loadBinary(Common::SeekableReadStream *data) {
 	_bkgndZBm = nullptr;
 	_bkgndBm = loadBackground(fileName);
 
-	char v[4 * 4];
-	data->read(v, 4 * 3);
-	_pos = Math::Vector3d::get_vector3d(v);
+	_pos.readFromStream(data);
 
-	data->read(v, 4 * 3);
-	_interest = Math::Vector3d::get_vector3d(v);
+	Math::Quaternion q;
+	q.readFromStream(data);
+	q.toMatrix(_rot);
 
-	data->read(v, 4 * 4);
-	_roll  = get_float(v);
-	_fov   = get_float(v + 4);
-	_nclip = get_float(v + 8);
-	_fclip = get_float(v + 12);
+	_fov   = data->readFloatLE();
+	_nclip = data->readFloatLE();
+	_fclip = data->readFloatLE();
 
 	delete[] fileName;
 }
@@ -387,8 +444,17 @@ void Set::Setup::saveState(SaveGame *savedState) const {
 	}
 
 	savedState->writeVector3d(_pos);
-	savedState->writeVector3d(_interest);
-	savedState->writeFloat(_roll);
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		// Get the rotation matrix as a quaternion and write it out
+		Math::Quaternion q(_rot);
+		savedState->writeFloat(q.x());
+		savedState->writeFloat(q.y());
+		savedState->writeFloat(q.z());
+		savedState->writeFloat(q.w());
+	} else {
+		savedState->writeVector3d(_interest);
+		savedState->writeFloat(_roll);
+	}
 	savedState->writeFloat(_fov);
 	savedState->writeFloat(_nclip);
 	savedState->writeFloat(_fclip);
@@ -401,8 +467,17 @@ bool Set::Setup::restoreState(SaveGame *savedState) {
 	_bkgndZBm = Bitmap::getPool().getObject(savedState->readLESint32());
 
 	_pos      = savedState->readVector3d();
-	_interest = savedState->readVector3d();
-	_roll     = savedState->readFloat();
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		float x = savedState->readFloat();
+		float y = savedState->readFloat();
+		float z = savedState->readFloat();
+		float w = savedState->readFloat();
+		Math::Quaternion q(x, y, z, w);
+		_rot = q.toMatrix();
+	} else {
+		_interest = savedState->readVector3d();
+		_roll     = savedState->readFloat();
+	}
 	_fov      = savedState->readFloat();
 	_nclip    = savedState->readFloat();
 	_fclip    = savedState->readFloat();
@@ -410,8 +485,82 @@ bool Set::Setup::restoreState(SaveGame *savedState) {
 	return true;
 }
 
+Light::Light() : _falloffNear(0.0f), _falloffFar(0.0f), _enabled(false), _id(0) {
+	setIntensity(0.0f);
+	setUmbra(0.0f);
+	setPenumbra(0.0f);
+}
+
+void Set::Setup::getRotation(float *x, float *y, float *z) {
+	Math::Angle aX, aY, aZ;
+	if (g_grim->getGameType() == GType_MONKEY4)
+		_rot.getEuler(&aX, &aY, &aZ, Math::EO_ZYX);
+	else
+		_rot.getEuler(&aX, &aY, &aZ, Math::EO_ZXY);
+
+	if (x != nullptr)
+		*x = aX.getDegrees();
+	if (y != nullptr)
+		*y = aY.getDegrees();
+	if (z != nullptr)
+		*z = aZ.getDegrees();
+}
+
+void Set::Setup::setPitch(Math::Angle pitch) {
+	Math::Angle oldYaw, oldRoll;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		_rot.getEuler(&oldRoll, &oldYaw, nullptr, Math::EO_ZYX);
+		_rot.buildFromEuler(oldRoll, oldYaw, pitch, Math::EO_ZYX);
+	} else {
+		_rot.getEuler(&oldYaw, nullptr, &oldRoll, Math::EO_ZXY);
+		_rot.buildFromEuler(oldYaw, pitch, oldRoll, Math::EO_ZXY);
+	}
+}
+
+void Set::Setup::setYaw(Math::Angle yaw) {
+	Math::Angle oldPitch, oldRoll;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		_rot.getEuler(&oldRoll, nullptr, &oldPitch, Math::EO_ZYX);
+		_rot.buildFromEuler(oldRoll, yaw, oldPitch, Math::EO_ZYX);
+	} else {
+		_rot.getEuler(nullptr, &oldPitch, &oldRoll, Math::EO_ZXY);
+		_rot.buildFromEuler(yaw, oldPitch, oldRoll, Math::EO_ZXY);
+	}
+}
+
+void Set::Setup::setRoll(Math::Angle roll) {
+	Math::Angle oldPitch, oldYaw;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		_rot.getEuler(nullptr, &oldYaw, &oldPitch, Math::EO_ZYX);
+		_rot.buildFromEuler(roll, oldYaw, oldPitch, Math::EO_ZYX);
+	} else {
+		_rot.getEuler(&oldYaw, &oldPitch, nullptr, Math::EO_ZXY);
+		_rot.buildFromEuler(oldYaw, oldPitch, roll, Math::EO_ZXY);
+	}
+}
+
+void Light::setUmbra(float angle) {
+	_umbraangle = angle;
+	_cosumbraangle = cosf(angle * M_PI / 180.0f);
+}
+
+void Light::setPenumbra(float angle) {
+	_penumbraangle = angle;
+	_cospenumbraangle = cosf(angle * M_PI / 180.0f);
+}
+
+void Light::setIntensity(float intensity) {
+	_intensity = intensity;
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		_scaledintensity = intensity / 255;
+	} else {
+		_scaledintensity = intensity / 15;
+	}
+}
+
 void Light::load(TextSplitter &ts) {
 	char buf[256];
+	float tmp;
 
 	// Light names can be null, but ts doesn't seem flexible enough to allow this
 	if (strlen(ts.getCurrentLine()) > strlen(" light"))
@@ -436,9 +585,12 @@ void Light::load(TextSplitter &ts) {
 
 	ts.scanString(" position %f %f %f", 3, &_pos.x(), &_pos.y(), &_pos.z());
 	ts.scanString(" direction %f %f %f", 3, &_dir.x(), &_dir.y(), &_dir.z());
-	ts.scanString(" intensity %f", 1, &_intensity);
-	ts.scanString(" umbraangle %f", 1, &_umbraangle);
-	ts.scanString(" penumbraangle %f", 1, &_penumbraangle);
+	ts.scanString(" intensity %f", 1, &tmp);
+	setIntensity(tmp);
+	ts.scanString(" umbraangle %f", 1, &tmp);
+	setUmbra(tmp);
+	ts.scanString(" penumbraangle %f", 1, &tmp);
+	setPenumbra(tmp);
 
 	int r, g, b;
 	ts.scanString(" color %d %d %d", 3, &r, &g, &b);
@@ -454,15 +606,10 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	data->read(name, 32);
 	_name = name;
 
-	data->read(&_pos.x(), 4);
-	data->read(&_pos.y(), 4);
-	data->read(&_pos.z(), 4);
+	_pos.readFromStream(data);
 
 	Math::Quaternion quat;
-	data->read(&quat.x(), 4);
-	data->read(&quat.y(), 4);
-	data->read(&quat.z(), 4);
-	data->read(&quat.w(), 4);
+	quat.readFromStream(data);
 
 	_dir.set(0, 0, -1);
 	Math::Matrix4 rot = quat.toMatrix();
@@ -471,7 +618,7 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	// This relies on the order of the LightType enum.
 	_type = (LightType)data->readSint32LE();
 
-	data->read(&_intensity, 4);
+	setIntensity(data->readFloatLE());
 
 	int j = data->readSint32LE();
 	// This always seems to be 0
@@ -483,10 +630,10 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	_color.getGreen() = data->readSint32LE();
 	_color.getBlue() = data->readSint32LE();
 
-	data->read(&_falloffNear, 4);
-	data->read(&_falloffFar, 4);
-	data->read(&_umbraangle, 4);
-	data->read(&_penumbraangle, 4);
+	_falloffNear = data->readFloatLE();
+	_falloffFar = data->readFloatLE();
+	setUmbra(data->readFloatLE());
+	setPenumbra(data->readFloatLE());
 
 	_enabled = true;
 }
@@ -507,6 +654,9 @@ void Light::saveState(SaveGame *savedState) const {
 	savedState->writeFloat(_intensity);
 	savedState->writeFloat(_umbraangle);
 	savedState->writeFloat(_penumbraangle);
+
+	savedState->writeFloat(_falloffNear);
+	savedState->writeFloat(_falloffFar);
 }
 
 bool Light::restoreState(SaveGame *savedState) {
@@ -543,15 +693,83 @@ bool Light::restoreState(SaveGame *savedState) {
 
 	_color         = savedState->readColor();
 
-	_intensity     = savedState->readFloat();
-	_umbraangle    = savedState->readFloat();
-	_penumbraangle = savedState->readFloat();
+	setIntensity(    savedState->readFloat());
+	setUmbra(        savedState->readFloat());
+	setPenumbra(     savedState->readFloat());
+
+	if (savedState->saveMinorVersion() >= 20) {
+		_falloffNear = savedState->readFloat();
+		_falloffFar = savedState->readFloat();
+	}
 
 	return true;
 }
 
+SetShadow::SetShadow() : _numSectors(0) {
+}
+
+void SetShadow::loadBinary(Common::SeekableReadStream *data, Set *set) {
+	uint32 nameLen = data->readUint32LE();
+	char *name = new char[nameLen];
+	data->read(name, nameLen);
+	_name = Common::String(name);
+
+	int lightNameLen = data->readSint32LE();
+	char *lightName = new char[lightNameLen];
+	data->read(lightName, lightNameLen);
+
+	_shadowPoint.readFromStream(data);
+
+	if (lightNameLen > 0) {
+		for (Common::List<Light *>::const_iterator it = set->getLights(false).begin(); it != set->getLights(false).end(); ++it) {
+			if ((*it)->_name.equals(lightName)) {
+				_shadowPoint = (*it)->_pos;
+				break;
+			}
+		}
+	}
+
+	int numSectors = data->readSint32LE();
+	for (int i = 0; i < numSectors; ++i) {
+		uint32 sectorNameLen = data->readUint32LE();
+		char *sectorName = new char[sectorNameLen];
+		data->read(sectorName, sectorNameLen);
+		_sectorNames.push_back(sectorName);
+		delete[] sectorName;
+	}
+
+	data->skip(4); // Unknown
+	_color._vals[0] = (byte)data->readSint32LE();
+	_color._vals[1] = (byte)data->readSint32LE();
+	_color._vals[2] = (byte)data->readSint32LE();
+	delete[] lightName;
+	delete[] name;
+}
+
+void SetShadow::saveState(SaveGame *savedState) const {
+	savedState->writeString(_name);
+	savedState->writeVector3d(_shadowPoint);
+	savedState->writeLESint32(_numSectors);
+	savedState->writeLEUint32(_sectorNames.size());
+	for (Common::List<Common::String>::const_iterator it = _sectorNames.begin(); it != _sectorNames.end(); ++it) {
+		savedState->writeString(*it);
+	}
+	savedState->writeColor(_color);
+}
+
+void SetShadow::restoreState(SaveGame *savedState) {
+	_name = savedState->readString();
+	_shadowPoint = savedState->readVector3d();
+	_numSectors = savedState->readLESint32();
+	uint numSectors = savedState->readLEUint32();
+	for (uint i = 0; i < numSectors; ++i) {
+		_sectorNames.push_back(savedState->readString());
+	}
+	_color = savedState->readColor();
+}
+
 void Set::Setup::setupCamera() const {
-	// Ignore nclip_ and fclip_ for now.  This fixes:
+	// Ignore nclip_ and fclip_ for now in Grim.  This fixes:
 	// (a) Nothing was being displayed in the Land of the Living
 	// diner because lr.set set nclip to 0.
 	// (b) The zbuffers for setups with different nclip or
@@ -559,15 +777,13 @@ void Set::Setup::setupCamera() const {
 	// are important at some point, we'll need to modify the
 	// zbuffer transformation in bitmap.cpp to take nclip_ and
 	// fclip_ into account.
-	float nclip = this->_nclip;
-	float fclip = this->_fclip;
-	if (g_grim->getGameType() != GType_MONKEY4) {
-		nclip = 0.01f;
-		fclip = 3276.8f;
+	if (g_grim->getGameType() == GType_GRIM) {
+		g_driver->setupCameraFrustum(_fov, 0.01f, 3276.8f);
+		g_driver->positionCamera(_pos, _interest, _roll);
+	} else {
+		g_driver->setupCameraFrustum(_fov, _nclip, _fclip);
+		g_driver->positionCamera(_pos, _rot);
 	}
-
-	g_driver->setupCamera(_fov, nclip, fclip, _roll);
-	g_driver->positionCamera(_pos, _interest, _roll);
 }
 
 class Sorter {
@@ -589,9 +805,9 @@ public:
 	Math::Vector3d _pos;
 };
 
-void Set::setupLights(const Math::Vector3d &pos) {
-	if (g_grim->getGameType() == GType_MONKEY4) {
-		// Currently we do lighting in software for EMI.
+void Set::setupLights(const Math::Vector3d &pos, bool inOverworld) {
+	if (g_grim->getGameType() == GType_MONKEY4 && !g_driver->supportsShaders()) {
+		// If shaders are not available, we do lighting in software for EMI.
 		g_driver->disableLights();
 		return;
 	}
@@ -603,10 +819,11 @@ void Set::setupLights(const Math::Vector3d &pos) {
 
 	// Sort the ligths from the nearest to the farthest to the pos.
 	Sorter sorter(pos);
-	Common::sort(_lightsList.begin(), _lightsList.end(), sorter);
+	Common::List<Light *>* lightsList = inOverworld ? &_overworldLightsList : &_lightsList;
+	Common::sort(lightsList->begin(), lightsList->end(), sorter);
 
 	int count = 0;
-	foreach (Light *l, _lightsList) {
+	foreach (Light *l, *lightsList) {
 		if (l->_enabled) {
 			g_driver->setupLight(l, count);
 			++count;
@@ -641,6 +858,9 @@ void Set::setSetup(int num) {
 	}
 	_currSetup = _setups + num;
 	g_grim->flagRefreshShadowMask(true);
+	if (g_emiSound) {
+		g_emiSound->updateSoundPositions();
+	}
 }
 
 Bitmap::Ptr Set::loadBackground(const char *fileName) {
@@ -697,6 +917,26 @@ Sector *Set::findPointSector(const Math::Vector3d &p, Sector::SectorType type) {
 	return nullptr;
 }
 
+int Set::findSectorSortOrder(const Math::Vector3d &p, Sector::SectorType type) {
+	int setup = getSetup();
+	int sortOrder = 0;
+	float minDist = 0.01f;
+
+	for (int i = 0; i < _numSectors; i++) {
+		Sector *sector = _sectors[i];
+		if (!sector || (sector->getType() & type) == 0 || !sector->isVisible() || setup >= sector->getNumSortplanes())
+			continue;
+
+		Math::Vector3d closestPt = sector->getClosestPoint(p);
+		float thisDist = (closestPt - p).getMagnitude();
+		if (thisDist < minDist) {
+			minDist = thisDist;
+			sortOrder = sector->getSortplane(setup);
+		}
+	}
+	return sortOrder;
+}
+
 void Set::findClosestSector(const Math::Vector3d &p, Sector **sect, Math::Vector3d *closestPoint) {
 	Sector *resultSect = nullptr;
 	Math::Vector3d resultPt = p;
@@ -740,7 +980,7 @@ void Set::setLightIntensity(const char *light, float intensity) {
 	for (int i = 0; i < _numLights; ++i) {
 		Light &l = _lights[i];
 		if (l._name == light) {
-			l._intensity = intensity;
+			l.setIntensity(intensity);
 			return;
 		}
 	}
@@ -748,7 +988,7 @@ void Set::setLightIntensity(const char *light, float intensity) {
 
 void Set::setLightIntensity(int light, float intensity) {
 	Light &l = _lights[light];
-	l._intensity = intensity;
+	l.setIntensity(intensity);
 }
 
 void Set::setLightEnabled(const char *light, bool enabled) {
@@ -794,6 +1034,7 @@ void Set::setSoundPosition(const char *soundName, const Math::Vector3d &pos, int
 
 void Set::calculateSoundPosition(const Math::Vector3d &pos, int minVol, int maxVol, int &volume, int &balance) {
 	// TODO: The volume and pan needs to be updated when the setup changes.
+	// Note: This is only used in Grim. See SoundTrack::updatePosition for the corresponding implementation in EMI.
 
 	/* distance calculation */
 	Math::Vector3d cameraPos = _currSetup->_pos;
@@ -808,30 +1049,20 @@ void Set::calculateSoundPosition(const Math::Vector3d &pos, int minVol, int maxV
 	volume = newVolume;
 	float angle;
 
-	if (g_grim->getGameType() == GType_MONKEY4) {
-		Math::Quaternion q = Math::Quaternion(
-		    _currSetup->_interest.x(), _currSetup->_interest.y(), _currSetup->_interest.z(),
-		    _currSetup->_roll);
-		Math::Matrix4 worldRot = q.toMatrix();
-		Math::Vector3d relPos = (pos - _currSetup->_pos);
-		Math::Vector3d p(relPos);
-		worldRot.inverseRotate(&p);
-		angle = atan2(p.x(), p.z());
-	} else {
-		Math::Vector3d cameraVector = _currSetup->_interest - _currSetup->_pos;
-		Math::Vector3d up(0, 0, 1);
-		Math::Vector3d right;
-		cameraVector.normalize();
-		float roll = -_currSetup->_roll * LOCAL_PI / 180.f;
-		float cosr = cos(roll);
-		// Rotate the up vector by roll.
-		up = up * cosr + Math::Vector3d::crossProduct(cameraVector, up) * sin(roll) +
-			 cameraVector * Math::Vector3d::dotProduct(cameraVector, up) * (1 - cosr);
-		right = Math::Vector3d::crossProduct(cameraVector, up);
-		right.normalize();
-		angle = atan2(Math::Vector3d::dotProduct(vector, right),
-							Math::Vector3d::dotProduct(vector, cameraVector));
-	}
+	Math::Vector3d cameraVector = _currSetup->_interest - _currSetup->_pos;
+	Math::Vector3d up(0, 0, 1);
+	Math::Vector3d right;
+	cameraVector.normalize();
+	float roll = -_currSetup->_roll * LOCAL_PI / 180.f;
+	float cosr = cos(roll);
+	// Rotate the up vector by roll.
+	up = up * cosr + Math::Vector3d::crossProduct(cameraVector, up) * sin(roll) +
+			cameraVector * Math::Vector3d::dotProduct(cameraVector, up) * (1 - cosr);
+	right = Math::Vector3d::crossProduct(cameraVector, up);
+	right.normalize();
+	angle = atan2(Math::Vector3d::dotProduct(vector, right),
+						Math::Vector3d::dotProduct(vector, cameraVector));
+
 	float pan = sin(angle);
 	balance = (int)((pan + 1.f) / 2.f * 127.f + 0.5f);
 }
@@ -926,6 +1157,19 @@ void Set::moveObjectStateToFront(const ObjectState::Ptr &s) {
 void Set::moveObjectStateToBack(const ObjectState::Ptr &s) {
 	_states.remove(s);
 	_states.push_back(s);
+}
+
+SetShadow *Set::getShadow(int i) {
+	return &_shadows[i];
+}
+
+SetShadow *Set::getShadowByName(const Common::String &name) {
+	for (int i = 0; i < _numShadows; ++i) {
+		SetShadow *shadow = &_shadows[i];
+		if (shadow->_name.equalsIgnoreCase(name))
+			return shadow;
+	}
+	return nullptr;
 }
 
 } // end of namespace Grim

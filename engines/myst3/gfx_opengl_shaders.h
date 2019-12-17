@@ -26,46 +26,46 @@
 #include "common/rect.h"
 #include "math/rect2d.h"
 
-#include "graphics/opengles2/shader.h"
+#include "graphics/opengl/shader.h"
 
 #include "engines/myst3/gfx.h"
 
 namespace Myst3 {
 
-class ShaderRenderer : public BaseRenderer {
+class ShaderRenderer : public Renderer {
 public:
 	ShaderRenderer(OSystem *_system);
 	virtual ~ShaderRenderer();
 
-	virtual void init();
+	virtual void init() override;
 
-	virtual void clear();
-	virtual void setupCameraOrtho2D();
-	virtual void setupCameraPerspective(float pitch, float heading, float fov);
+	virtual void clear() override;
+	virtual void selectTargetWindow(Window *window, bool is3D, bool scaled) override;
 
-	virtual Texture *createTexture(const Graphics::Surface *surface);
-	virtual void freeTexture(Texture *texture);
+	virtual Texture *createTexture(const Graphics::Surface *surface) override;
+	virtual void freeTexture(Texture *texture) override;
 
-	virtual void drawRect2D(const Common::Rect &rect, uint32 color);
-	virtual void drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect, Texture *texture, float transparency = -1.0);
+	virtual void drawRect2D(const Common::Rect &rect, uint32 color) override;
+	virtual void drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect, Texture *texture,
+	                                float transparency = -1.0, bool additiveBlending = false) override;
 	virtual void drawTexturedRect3D(const Math::Vector3d &topLeft, const Math::Vector3d &bottomLeft,
 	                                const Math::Vector3d &topRight, const Math::Vector3d &bottomRight,
-	                                Texture *texture);
+	                                Texture *texture) override;
 
-	virtual void drawCube(Texture **textures);
-	virtual void draw2DText(const Common::String &text, const Common::Point &position);
+	virtual void drawCube(Texture **textures) override;
+	virtual void draw2DText(const Common::String &text, const Common::Point &position) override;
 
-	virtual Graphics::Surface *getScreenshot();
-
-	virtual void screenPosToDirection(const Common::Point screen, float &pitch, float &heading);
+	virtual Graphics::Surface *getScreenshot() override;
+	Texture *copyScreenshotToTexture() override;
 
 private:
 	void setupQuadEBO();
+	Math::Vector2d scaled(float x, float y) const;
 
-	Graphics::Shader *_box_shader;
-	Graphics::Shader *_cube_shader;
-	Graphics::Shader *_rect3d_shader;
-	Graphics::Shader *_text_shader;
+	OpenGL::Shader *_boxShader;
+	OpenGL::Shader *_cubeShader;
+	OpenGL::Shader *_rect3dShader;
+	OpenGL::Shader *_textShader;
 
 	GLuint _boxVBO;
 	GLuint _cubeVBO;
@@ -73,13 +73,12 @@ private:
 	GLuint _textVBO;
 	GLuint _quadEBO;
 
-	Math::Matrix4 _mvpMatrix;
-	Math::Rect2d _viewport;
+	Common::Rect _currentViewport;
 
 	Common::String _prevText;
 	Common::Point _prevTextPosition;
 };
 
-} // end of namespace Myst3
+} // End of namespace Myst3
 
 #endif

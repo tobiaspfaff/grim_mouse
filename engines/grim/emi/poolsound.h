@@ -23,9 +23,9 @@
 #ifndef GRIM_POOLSOUND_H
 #define GRIM_POOLSOUND_H
 
+#include "common/endian.h"
 #include "engines/grim/pool.h"
-#include "engines/grim/emi/sound/aifftrack.h"
-
+#include "math/vector3d.h"
 
 namespace Grim {
 class PoolSound : public PoolObject<PoolSound> {
@@ -36,15 +36,22 @@ public:
 
 	void openFile(const Common::String &filename);
 	void play(bool looping);
+	void playFrom(const Math::Vector3d &pos, bool looping);
 	void setVolume(int volume);
 	void setBalance(int balance);
+	void setPosition(Math::Vector3d &pos);
 	void stop();
+	int getVolume();
+	bool isPlaying();
 	void saveState(SaveGame *state);
 	void restoreState(SaveGame *state);
 
 	static int32 getStaticTag() { return MKTAG('A','I','F','F'); }
-	AIFFTrack *_track;
+
+private:
 	Common::String _filename;
+	int _soundId;
+	bool _loaded;
 };
 }
 

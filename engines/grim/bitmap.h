@@ -158,6 +158,7 @@ public:
 	void setActiveImage(int n);
 
 	int getNumImages() const;
+	int getNumLayers() const;
 	int getActiveImage() const { return _currImage; }
 	bool getHasTransparency() const { return _data->_hasTransparency; }
 	int getFormat() const { return _data->_format; }
@@ -166,6 +167,7 @@ public:
 
 	const Graphics::PixelBuffer &getData(int num) const { return _data->getImageData(num); }
 	const Graphics::PixelBuffer &getData() const { return getData(_currImage); }
+	BitmapData *getBitmapData() const { return _data; }
 	void *getTexIds() const { return _data->_texIds; }
 	int getNumTex() const { return _data->_numTex; }
 	const Graphics::PixelFormat &getPixelFormat(int num) const;

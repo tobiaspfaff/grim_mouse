@@ -42,8 +42,8 @@
 #include "common/endian.h"
 #include "common/tokenizer.h"
 #include "graphics/conversion.h"
-#include "graphics/opengles2/shader.h"
-#include "graphics/opengles2/extensions.h"
+#include "graphics/opengl/shader.h"
+#include "graphics/opengl/context.h"
 
 #include "backends/platform/android/android.h"
 #include "backends/platform/android/jni.h"
@@ -114,23 +114,6 @@ Common::List<Graphics::PixelFormat> OSystem_Android::getSupportedFormats() const
 	return res;
 }
 
-Common::String OSystem_Android::getPixelFormatName(const Graphics::PixelFormat &format) const {
-	if (format.bytesPerPixel == 1)
-		return "CLUT8";
-
-	if (format.aLoss == 8)
-		return Common::String::format("RGB%u%u%u",
-										8 - format.rLoss,
-										8 - format.gLoss,
-										8 - format.bLoss);
-
-	return Common::String::format("RGBA%u%u%u%u",
-									8 - format.rLoss,
-									8 - format.gLoss,
-									8 - format.bLoss,
-									8 - format.aLoss);
-}
-
 void OSystem_Android::initTexture(GLESBaseTexture **texture,
 									uint width, uint height,
 									const Graphics::PixelFormat *format) {
@@ -153,7 +136,7 @@ void OSystem_Android::initTexture(GLESBaseTexture **texture,
 	if (format_current != format_new) {
 		if (*texture)
 			LOGD("switching pixel format from: %s",
-					getPixelFormatName((*texture)->getPixelFormat()).c_str());
+					(*texture)->getPixelFormat().toString().c_str());
 
 		delete *texture;
 
@@ -167,13 +150,13 @@ void OSystem_Android::initTexture(GLESBaseTexture **texture,
 			// TODO what now?
 			if (format_new != format_clut8)
 				LOGE("unsupported pixel format: %s",
-					getPixelFormatName(format_new).c_str());
+					format_new.toString().c_str());
 
 			*texture = new GLESFakePalette565Texture;
 		}
 
 		LOGD("new pixel format: %s",
-				getPixelFormatName((*texture)->getPixelFormat()).c_str());
+				(*texture)->getPixelFormat().toString().c_str());
 	}
 
 	(*texture)->allocBuffer(width, height);
@@ -216,7 +199,7 @@ void OSystem_Android::initSurface() {
 	JNI::initSurface();
 
 	// Initialize OpenGLES context.
-	Graphics::initExtensions();
+	OpenGLContext.initialize(OpenGL::kContextGLES2);
 	logExtensions();
 	GLESTexture::initGL();
 
@@ -251,6 +234,8 @@ void OSystem_Android::deinitSurface() {
 
 	if (_mouse_texture)
 		_mouse_texture->release();
+
+	OpenGL::Context::destroy();
 
 	JNI::deinitSurface();
 }
@@ -308,7 +293,7 @@ void OSystem_Android::initSize(uint width, uint height,
 	_game_texture->allocBuffer(width, height);
 #endif
 #ifdef USE_GLES2
-	_frame_buffer = new Graphics::FrameBuffer(_game_texture->getTextureName(), _game_texture->width(), _game_texture->height(), _game_texture->texWidth(), _game_texture->texHeight());
+	_frame_buffer = new OpenGL::FrameBuffer(_game_texture->getTextureName(), _game_texture->width(), _game_texture->height(), _game_texture->texWidth(), _game_texture->texHeight());
 	_frame_buffer->attach();
 #endif
 
@@ -430,7 +415,7 @@ void OSystem_Android::setPalette(const byte *colors, uint start, uint num) {
 		WRITE_UINT16(p, pf.RGBToColor(colors[0], colors[1], colors[2]));
 }
 
-void OSystem_Android::grabPalette(byte *colors, uint start, uint num) {
+void OSystem_Android::grabPalette(byte *colors, uint start, uint num) const {
 	ENTER("%p, %u, %u", colors, start, num);
 
 #ifdef USE_RGB_COLOR
@@ -457,7 +442,7 @@ void OSystem_Android::copyRectToScreen(const void *buf, int pitch,
 
 
 // ResidualVM specific method
-Graphics::PixelBuffer OSystem_Android::setupScreen(int screenW, int screenH, bool fullscreen, bool accel3d, bool isGame) {
+void OSystem_Android::setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d, bool isGame) {
 	_opengl = accel3d;
 	initViewport();
 
@@ -479,6 +464,10 @@ Graphics::PixelBuffer OSystem_Android::setupScreen(int screenW, int screenH, boo
 		_game_pbuf.create(_game_texture->getPixelFormat(),
 				_game_texture->width() * _game_texture->height(), DisposeAfterUse::YES);
 	}
+
+}
+
+Graphics::PixelBuffer OSystem_Android::getScreenPixelBuffer() {
 	return _game_pbuf;
 }
 
@@ -794,7 +783,7 @@ void OSystem_Android::setMouseCursor(const void *buf, uint w, uint h,
 			return;
 		}
 
-		uint16 *s = (uint16 *)buf;
+		const uint16 *s = (const uint16 *)buf;
 		uint16 *d = (uint16 *)tmp;
 		for (uint16 y = 0; y < h; ++y, d += pitch / 2 - w)
 			for (uint16 x = 0; x < w; ++x, d++)

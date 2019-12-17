@@ -39,20 +39,21 @@ class LabEntry : public Common::ArchiveMember {
 	uint32 _offset, _len;
 public:
 	LabEntry(const Common::String &name, uint32 offset, uint32 len, Lab *parent);
-	Common::String getName() const { return _name; }
-	Common::SeekableReadStream *createReadStream() const;
+	Common::String getName() const override { return _name; }
+	Common::SeekableReadStream *createReadStream() const override;
 	friend class Lab;
 };
 
 class Lab : public Common::Archive {
 public:
-	bool open(const Common::String &filename);
-
+	bool open(const Common::String &filename, bool keepStream = false);
+	Lab();
+	virtual ~Lab();
 	// Common::Archive implementation
-	virtual bool hasFile(const Common::String &name) const;
-	virtual int listMembers(Common::ArchiveMemberList &list) const;
-	virtual const Common::ArchiveMemberPtr getMember(const Common::String &name) const;
-	virtual Common::SeekableReadStream *createReadStreamForMember(const Common::String &name) const;
+	virtual bool hasFile(const Common::String &name) const override;
+	virtual int listMembers(Common::ArchiveMemberList &list) const override;
+	virtual const Common::ArchiveMemberPtr getMember(const Common::String &name) const override;
+	virtual Common::SeekableReadStream *createReadStreamForMember(const Common::String &name) const override;
 
 private:
 	void parseGrimFileTable(Common::File *_f);
@@ -62,6 +63,7 @@ private:
 	typedef Common::SharedPtr<LabEntry> LabEntryPtr;
 	typedef Common::HashMap<Common::String, LabEntryPtr, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> LabMap;
 	LabMap _entries;
+	Common::SeekableReadStream *_stream;
 };
 
 } // end of namespace Grim

@@ -38,6 +38,7 @@ class String;
 enum Platform {
 	kPlatformDOS,
 	kPlatformAmiga,
+	kPlatformAtari8Bit,
 	kPlatformAtariST,
 	kPlatformMacintosh,
 	kPlatformFMTowns,
@@ -50,12 +51,14 @@ enum Platform {
 	kPlatformSegaCD,
 	kPlatform3DO,
 	kPlatformPCEngine,
+	kPlatformApple2,
 	kPlatformApple2GS,
 	kPlatformPC98,
 	kPlatformWii,
 	kPlatformPSX,
-	//ResidualVM: playstation2
+	//ResidualVM: playstation2, xbox
 	kPlatformPS2,
+	kPlatformXbox,
 	kPlatformCDi,
 	kPlatformIOS,
 	kPlatformOS2,

@@ -17,6 +17,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
  */
 
 #ifndef ENGINES_METAENGINE_H
@@ -64,21 +65,24 @@ class MetaEngine : public PluginObject {
 public:
 	virtual ~MetaEngine() {}
 
+	/** Get the engine ID */
+	virtual const char *getEngineId() const = 0;
+
 	/** Returns some copyright information about the original engine. */
 	virtual const char *getOriginalCopyright() const = 0;
 
 	/** Returns a list of games supported by this engine. */
-	virtual GameList getSupportedGames() const = 0;
+	virtual PlainGameList getSupportedGames() const = 0;
 
-	/** Query the engine for a GameDescriptor for the specified gameid, if any. */
-	virtual GameDescriptor findGame(const char *gameid) const = 0;
+	/** Query the engine for a PlainGameDescriptor for the specified gameid, if any. */
+	virtual PlainGameDescriptor findGame(const char *gameId) const = 0;
 
 	/**
 	 * Runs the engine's game detector on the given list of files, and returns a
 	 * (possibly empty) list of games supported by the engine which it was able
 	 * to detect amongst the given files.
 	 */
-	virtual GameList detectGames(const Common::FSList &fslist) const = 0;
+	virtual DetectedGames detectGames(const Common::FSList &fslist) const = 0;
 
 	/**
 	 * Tries to instantiate an engine instance based on the settings of
@@ -94,6 +98,9 @@ public:
 
 	/**
 	 * Return a list of all save states associated with the given target.
+	 *
+	 * The returned list is guaranteed to be sorted by slot numbers. That
+	 * means smaller slot numbers are always stored before bigger slot numbers.
 	 *
 	 * The caller has to ensure that this (Meta)Engine is responsible
 	 * for the specified target (by using findGame on it respectively
@@ -232,7 +239,19 @@ public:
 		 * the game till the save.
 		 * This flag may only be set when 'kSavesSupportMetaInfo' is set.
 		 */
-		kSavesSupportPlayTime
+		kSavesSupportPlayTime,
+
+		/**
+		* Feature is available if engine's saves could be detected
+		* with "<target>.###" pattern and "###" corresponds to slot
+		* number.
+		*
+		* If that's not true or engine is using some unusual way
+		* of detecting saves and slot numbers, this should be
+		* unavailable. In that case Save/Load dialog for engine's
+		* games is locked during cloud saves sync.
+		*/
+		kSimpleSavesNames
 	};
 
 	/**
@@ -246,20 +265,55 @@ public:
 	//@}
 };
 
-
-// Engine plugins
-
-typedef PluginSubclass<MetaEngine> EnginePlugin;
-
 /**
  * Singleton class which manages all Engine plugins.
  */
 class EngineManager : public Common::Singleton<EngineManager> {
 public:
-	GameDescriptor findGameInLoadedPlugins(const Common::String &gameName, const EnginePlugin **plugin = NULL) const;
-	GameDescriptor findGame(const Common::String &gameName, const EnginePlugin **plugin = NULL) const;
-	GameList detectGames(const Common::FSList &fslist) const;
-	const EnginePlugin::List &getPlugins() const;
+	/**
+	 * Given a list of FSNodes in a given directory, detect a set of games contained within
+	 *
+	 * Returns an empty list if none are found.
+	 */
+	DetectionResults detectGames(const Common::FSList &fslist) const;
+
+	/** Find a plugin by its engine ID */
+	const Plugin *findPlugin(const Common::String &engineId) const;
+
+	/** Get the list of all engine plugins */
+	const PluginList &getPlugins() const;
+
+	/** Find a target */
+	QualifiedGameDescriptor findTarget(const Common::String &target, const Plugin **plugin = NULL) const;
+
+	/**
+	 * List games matching the specified criteria
+	 *
+	 * If the engine id is not specified, this scans all the plugins,
+	 * loading them from disk if necessary. This is a slow operation on
+	 * some platforms and should not be used for the happy path.
+	 */
+	QualifiedGameList findGamesMatching(const Common::String &engineId, const Common::String &gameId) const;
+
+	/**
+	 * Create a target from the supplied game descriptor
+	 *
+	 * Returns the created target name.
+	 */
+	Common::String createTargetForGame(const DetectedGame &game);
+
+	/** Upgrade a target to the current configuration format */
+	void upgradeTargetIfNecessary(const Common::String &target) const;
+
+private:
+	/** Find a game across all loaded plugins */
+	QualifiedGameList findGameInLoadedPlugins(const Common::String &gameId) const;
+
+	/** Find a loaded plugin with the given engine ID */
+	const Plugin *findLoadedPlugin(const Common::String &engineId) const;
+
+	/** Use heuristics to complete a target lacking an engine ID */
+	void upgradeTargetForEngineId(const Common::String &target) const;
 };
 
 /** Convenience shortcut for accessing the engine manager. */

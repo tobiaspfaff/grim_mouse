@@ -22,6 +22,7 @@
 
 #include "common/endian.h"
 
+#include "engines/grim/debug.h"
 #include "engines/grim/sprite.h"
 #include "engines/grim/resource.h"
 #include "engines/grim/gfx_base.h"
@@ -31,8 +32,8 @@
 namespace Grim {
 
 Sprite::Sprite() :
-		_width(0), _height(0), _visible(false), _material(nullptr), _next(nullptr), _blendMode(BlendNormal),
-		_writeDepth(true), _alphaTest(true) {
+		_width(0), _height(0), _visible(false), _material(nullptr), _next(nullptr),
+		_flags1(0), _flags2(0) {
 }
 
 
@@ -51,6 +52,10 @@ void Sprite::loadGrim(const Common::String &name, const char *comma, CMap *cmap)
 	_width = (float)width / 100.0f;
 	_height = (float)height / 100.0f;
 	_pos.set((float)x / 100.0f, (float)y / 100.0f, (float)z / 100.0f);
+
+	// Set the default flags for GRIM sprites
+	_flags1 = Sprite::AlphaTest;
+	_flags2 = Sprite::DepthTest;
 }
 
 void Sprite::loadBinary(Common::SeekableReadStream *stream, EMICostume *costume) {
@@ -65,41 +70,31 @@ void Sprite::loadBinary(Common::SeekableReadStream *stream, EMICostume *costume)
 	uint32 texnamelength = stream->readUint32LE();
 	char *texname = new char[texnamelength];
 	stream->read(texname, texnamelength);
-	stream->readByte(); // Unknown
-	byte blendMode = stream->readByte();
-	if (blendMode == 4)
-		_blendMode = BlendAdditive;
-	else if (blendMode != 0)
-		warning("Unknown blend mode value %d for sprite %s", blendMode, name);
-	stream->skip(2); // Unknown
-	float width, height;
-	float offX, offY;
-	char data[16];
-	stream->read(data, sizeof(data));
-	width = get_float(data);
-	height = get_float(data + 4);
-	offX = get_float(data + 8);
-	offY = get_float(data + 12);
-	stream->skip(4);//Unknown
+	_flags1 = stream->readUint32LE();
+	if (_flags1 & ~(BlendAdditive)) {
+		Debug::debug(Debug::Sprites, "Sprite %s has unknown flags (%08x) in first flag field", name, _flags1);
+	}
+	_width = stream->readFloatLE();
+	_height = stream->readFloatLE();
+	_pos.readFromStream(stream);
 	for (int i = 0; i < 4; ++i) {
 		_alpha[i] = stream->readSint32LE();
 		_red[i] = stream->readSint32LE();
 		_green[i] = stream->readSint32LE();
 		_blue[i] = stream->readSint32LE();
 	}
-	stream->skip(8 * 4); // 8 floats (texcoords?)
-	stream->readByte(); // Unknown (seems to always be 4)
-	if (stream->readByte() == 2)
-		_writeDepth = false;
-	if (stream->readByte() < 2)
-		_alphaTest = false;
+	for (int i = 0; i < 4; ++i) {
+		_texCoordX[i] = stream->readFloatLE();
+		_texCoordY[i] = stream->readFloatLE();
+	}
+	_flags2 = stream->readUint32LE();
+	if (_flags2 & ~(DepthTest | AlphaTest)) {
+		Debug::debug(Debug::Sprites, "Sprite %s has unknown flags (%08x) in second flag field", name, _flags2);
+	}
 
 	_material = costume->loadMaterial(texname, true);
-	_width = width;
-	_height = height;
 	_next = nullptr;
 	_visible = true;
-	_pos.set(offX, offY, 0);
 
 	delete[] name;
 	delete[] texname;

@@ -1,11 +1,40 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 // Texture Manager
+
+#include "common/endian.h"
 
 #include "graphics/tinygl/zgl.h"
 
 namespace TinyGL {
 
-static GLTexture *find_texture(GLContext *c, int h) {
+static GLTexture *find_texture(GLContext *c, unsigned int h) {
 	GLTexture *t;
 
 	t = c->shared_state.texture_hash_table[h % TEXTURE_HASH_TABLE_SIZE];
@@ -18,10 +47,13 @@ static GLTexture *find_texture(GLContext *c, int h) {
 }
 
 void free_texture(GLContext *c, int h) {
-	GLTexture *t, **ht;
+	free_texture(c, find_texture(c, h));
+}
+
+void free_texture(GLContext *c, GLTexture *t) {
+	GLTexture **ht;
 	GLImage *im;
 
-	t = find_texture(c, h);
 	if (!t->prev) {
 		ht = &c->shared_state.texture_hash_table[t->handle % TEXTURE_HASH_TABLE_SIZE];
 		*ht = t->next;
@@ -54,6 +86,8 @@ GLTexture *alloc_texture(GLContext *c, int h) {
 	*ht = t;
 
 	t->handle = h;
+	t->disposed = false;
+	t->versionNumber = 0;
 
 	return t;
 }
@@ -107,7 +141,7 @@ void glopTexImage2D(GLContext *c, GLParam *p) {
 			sourceFormat = Graphics::PixelFormat(3, 8, 8, 8, 0, 16, 8, 0, 0);
 			break;
 		default:
-			error("glTexImage2D: Pixel format not handled.");
+			error("tglTexImage2D: Pixel format not handled.");
 	}
 
 	Graphics::PixelFormat pf;
@@ -135,7 +169,7 @@ void glopTexImage2D(GLContext *c, GLParam *p) {
 
 	// Simply unpack RGB into RGBA with 255 for Alpha.
 	// FIXME: This will need additional checks when we get around to adding 24/32-bit backend.
-	if (target == TGL_TEXTURE_2D && level == 0 && components == 3 && border == 0) {
+	if (target == TGL_TEXTURE_2D && level == 0 && components == 3 && border == 0 && pixels != NULL) {
 		if (format == TGL_RGB || format == TGL_BGR) {
 			Graphics::PixelBuffer temp(pf, width * height, DisposeAfterUse::NO);
 			Graphics::PixelBuffer pixPtr(sourceFormat, pixels);
@@ -148,19 +182,39 @@ void glopTexImage2D(GLContext *c, GLParam *p) {
 			pixels = temp.getRawBuffer();
 			do_free_after_rgb2rgba = true;
 		}
-	} else if (format != TGL_RGBA || type != TGL_UNSIGNED_BYTE) {
-		error("glTexImage2D: combination of parameters not handled");
+	} else if ((format != TGL_RGBA &&
+		    format != TGL_RGB &&
+		    format != TGL_BGR &&
+		    format != TGL_BGRA) ||
+		    (type != TGL_UNSIGNED_BYTE &&
+		     type != TGL_UNSIGNED_INT_8_8_8_8_REV)) {
+		error("tglTexImage2D: combination of parameters not handled");
 	}
 
-	pixels1 = new byte[256 * 256 * bytes];
-	if (width != 256 || height != 256) {
-		gl_resizeImage(pixels1, 256, 256, pixels, width, height);
-		width = 256;
-		height = 256;
-	} else {
-		memcpy(pixels1, pixels, 256 * 256 * bytes);
+	pixels1 = new byte[c->_textureSize * c->_textureSize * bytes];
+	if (pixels != NULL) {
+		if (width != c->_textureSize || height != c->_textureSize) {
+			// we use interpolation for better looking result
+			gl_resizeImage(pixels1, c->_textureSize, c->_textureSize, pixels, width, height);
+			width = c->_textureSize;
+			height = c->_textureSize;
+		} else {
+			memcpy(pixels1, pixels, c->_textureSize * c->_textureSize * bytes);
+		}
+#if defined(SCUMM_BIG_ENDIAN)
+		if (type == TGL_UNSIGNED_INT_8_8_8_8_REV) {
+			for (int y = 0; y < height; y++) {
+				for (int x = 0; x < width; x++) {
+					uint32 offset = (y * width + x) * 4;
+					byte *data = pixels1 + offset;
+					WRITE_BE_UINT32(data, READ_LE_UINT32(data));
+				}
+			}
+		}
+#endif
 	}
 
+	c->current_texture->versionNumber++;
 	im = &c->current_texture->images[level];
 	im->xsize = width;
 	im->ysize = height;
@@ -183,7 +237,7 @@ void glopTexEnv(GLContext *, GLParam *p) {
 
 	if (target != TGL_TEXTURE_ENV) {
 error:
-		error("glTexParameter: unsupported option");
+		error("tglTexParameter: unsupported option");
 	}
 
 	if (pname != TGL_TEXTURE_ENV_MODE)
@@ -201,7 +255,7 @@ void glopTexParameter(GLContext *, GLParam *p) {
 
 	if (target != TGL_TEXTURE_2D) {
 error:
-		error("glTexParameter: unsupported option");
+		error("tglTexParameter: unsupported option");
 	}
 
 	switch (pname) {
@@ -220,7 +274,7 @@ void glopPixelStore(GLContext *, GLParam *p) {
 	int param = p[2].i;
 
 	if (pname != TGL_UNPACK_ALIGNMENT || param != 1) {
-		error("glPixelStore: unsupported option");
+		error("tglPixelStore: unsupported option");
 	}
 }
 
@@ -228,7 +282,7 @@ void glopPixelStore(GLContext *, GLParam *p) {
 
 void tglGenTextures(int n, unsigned int *textures) {
 	TinyGL::GLContext *c = TinyGL::gl_get_context();
-	int max;
+	unsigned int max;
 	TinyGL::GLTexture *t;
 
 	max = 0;
@@ -255,7 +309,7 @@ void tglDeleteTextures(int n, const unsigned int *textures) {
 			if (t == c->current_texture) {
 				tglBindTexture(TGL_TEXTURE_2D, 0);
 			}
-			TinyGL::free_texture(c, textures[i]);
+			t->disposed = true;
 		}
 	}
 }

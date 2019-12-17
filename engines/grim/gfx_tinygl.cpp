@@ -20,11 +20,14 @@
  *
  */
 
+#include "common/config-manager.h"
 #include "common/endian.h"
 #include "common/system.h"
 
 #include "graphics/surface.h"
 #include "graphics/colormasks.h"
+
+#include "math/glmath.h"
 
 #include "engines/grim/actor.h"
 #include "engines/grim/colormap.h"
@@ -41,213 +44,41 @@
 
 namespace Grim {
 
-/**
- * This class is used for blitting bitmaps with transparent pixels.
- * Instead of checking every pixel for transparency, it creates a list of 'lines'.
- * A line is, well, a line of non trasparent pixels, and itstores a pointer to the
- * first pixel, and the position of it, which can be used to memcpy the entire line
- * to the destination buffer.
- */
-class BlitImage {
-public:
-	BlitImage() {
-		_lines = nullptr;
-		_last = nullptr;
-		_width = 0;
-		_height = 0;
-	}
-	~BlitImage() {
-		Line *temp = _lines;
-		while (temp != nullptr) {
-			_lines = temp->next;
-			delete temp;
-			temp = _lines;
-		}
-	}
-	void create(const Graphics::PixelBuffer &buf, uint32 transparency, int x, int y, int width, int height) {
-		Graphics::PixelBuffer srcBuf = buf;
-		_width = width;
-		_height = height;
-		// A line of pixels can not wrap more that one line of the image, since it would break
-		// blitting of bitmaps with a non-zero x position.
-		for (int l = 0; l < height; l++) {
-			int start = -1;
-
-			for (int r = 0; r < width; ++r) {
-				// We found a transparent pixel, so save a line from 'start' to the pixel before this.
-				if (srcBuf.getValueAt(r) == transparency && start >= 0) {
-					newLine(start, l, r - start, srcBuf.getRawBuffer(start));
-
-					start = -1;
-				} else if (srcBuf.getValueAt(r) != transparency && start == -1) {
-					start = r;
-				}
-			}
-			// end of the bitmap line. if start is an actual pixel save the line.
-			if (start >= 0) {
-				newLine(start, l, width - start, srcBuf.getRawBuffer(start));
-			}
-
-			srcBuf.shiftBy(width);
-		}
-	}
-
-	void newLine(int x, int y, int length, byte *pixels) {
-		if (length < 1) {
-			return;
-		}
-
-		Line *line = new Line;
-
-		line->x = x;
-		line->y = y;
-		line->length = length;
-		line->pixels = pixels;
-		line->next = nullptr;
-
-		if (_last) {
-			_last->next = line;
-		}
-		if (!_lines) {
-			_lines = line;
-		}
-		_last = line;
-	}
-
-	struct Line {
-		int x;
-		int y;
-		int length;
-		byte *pixels;
-
-		Line *next;
-	};
-	Line *_lines;
-	Line *_last;
-	int _width, _height;
-};
-
 GfxBase *CreateGfxTinyGL() {
 	return new GfxTinyGL();
 }
 
-// below funcs lookAt, transformPoint and tgluProject are from Mesa glu sources
-static void lookAt(TGLfloat eyex, TGLfloat eyey, TGLfloat eyez, TGLfloat centerx,
-				   TGLfloat centery, TGLfloat centerz, TGLfloat upx, TGLfloat upy, TGLfloat upz) {
-	TGLfloat m[16];
-	TGLfloat x[3], y[3], z[3];
-	TGLfloat mag;
-
-	z[0] = eyex - centerx;
-	z[1] = eyey - centery;
-	z[2] = eyez - centerz;
-	mag = sqrt(z[0] * z[0] + z[1] * z[1] + z[2] * z[2]);
-	if (mag) {
-		z[0] /= mag;
-		z[1] /= mag;
-		z[2] /= mag;
-	}
-
-	y[0] = upx;
-	y[1] = upy;
-	y[2] = upz;
-
-	x[0] = y[1] * z[2] - y[2] * z[1];
-	x[1] = -y[0] * z[2] + y[2] * z[0];
-	x[2] = y[0] * z[1] - y[1] * z[0];
-
-	y[0] = z[1] * x[2] - z[2] * x[1];
-	y[1] = -z[0] * x[2] + z[2] * x[0];
-	y[2] = z[0] * x[1] - z[1] * x[0];
-
-	mag = sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
-	if (mag) {
-		x[0] /= mag;
-		x[1] /= mag;
-		x[2] /= mag;
-	}
-
-	mag = sqrt(y[0] * y[0] + y[1] * y[1] + y[2] * y[2]);
-	if (mag) {
-		y[0] /= mag;
-		y[1] /= mag;
-		y[2] /= mag;
-	}
-
-#define M(row,col)  m[col * 4 + row]
-	M(0, 0) = x[0];
-	M(0, 1) = x[1];
-	M(0, 2) = x[2];
-	M(0, 3) = 0.0f;
-	M(1, 0) = y[0];
-	M(1, 1) = y[1];
-	M(1, 2) = y[2];
-	M(1, 3) = 0.0f;
-	M(2, 0) = z[0];
-	M(2, 1) = z[1];
-	M(2, 2) = z[2];
-	M(2, 3) = 0.0f;
-	M(3, 0) = 0.0f;
-	M(3, 1) = 0.0f;
-	M(3, 2) = 0.0f;
-	M(3, 3) = 1.0f;
-#undef M
-	tglMultMatrixf(m);
-
-	tglTranslatef(-eyex, -eyey, -eyez);
-}
-
-static void transformPoint(TGLfloat out[4], const TGLfloat m[16], const TGLfloat in[4]) {
-#define M(row,col)  m[col * 4 + row]
-	out[0] = M(0, 0) * in[0] + M(0, 1) * in[1] + M(0, 2) * in[2] + M(0, 3) * in[3];
-	out[1] = M(1, 0) * in[0] + M(1, 1) * in[1] + M(1, 2) * in[2] + M(1, 3) * in[3];
-	out[2] = M(2, 0) * in[0] + M(2, 1) * in[1] + M(2, 2) * in[2] + M(2, 3) * in[3];
-	out[3] = M(3, 0) * in[0] + M(3, 1) * in[1] + M(3, 2) * in[2] + M(3, 3) * in[3];
-#undef M
-}
-
-TGLint tgluProject(TGLfloat objx, TGLfloat objy, TGLfloat objz, const TGLfloat model[16], const TGLfloat proj[16],
-				   const TGLint viewport[4], TGLfloat *winx, TGLfloat *winy, TGLfloat *winz) {
-	TGLfloat in[4], out[4];
-
-	in[0] = objx;
-	in[1] = objy;
-	in[2] = objz;
-	in[3] = 1.0f;
-	transformPoint(out, model, in);
-	transformPoint(in, proj, out);
-
-	if (in[3] == 0.0)
-		return TGL_FALSE;
-
-	in[0] /= in[3];
-	in[1] /= in[3];
-	in[2] /= in[3];
-
-	*winx = viewport[0] + (1 + in[0]) * viewport[2] / 2;
-	*winy = viewport[1] + (1 + in[1]) * viewport[3] / 2;
-	*winz = (1 + in[2]) / 2;
-
-	return TGL_TRUE;
-}
-
 GfxTinyGL::GfxTinyGL() :
-		_smushWidth(0), _smushHeight(0), _zb(nullptr), _alpha(1.f),
-		_bufferId(0), _currentActor(nullptr) {
-	g_driver = this;
+		_zb(nullptr), _alpha(1.f),
+		_currentActor(nullptr), _smushImage(nullptr) {
 	_storedDisplay = nullptr;
+	// TGL_LEQUAL as tglDepthFunc ensures that subsequent drawing attempts for
+	// the same triangles are not ignored by the depth test.
+	// That's necessary for EMI where some models have multiple faces which
+	// refer to the same vertices. The first face is usually using the
+	// color map and the following are using textures.
+	_depthFunc = (g_grim->getGameType() == GType_MONKEY4) ? TGL_LEQUAL : TGL_LESS;
+	for (int i = 0; i < 96; i++) {
+		_emergFont[i] = nullptr;
+	}
 }
 
 GfxTinyGL::~GfxTinyGL() {
+	releaseMovieFrame();
+	for (unsigned int i = 0; i < _numSpecialtyTextures; i++) {
+		destroyTexture(&_specialtyTextures[i]);
+	}
+	for (int i = 0; i < 96; i++) {
+		Graphics::tglDeleteBlitImage(_emergFont[i]);
+	}
 	if (_zb) {
-		delBuffer(1);
 		TinyGL::glClose();
 		delete _zb;
 	}
 }
 
 byte *GfxTinyGL::setupScreen(int screenW, int screenH, bool fullscreen) {
-	Graphics::PixelBuffer buf = g_system->setupScreen(screenW, screenH, fullscreen, false);
+	Graphics::PixelBuffer buf = g_system->getScreenPixelBuffer();
 	byte *buffer = buf.getRawBuffer();
 
 	_screenWidth = screenW;
@@ -255,17 +86,16 @@ byte *GfxTinyGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 	_scaleW = _screenWidth / (float)_gameWidth;
 	_scaleH = _screenHeight / (float)_gameHeight;
 
-	_isFullscreen = g_system->getFeatureState(OSystem::kFeatureFullscreenMode);
-
 	g_system->showMouse(!fullscreen);
 
 	g_system->setWindowCaption("ResidualVM: Software 3D Renderer");
 
 	_pixelFormat = buf.getFormat();
+	debug("INFO: TinyGL front buffer pixel format: %s", _pixelFormat.toString().c_str());
 	_zb = new TinyGL::FrameBuffer(screenW, screenH, buf);
-	TinyGL::glInit(_zb);
+	TinyGL::glInit(_zb, 256);
+	tglEnableDirtyRects(ConfMan.getBool("dirtyrects"));
 
-	_screenSize = _gameWidth * _gameHeight * _pixelFormat.bytesPerPixel;
 	_storedDisplay.create(_pixelFormat, _gameWidth * _gameHeight, DisposeAfterUse::YES);
 	_storedDisplay.clear(_gameWidth * _gameHeight);
 
@@ -273,11 +103,8 @@ byte *GfxTinyGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 
 	TGLfloat ambientSource[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	tglLightModelfv(TGL_LIGHT_MODEL_AMBIENT, ambientSource);
-
-	// we now generate a buffer (id 1), which we will use as a backing buffer, where the actors' clean buffers
-	// will blit to. everu frame this will be blitted to screen, but the actors' buffers will be blitted to
-	// this only when they change.
-	genBuffer();
+	TGLfloat diffuseReflectance[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	tglMaterialfv(TGL_FRONT, TGL_DIFFUSE, diffuseReflectance);
 
 	return buffer;
 }
@@ -286,7 +113,7 @@ const char *GfxTinyGL::getVideoDeviceName() {
 	return "TinyGL Software Renderer";
 }
 
-void GfxTinyGL::setupCamera(float fov, float nclip, float fclip, float roll) {
+void GfxTinyGL::setupCameraFrustum(float fov, float nclip, float fclip) {
 	tglMatrixMode(TGL_PROJECTION);
 	tglLoadIdentity();
 
@@ -295,25 +122,25 @@ void GfxTinyGL::setupCamera(float fov, float nclip, float fclip, float roll) {
 
 	tglMatrixMode(TGL_MODELVIEW);
 	tglLoadIdentity();
-
 }
 
 void GfxTinyGL::positionCamera(const Math::Vector3d &pos, const Math::Vector3d &interest, float roll) {
-	if (g_grim->getGameType() == GType_MONKEY4) {
-		tglScalef(1.0, 1.0, -1.0);
+	Math::Vector3d up_vec(0, 0, 1);
 
-		_currentPos = pos;
-		_currentQuat = Math::Quaternion(interest.x(), interest.y(), interest.z(), roll);
-	} else {
-		Math::Vector3d up_vec(0, 0, 1);
+	tglRotatef(roll, 0, 0, -1);
 
-		tglRotatef(roll, 0, 0, -1);
+	if (pos.x() == interest.x() && pos.y() == interest.y())
+		up_vec = Math::Vector3d(0, 1, 0);
 
-		if (pos.x() == interest.x() && pos.y() == interest.y())
-			up_vec = Math::Vector3d(0, 1, 0);
+	Math::Matrix4 lookMatrix = Math::makeLookAtMatrix(pos, interest, up_vec);
+	tglMultMatrixf(lookMatrix.getData());
+	tglTranslatef(-pos.x(), -pos.y(), -pos.z());
+}
 
-		lookAt(pos.x(), pos.y(), pos.z(), interest.x(), interest.y(), interest.z(), up_vec.x(), up_vec.y(), up_vec.z());
-	}
+void GfxTinyGL::positionCamera(const Math::Vector3d &pos, const Math::Matrix4 &rot) {
+	tglScalef(1.0, 1.0, -1.0);
+	_currentPos = pos;
+	_currentRot = rot;
 }
 
 Math::Matrix4 GfxTinyGL::getModelView() {
@@ -323,15 +150,13 @@ Math::Matrix4 GfxTinyGL::getModelView() {
 		tglMatrixMode(TGL_MODELVIEW);
 		tglPushMatrix();
 
-		Math::Matrix4 worldRot = _currentQuat.toMatrix();
-		tglMultMatrixf(worldRot.getData());
+		tglMultMatrixf(_currentRot.getData());
 		tglTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
 
 		tglGetFloatv(TGL_MODELVIEW_MATRIX, modelView.getData());
 
 		tglPopMatrix();
-	}
-	else {
+	} else {
 		tglGetFloatv(TGL_MODELVIEW_MATRIX, modelView.getData());
 	}
 
@@ -347,67 +172,23 @@ Math::Matrix4 GfxTinyGL::getProjection() {
 }
 
 void GfxTinyGL::clearScreen() {
-	_zb->pbuf.clear(_screenSize);
-	memset(_zb->zbuf, 0, _gameWidth * _gameHeight * sizeof(unsigned int));
+	tglClear(TGL_COLOR_BUFFER_BIT | TGL_DEPTH_BUFFER_BIT);
 }
 
 void GfxTinyGL::clearDepthBuffer() {
-	memset(_zb->zbuf, 0, _gameWidth * _gameHeight * sizeof(unsigned int));
+	tglClear(TGL_DEPTH_BUFFER_BIT);
 }
 
 void GfxTinyGL::flipBuffer() {
+	TinyGL::tglPresentBuffer();
 	g_system->updateScreen();
 }
 
-int GfxTinyGL::genBuffer() {
-	TinyGL::Buffer *buf = _zb->genOffscreenBuffer();
-	_buffers[++_bufferId] = buf;
-
-	return _bufferId;
-}
-
-void GfxTinyGL::delBuffer(int id) {
-	_zb->delOffscreenBuffer(_buffers[id]);
-	_buffers.erase(id);
-}
-
-void GfxTinyGL::selectBuffer(int id) {
-	if (id == 0) {
-		_zb->selectOffscreenBuffer(NULL);
-	} else {
-		_zb->selectOffscreenBuffer(_buffers[id]);
-	}
-}
-
-void GfxTinyGL::clearBuffer(int id) {
-	TinyGL::Buffer *buf = _buffers[id];
-	_zb->clearOffscreenBuffer(buf);
-}
-
-void GfxTinyGL::drawBuffers() {
-	selectBuffer(1);
-	Common::HashMap<int, TinyGL::Buffer *>::iterator i = _buffers.begin();
-	for (++i; i != _buffers.end(); ++i) {
-		TinyGL::Buffer *buf = i->_value;
-		_zb->blitOffscreenBuffer(buf);
-		//this is not necessary, but it prevents the buffers to be blitted every frame, if it is not needed
-		buf->used = false;
-	}
-
-	selectBuffer(0);
-	_zb->blitOffscreenBuffer(_buffers[1]);
-}
-
-void GfxTinyGL::refreshBuffers() {
-	clearBuffer(1);
-	Common::HashMap<int, TinyGL::Buffer *>::iterator i = _buffers.begin();
-	for (++i; i != _buffers.end(); ++i) {
-		TinyGL::Buffer *buf = i->_value;
-		buf->used = true;
-	}
-}
-
 bool GfxTinyGL::isHardwareAccelerated() {
+	return false;
+}
+
+bool GfxTinyGL::supportsShaders() {
 	return false;
 }
 
@@ -460,7 +241,7 @@ static void tglShadowProjection(const Math::Vector3d &light, const Math::Vector3
 	tglMultMatrixf(mat);
 }
 
-void GfxTinyGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, int *y2) {
+void GfxTinyGL::getScreenBoundingBox(const Mesh *model, int *x1, int *y1, int *x2, int *y2) {
 	if (_currentShadowArray) {
 		*x1 = -1;
 		*y1 = -1;
@@ -473,10 +254,9 @@ void GfxTinyGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 	TGLfloat right = -1000;
 	TGLfloat left = 1000;
 	TGLfloat bottom = -1000;
-	TGLfloat winX, winY, winZ;
 
 	for (int i = 0; i < model->_numFaces; i++) {
-		Math::Vector3d v;
+		Math::Vector3d obj;
 		float *pVertices;
 
 		for (int j = 0; j < model->_faces[i].getNumVertices(); j++) {
@@ -489,18 +269,19 @@ void GfxTinyGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 
 			pVertices = model->_vertices + 3 * model->_faces[i].getVertex(j);
 
-			v.set(*(pVertices), *(pVertices + 1), *(pVertices + 2));
+			obj.set(*(pVertices), *(pVertices + 1), *(pVertices + 2));
 
-			tgluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
+			Math::Vector3d win;
+			Math::gluMathProject<TGLfloat, TGLint>(obj, modelView, projection, viewPort, win);
 
-			if (winX > right)
-				right = winX;
-			if (winX < left)
-				left = winX;
-			if (winY < top)
-				top = winY;
-			if (winY > bottom)
-				bottom = winY;
+			if (win.x() > right)
+				right = win.x();
+			if (win.x() < left)
+				left = win.x();
+			if (win.y() < top)
+				top = win.y();
+			if (win.y() > bottom)
+				bottom = win.y();
 		}
 	}
 
@@ -529,24 +310,9 @@ void GfxTinyGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 	*y1 = (int)top;
 	*x2 = (int)right;
 	*y2 = (int)bottom;
-/*
-	uint16 *dst = (uint16 *)_zb->pbuf;
-	uint16 c = 0xffff;
-	for (int x = left; x <= right; x++) {
-		WRITE_LE_UINT16(dst + _gameWidth * (int)top + x, c);
-	}
-	for (int x = left; x <= right; x++) {
-		WRITE_LE_UINT16(dst + _gameWidth * (int)bottom + x, c);
-	}
-	for (int y = top; y <= bottom; y++) {
-		WRITE_LE_UINT16(dst + _gameWidth * y + (int)left, c);
-	}
-	for (int y = top; y <= bottom; y++) {
-		WRITE_LE_UINT16(dst + _gameWidth * y + (int)right, c);
-	}*/
 }
 
-void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) {
+void GfxTinyGL::getScreenBoundingBox(const EMIModel *model, int *x1, int *y1, int *x2, int *y2) {
 	if (_currentShadowArray) {
 		*x1 = -1;
 		*y1 = -1;
@@ -559,7 +325,6 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 	TGLfloat right = -1000;
 	TGLfloat left = 1000;
 	TGLfloat bottom = -1000;
-	TGLfloat winX, winY, winZ;
 
 	TGLfloat modelView[16], projection[16];
 	TGLint viewPort[4];
@@ -570,21 +335,22 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 
 	for (uint i = 0; i < model->_numFaces; i++) {
 		int *indices = (int *)model->_faces[i]._indexes;
-
+		
 		for (uint j = 0; j < model->_faces[i]._faceLength * 3; j++) {
 			int index = indices[j];
-			Math::Vector3d v = model->_drawVertices[index];
 
-			tgluProject(v.x(), v.y(), v.z(), modelView, projection, viewPort, &winX, &winY, &winZ);
+			Math::Vector3d obj = model->_drawVertices[index];
+			Math::Vector3d win;
+			Math::gluMathProject<TGLfloat, TGLint>(obj, modelView, projection, viewPort, win);
 
-			if (winX > right)
-				right = winX;
-			if (winX < left)
-				left = winX;
-			if (winY < top)
-				top = winY;
-			if (winY > bottom)
-				bottom = winY;
+			if (win.x() > right)
+				right = win.x();
+			if (win.x() < left)
+				left = win.x();
+			if (win.y() < top)
+				top = win.y();
+			if (win.y() > bottom)
+				bottom = win.y();
 		}
 	}
 
@@ -615,6 +381,70 @@ void GfxTinyGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 	*y2 = (int)(_gameHeight - top);
 }
 
+void GfxTinyGL::getActorScreenBBox(const Actor *actor, Common::Point &p1, Common::Point &p2) {
+	// Get the actor's bounding box information (describes a 3D box)
+	Math::Vector3d bboxPos, bboxSize;
+	actor->getBBoxInfo(bboxPos, bboxSize);
+
+	// Translate the bounding box to the actor's position
+	Math::Matrix4 m = actor->getFinalMatrix();
+	bboxPos = bboxPos + actor->getWorldPos();
+
+	// Set up the coordinate system
+	tglMatrixMode(TGL_MODELVIEW);
+	tglPushMatrix();
+
+	// Apply the view transform.
+	Math::Matrix4 worldRot = _currentRot;
+	tglMultMatrixf(worldRot.getData());
+	tglTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+
+	// Get the current OpenGL state
+	TGLfloat modelView[16], projection[16];
+	TGLint viewPort[4];
+	tglGetFloatv(TGL_MODELVIEW_MATRIX, modelView);
+	tglGetFloatv(TGL_PROJECTION_MATRIX, projection);
+	tglGetIntegerv(TGL_VIEWPORT, viewPort);
+
+	// Set values outside of the screen range
+	p1.x = 1000;
+	p1.y = 1000;
+	p2.x = -1000;
+	p2.y = -1000;
+
+	// Project all of the points in the 3D bounding box
+	Math::Vector3d p, projected;
+	for (int x = 0; x < 2; x++) {
+		for (int y = 0; y < 2; y++) {
+			for (int z = 0; z < 2; z++) {
+				Math::Vector3d added(bboxSize.x() * 0.5f * (x * 2 - 1), bboxSize.y() * 0.5f * (y * 2 - 1), bboxSize.z() * 0.5f * (z * 2 - 1));
+				m.transform(&added, false);
+				p = bboxPos + added;
+				Math::gluMathProject<TGLfloat, TGLint>(p, modelView, projection, viewPort, projected);
+
+				// Find the points
+				if (projected.x() < p1.x)
+					p1.x = projected.x();
+				if (projected.y() < p1.y)
+					p1.y = projected.y();
+				if (projected.x() > p2.x)
+					p2.x = projected.x();
+				if (projected.y() > p2.y)
+					p2.y = projected.y();
+			}
+		}
+	}
+
+	// Swap the p1/p2 y coorindates
+	int16 tmp = p1.y;
+	p1.y = 480 - p2.y;
+	p2.y = 480 - tmp;
+
+	// Restore the state
+	tglPopMatrix();
+}
+
+
 void GfxTinyGL::startActorDraw(const Actor *actor) {
 	_currentActor = actor;
 	tglEnable(TGL_TEXTURE_2D);
@@ -622,7 +452,15 @@ void GfxTinyGL::startActorDraw(const Actor *actor) {
 	tglPushMatrix();
 	tglMatrixMode(TGL_MODELVIEW);
 	tglPushMatrix();
+
+	if (g_grim->getGameType() == GType_MONKEY4 && !actor->isInOverworld()) {
+		// Apply the view transform.
+		tglMultMatrixf(_currentRot.getData());
+		tglTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
+
 	if (_currentShadowArray) {
+		tglDepthMask(TGL_FALSE);
 		// TODO find out why shadowMask at device in woods is null
 		if (!_currentShadowArray->shadowMask) {
 			_currentShadowArray->shadowMask = new byte[_gameWidth * _gameHeight];
@@ -630,23 +468,23 @@ void GfxTinyGL::startActorDraw(const Actor *actor) {
 		}
 		assert(_currentShadowArray->shadowMask);
 		//tglSetShadowColor(255, 255, 255);
-		tglSetShadowColor(_shadowColorR, _shadowColorG, _shadowColorB);
+		if (g_grim->getGameType() == GType_GRIM) {
+			tglSetShadowColor(_shadowColorR, _shadowColorG, _shadowColorB);
+		} else {
+			tglSetShadowColor(_currentShadowArray->color.getRed(), _currentShadowArray->color.getGreen(), _currentShadowArray->color.getBlue());
+		}
 		tglSetShadowMaskBuf(_currentShadowArray->shadowMask);
 		SectorListType::iterator i = _currentShadowArray->planeList.begin();
 		Sector *shadowSector = i->sector;
 		tglShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
 	}
 
-	// FIXME: TinyGL doesn't seem to support translucency.
 	const float alpha = actor->getEffectiveAlpha();
 	if (alpha < 1.f) {
 		_alpha = alpha;
-//    tglEnable(TGL_BLEND);
-//    tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+		tglEnable(TGL_BLEND);
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
 	}
-
-	const Math::Quaternion &quat = actor->getRotationQuat();
-	const float &scale = actor->getScale();
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		tglEnable(TGL_CULL_FACE);
@@ -654,40 +492,33 @@ void GfxTinyGL::startActorDraw(const Actor *actor) {
 
 		if (actor->isInOverworld()) {
 			const Math::Vector3d &pos = actor->getWorldPos();
+			const Math::Quaternion &quat = actor->getRotationQuat();
+			// At distance 3.2, a 6.4x4.8 actor fills the screen.
 			tglMatrixMode(TGL_PROJECTION);
 			tglLoadIdentity();
 			float right = 1;
 			float top = right * 0.75;
 			float div = 6.0f;
-			tglFrustum(-right/div, right/div, -top/div, top/div, 1.0f/div, 3276.8f);
+			tglFrustum(-right / div, right / div, -top / div, top / div, 1.0f / div, 3276.8f);
 			tglMatrixMode(TGL_MODELVIEW);
 			tglLoadIdentity();
 			tglScalef(1.0, 1.0, -1.0);
 			tglTranslatef(pos.x(), pos.y(), pos.z());
 			tglMultMatrixf(quat.toMatrix().getData());
 		} else {
-			Math::Matrix4 worldRot = _currentQuat.toMatrix();
-			tglMultMatrixf(worldRot.getData());
-                        tglTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
-
 			Math::Matrix4 m = actor->getFinalMatrix();
 			m.transpose();
-                        tglMultMatrixf(m.getData());
+			tglMultMatrixf(m.getData());
 		}
 	} else {
 		// Grim
 		Math::Vector3d pos = actor->getWorldPos();
-		Math::Matrix4 worldRot = _currentQuat.toMatrix();
-		worldRot.inverseRotate(&pos);
-		tglTranslatef(pos.x(), pos.y(), pos.z());
-		tglMultMatrixf(worldRot.getData());
+		const Math::Quaternion &quat = actor->getRotationQuat();
+		const float &scale = actor->getScale();
 
+		tglTranslatef(pos.x(), pos.y(), pos.z());
 		tglScalef(scale, scale, scale);
 		tglMultMatrixf(quat.toMatrix().getData());
-	}
-
-	if (actor->getSortOrder() >= 100) {
-		tglColorMask(false, false, false, false);
 	}
 }
 
@@ -697,32 +528,16 @@ void GfxTinyGL::finishActorDraw() {
 	tglMatrixMode(TGL_PROJECTION);
 	tglPopMatrix();
 	tglMatrixMode(TGL_MODELVIEW);
-	tglDisable(TGL_TEXTURE_2D);
 
-	// FIXME: TinyGL doesn't seem to support translucency.
+	tglDisable(TGL_TEXTURE_2D);
 	if (_alpha < 1.f) {
-//    tglDisable(TGL_BLEND);
+		tglDisable(TGL_BLEND);
 		_alpha = 1.f;
 	}
 
 	if (_currentShadowArray) {
 		tglSetShadowMaskBuf(nullptr);
-	}/* else {
-		uint16 *dst = (uint16 *)_zb->pbuf;
-		uint16 c = 0xffff;
-		for (int x = g_winX1; x <= g_winX2; x++) {
-			WRITE_LE_UINT16(dst + _gameWidth * g_winY1 + x, c);
-		}
-		for (int x = g_winX1; x <= g_winX2; x++) {
-			WRITE_LE_UINT16(dst + _gameWidth * g_winY2 + x, c);
-		}
-		for (int y = g_winY1; y <= g_winY2; y++) {
-			WRITE_LE_UINT16(dst + _gameWidth * y + g_winX1, c);
-		}
-		for (int y = g_winY1; y <= g_winY2; y++) {
-			WRITE_LE_UINT16(dst + _gameWidth * y + g_winX2, c);
-		}
-	}*/
+	}
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		tglDisable(TGL_CULL_FACE);
@@ -734,6 +549,15 @@ void GfxTinyGL::finishActorDraw() {
 
 void GfxTinyGL::drawShadowPlanes() {
 	tglEnable(TGL_SHADOW_MASK_MODE);
+	tglDepthMask(TGL_FALSE);
+	tglPushMatrix();
+
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		// Apply the view transform.
+		tglMultMatrixf(_currentRot.getData());
+		tglTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
+
 	if (!_currentShadowArray->shadowMask) {
 		_currentShadowArray->shadowMask = new byte[_gameWidth * _gameHeight];
 		_currentShadowArray->shadowMaskSize = _gameWidth * _gameHeight;
@@ -752,6 +576,9 @@ void GfxTinyGL::drawShadowPlanes() {
 	}
 	tglSetShadowMaskBuf(nullptr);
 	tglDisable(TGL_SHADOW_MASK_MODE);
+	tglDepthMask(TGL_TRUE);
+
+	tglPopMatrix();
 }
 
 void GfxTinyGL::setShadowMode() {
@@ -762,18 +589,20 @@ void GfxTinyGL::setShadowMode() {
 void GfxTinyGL::clearShadowMode() {
 	GfxBase::clearShadowMode();
 	tglDisable(TGL_SHADOW_MODE);
+	tglDepthMask(TGL_TRUE);
 }
 
 void GfxTinyGL::set3DMode() {
 	tglMatrixMode(TGL_MODELVIEW);
 	tglEnable(TGL_DEPTH_TEST);
+	tglDepthFunc(_depthFunc);
 }
 
 void GfxTinyGL::setShadow(Shadow *shadow) {
 	_currentShadowArray = shadow;
 	if (shadow)
 		tglDisable(TGL_LIGHTING);
-	else
+	else if (g_grim->getGameType() == GType_GRIM)
 		tglEnable(TGL_LIGHTING);
 }
 
@@ -791,27 +620,37 @@ void GfxTinyGL::getShadowColor(byte *r, byte *g, byte *b) {
 
 void GfxTinyGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face) {
 	int *indices = (int *)face->_indexes;
+
 	tglEnable(TGL_DEPTH_TEST);
 	tglDisable(TGL_ALPHA_TEST);
-	if (face->_hasTexture)
+	tglDisable(TGL_LIGHTING);
+	if (!_currentShadowArray && face->_hasTexture)
 		tglEnable(TGL_TEXTURE_2D);
 	else
 		tglDisable(TGL_TEXTURE_2D);
-	tglBegin(TGL_TRIANGLES);
+	if (face->_flags & EMIMeshFace::kAlphaBlend || face->_flags & EMIMeshFace::kUnknownBlend || _currentActor->hasLocalAlpha() || _alpha < 1.0f)
+		tglEnable(TGL_BLEND);
 
-	float dim = 1.0f - _dimLevel;
+	tglBegin(TGL_TRIANGLES);
+	float alpha = _alpha;
+	if (model->_meshAlphaMode == Actor::AlphaReplace) {
+		alpha *= model->_meshAlpha;
+	}
+	Math::Vector3d noLighting(1.f, 1.f, 1.f);
 	for (uint j = 0; j < face->_faceLength * 3; j++) {
 		int index = indices[j];
-		if (face->_hasTexture) {
-			tglTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
-		}
 
-		Math::Vector3d lighting = model->_lighting[index];
-		byte r = (byte)(model->_colorMap[index].r * lighting.x() * dim);
-		byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
-		byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
-		byte a = (int)(model->_colorMap[index].a * _alpha);
-		tglColor4ub(r, g, b, a);
+		if (!_currentShadowArray) {
+			if (face->_hasTexture) {
+				tglTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
+			}
+			Math::Vector3d lighting = (face->_flags & EMIMeshFace::kNoLighting) ? noLighting : model->_lighting[index];
+			byte r = (byte)(model->_colorMap[index].r * lighting.x());
+			byte g = (byte)(model->_colorMap[index].g * lighting.y());
+			byte b = (byte)(model->_colorMap[index].b * lighting.z());
+			byte a = (int)(model->_colorMap[index].a * alpha * _currentActor->getLocalAlpha(index));
+			tglColor4ub(r, g, b, a);
+		}
 
 		Math::Vector3d normal = model->_normals[index];
 		Math::Vector3d vertex = model->_drawVertices[index];
@@ -819,17 +658,30 @@ void GfxTinyGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 		tglNormal3fv(normal.getData());
 		tglVertex3fv(vertex.getData());
 	}
-
 	tglEnd();
+
+	if (!_currentShadowArray) {
+		tglColor3f(1.0f, 1.0f, 1.0f);
+	}
+
 	tglEnable(TGL_TEXTURE_2D);
 	tglEnable(TGL_DEPTH_TEST);
 	tglEnable(TGL_ALPHA_TEST);
+	tglEnable(TGL_LIGHTING);
+	tglDisable(TGL_BLEND);
+
+	if (!_currentShadowArray)
+		tglDepthMask(TGL_TRUE);
 }
 
 void GfxTinyGL::drawModelFace(const Mesh *mesh, const MeshFace *face) {
+	// Support transparency in actor objects, such as the message tube
+	// in Manny's Office
 	float *vertices = mesh->_vertices;
 	float *vertNormals = mesh->_vertNormals;
 	float *textureVerts = mesh->_textureVerts;
+	tglAlphaFunc(TGL_GREATER, 0.5);
+	tglEnable(TGL_ALPHA_TEST);
 	tglNormal3fv(const_cast<float *>(face->getNormal().getData()));
 	tglBegin(TGL_POLYGON);
 	for (int i = 0; i < face->getNumVertices(); i++) {
@@ -841,35 +693,32 @@ void GfxTinyGL::drawModelFace(const Mesh *mesh, const MeshFace *face) {
 		tglVertex3fv(vertices + 3 * face->getVertex(i));
 	}
 	tglEnd();
+	// Done with transparency-capable objects
+	tglDisable(TGL_ALPHA_TEST);
 }
 
 void GfxTinyGL::drawSprite(const Sprite *sprite) {
-	// HACK: TinyGL doesn't support blending well, but atleast we can skip completely
-	// translucent sprites:
-	if (_alpha <= 0.0f) {
-		return;
-	}
 	tglMatrixMode(TGL_TEXTURE);
 	tglLoadIdentity();
 	tglMatrixMode(TGL_MODELVIEW);
 	tglPushMatrix();
-	tglTranslatef(sprite->_pos.x(), sprite->_pos.y(), sprite->_pos.z());
-
-	TGLfloat modelview[16];
-	tglGetFloatv(TGL_MODELVIEW_MATRIX, modelview);
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
+		TGLfloat modelview[16];
+		tglGetFloatv(TGL_MODELVIEW_MATRIX, modelview);
 		Math::Matrix4 act;
-		if (_currentActor->isInOverworld())
-			act.buildAroundZ(_currentActor->getYaw());
-		else
-			act.buildAroundZ(_currentActor->getRoll());
+		act.buildAroundZ(_currentActor->getYaw());
 		act.transpose();
-		act(3,0) = modelview[12];
-		act(3,1) = modelview[13];
-		act(3,2) = modelview[14];
+		act(3, 0) = modelview[12];
+		act(3, 1) = modelview[13];
+		act(3, 2) = modelview[14];
 		tglLoadMatrixf(act.getData());
+		tglTranslatef(sprite->_pos.x(), sprite->_pos.y(), -sprite->_pos.z());
 	} else {
+		tglTranslatef(sprite->_pos.x(), sprite->_pos.y(), sprite->_pos.z());
+		TGLfloat modelview[16];
+		tglGetFloatv(TGL_MODELVIEW_MATRIX, modelview);
+
 		// We want screen-aligned sprites so reset the rotation part of the matrix.
 		for (int i = 0; i < 3; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -883,57 +732,52 @@ void GfxTinyGL::drawSprite(const Sprite *sprite) {
 		tglLoadMatrixf(modelview);
 	}
 
-	if (sprite->_blendMode == Sprite::BlendAdditive) {
-		//tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE);
+	if (sprite->_flags1 & Sprite::BlendAdditive) {
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE);
 	} else {
-		//tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
 	}
 
 	tglDisable(TGL_LIGHTING);
 
-	if (sprite->_alphaTest) {
-		//tglEnable(TGL_ALPHA_TEST);
-		//tglAlphaFunc(TGL_GEQUAL, g_grim->getGameType() == GType_MONKEY4 ? 0.1f : 0.5f);
+	if (g_grim->getGameType() == GType_GRIM) {
+		tglEnable(TGL_ALPHA_TEST);
+		tglAlphaFunc(TGL_GEQUAL, 0.5f);
+	} else if (sprite->_flags2 & Sprite::AlphaTest) {
+		tglEnable(TGL_ALPHA_TEST);
+		tglAlphaFunc(TGL_GEQUAL, 0.1f);
 	} else {
-		//tglDisable(TGL_ALPHA_TEST);
+		tglDisable(TGL_ALPHA_TEST);
 	}
 
-	if (sprite->_writeDepth) {
+	if (sprite->_flags2 & Sprite::DepthTest) {
 		tglEnable(TGL_DEPTH_TEST);
 	} else {
 		tglDisable(TGL_DEPTH_TEST);
 	}
 
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		if (_currentActor->isInOverworld()) {
-			// The Overworld actors don't have a proper sort order
-			// so we rely on the z coordinates
-			tglEnable(TGL_DEPTH_TEST);
-			//tglDepthMask(TGL_TRUE);
-		} else {
-			//tglDepthMask(TGL_FALSE);
-		}
+		tglDepthMask(TGL_TRUE);
+
 		float halfWidth = sprite->_width / 2;
 		float halfHeight = sprite->_height / 2;
-		float dim = 1.0f - _dimLevel;
-		float texCoordsX[] = { 0.0f, 0.0f, 1.0f, 1.0f };
-		float texCoordsY[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-		float vertexX[] = { -1.0f, -1.0f, 1.0f, 1.0f };
-		float vertexY[] = { -1.0f, 1.0f, 1.0f, -1.0f };
+
+		float vertexX[] = { -1.0f, 1.0f, 1.0f, -1.0f };
+		float vertexY[] = { 1.0f, 1.0f, -1.0f, -1.0f };
 
 		tglBegin(TGL_POLYGON);
 		for (int i = 0; i < 4; ++i) {
-			float r = sprite->_red[i] * dim / 255.0f;
-			float g = sprite->_green[i] * dim / 255.0f;
-			float b = sprite->_blue[i] * dim / 255.0f;
-			float a = sprite->_alpha[i] * dim * _alpha / 255.0f;
+			float r = sprite->_red[i] / 255.0f;
+			float g = sprite->_green[i] / 255.0f;
+			float b = sprite->_blue[i] / 255.0f;
+			float a = sprite->_alpha[i] * _alpha / 255.0f;
 
 			tglColor4f(r, g, b, a);
-			tglTexCoord2f(texCoordsX[i], texCoordsY[i]);
+			tglTexCoord2f(sprite->_texCoordX[i], sprite->_texCoordY[i]);
 			tglVertex3f(vertexX[i] * halfWidth, vertexY[i] * halfHeight, 0.0f);
 		}
-		tglColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		tglEnd();
+		tglColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	} else {
 		// In Grim, the bottom edge of the sprite is at y=0 and
 		// the texture is flipped along the X-axis.
@@ -954,8 +798,9 @@ void GfxTinyGL::drawSprite(const Sprite *sprite) {
 
 	tglEnable(TGL_LIGHTING);
 	tglDisable(TGL_ALPHA_TEST);
-	//tglDepthMask(GL_TRUE);
-	//tglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	tglDepthMask(TGL_TRUE);
+	tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+	tglDisable(TGL_BLEND);
 	tglEnable(TGL_DEPTH_TEST);
 
 	tglPopMatrix();
@@ -974,7 +819,12 @@ void GfxTinyGL::rotateViewpoint(const Math::Angle &angle, const Math::Vector3d &
 	tglRotatef(angle.getDegrees(), axis.x(), axis.y(), axis.z());
 }
 
+void GfxTinyGL::rotateViewpoint(const Math::Matrix4 &rot) {
+	tglMultMatrixf(rot.getData());
+}
+
 void GfxTinyGL::translateViewpointFinish() {
+	tglMatrixMode(TGL_MODELVIEW);
 	tglPopMatrix();
 }
 
@@ -993,11 +843,13 @@ void GfxTinyGL::setupLight(Light *light, int lightId) {
 	float lightPos[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	float lightDir[] = { 0.0f, 0.0f, -1.0f };
 	float cutoff = 180.0f;
+	float spot_exp = 0.0f;
+	float q_attenuation = 1.0f;
 
-	float intensity = light->_intensity / 1.3f;
-	lightColor[0] = ((float)light->_color.getRed() / 15.0f) * intensity;
-	lightColor[1] = ((float)light->_color.getGreen() / 15.0f) * intensity;
-	lightColor[2] = ((float)light->_color.getBlue() / 15.0f) * intensity;
+	float intensity = light->_scaledintensity;
+	lightColor[0] = (float)light->_color.getRed() * intensity;
+	lightColor[1] = (float)light->_color.getGreen() * intensity;
+	lightColor[2] = (float)light->_color.getBlue() * intensity;
 
 	if (light->_type == Light::Omni) {
 		lightPos[0] = light->_pos.x();
@@ -1015,18 +867,18 @@ void GfxTinyGL::setupLight(Light *light, int lightId) {
 		lightDir[0] = light->_dir.x();
 		lightDir[1] = light->_dir.y();
 		lightDir[2] = light->_dir.z();
-		/* FIXME: TGL_SPOT_CUTOFF should be light->_penumbraangle, but there
-		   seems to be a bug in tinygl as it renders differently from OpenGL.
-		   Reproducing: turn off all lights (comment out), go to scene "al",
-		   and walk along left wall under the lamp. */
-		cutoff = 90.0f;
+		spot_exp = 2.0f;
+		cutoff = light->_penumbraangle;
+		q_attenuation = 0.0f;
 	}
 
 	tglDisable(TGL_LIGHT0 + lightId);
 	tglLightfv(TGL_LIGHT0 + lightId, TGL_DIFFUSE, lightColor);
 	tglLightfv(TGL_LIGHT0 + lightId, TGL_POSITION, lightPos);
 	tglLightfv(TGL_LIGHT0 + lightId, TGL_SPOT_DIRECTION, lightDir);
+	tglLightf(TGL_LIGHT0 + lightId, TGL_SPOT_EXPONENT, spot_exp);
 	tglLightf(TGL_LIGHT0 + lightId, TGL_SPOT_CUTOFF, cutoff);
+	tglLightf(TGL_LIGHT0 + lightId, TGL_QUADRATIC_ATTENUATION, q_attenuation);
 	tglEnable(TGL_LIGHT0 + lightId);
 }
 
@@ -1035,9 +887,9 @@ void GfxTinyGL::turnOffLight(int lightId) {
 }
 
 void GfxTinyGL::createBitmap(BitmapData *bitmap) {
-	if (bitmap->_format == 1) {
-		bitmap->convertToColorFormat(_pixelFormat);
-	}
+	Graphics::BlitImage **imgs = new Graphics::BlitImage*[bitmap->_numImages];
+	bitmap->_texIds = (void *)imgs;
+
 	if (bitmap->_format != 1) {
 		for (int pic = 0; pic < bitmap->_numImages; pic++) {
 			uint32 *buf = new uint32[bitmap->_width * bitmap->_height];
@@ -1048,119 +900,49 @@ void GfxTinyGL::createBitmap(BitmapData *bitmap) {
 				if (val == 0xf81f) {
 					val = 0;
 				}
-				buf[i] = ((uint32) val) * 0x10000 / 100 / (0x10000 - val) << 14;
+				buf[i] = ((uint32)val) * 0x10000 / 100 / (0x10000 - val) << 14;
 			}
 			delete[] bufPtr;
 			bitmap->_data[pic] = Graphics::PixelBuffer(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24), (byte *)buf);
+			imgs[pic] = Graphics::tglGenBlitImage();
+			const Graphics::PixelBuffer &imageBuffer = bitmap->getImageData(pic);
+			Graphics::Surface sourceSurface;
+			sourceSurface.setPixels(imageBuffer.getRawBuffer());
+			sourceSurface.format = imageBuffer.getFormat();
+			sourceSurface.w = bitmap->_width;
+			sourceSurface.h = bitmap->_height;
+			sourceSurface.pitch = sourceSurface.w * imageBuffer.getFormat().bytesPerPixel;
+			Graphics::tglUploadBlitImage(imgs[pic], sourceSurface, 0, false);
 		}
 	} else {
-		BlitImage *imgs = new BlitImage[bitmap->_numImages];
-		bitmap->_texIds = (void *)imgs;
-
 		for (int i = 0; i < bitmap->_numImages; ++i) {
-			imgs[i].create(bitmap->getImageData(i), 0xf81f, bitmap->_x, bitmap->_y, bitmap->_width, bitmap->_height);
-		}
-	}
-}
-
-void GfxTinyGL::blit(const Graphics::PixelFormat &format, BlitImage *image, byte *dst, byte *src, int x, int y, int width, int height, bool trans) {
-	int srcX, srcY;
-
-	if (x < 0) {
-		srcX = -x;
-		x = 0;
-	} else {
-		srcX = 0;
-	}
-
-	if (y < 0) {
-		srcY = -y;
-		y = 0;
-	} else {
-		srcY = 0;
-	}
-
-	blit(format, image, dst, src, x, y, srcX, srcY, width, height, width, height, trans);
-}
-
-void GfxTinyGL::blit(const Graphics::PixelFormat &format, BlitImage *image, byte *dst, byte *src, int dstX, int dstY, int srcX, int srcY, int width, int height, int srcWidth, int srcHeight, bool trans) {
-	if (_dimLevel > 0.0f && _dimLevel < 1.0f) {
-		warning("TinyGL doesn't implement partial screen-dimming yet");
-	}
-
-	if (dstX >= _gameWidth || dstY >= _gameHeight)
-		return;
-
-	int clampWidth, clampHeight;
-
-	if (dstX + width > _gameWidth)
-		clampWidth = _gameWidth - dstX;
-	else
-		clampWidth = width;
-
-	if (dstY + height > _gameHeight)
-		clampHeight = _gameHeight - dstY;
-	else
-		clampHeight = height;
-
-	dst += (dstX + (dstY * _gameWidth)) * format.bytesPerPixel;
-	src += (srcX + (srcY * srcWidth)) * format.bytesPerPixel;
-
-	Graphics::PixelBuffer srcBuf(format, src);
-	Graphics::PixelBuffer dstBuf(format, dst);
-
-	if (!trans) {
-		for (int l = 0; l < clampHeight; l++) {
-			dstBuf.copyBuffer(0, clampWidth, srcBuf);
-			dstBuf.shiftBy(_gameWidth);
-			srcBuf.shiftBy(srcWidth);
-		}
-	} else {
-		if (image) {
-			BlitImage::Line *l = image->_lines;
-			int maxY = srcY + clampHeight;
-			int maxX = srcX + clampWidth;
-			while (l && l->y < srcY)
-				l = l->next;
-
-			while (l && l->y < maxY) {
-				if (l->x < maxX && l->x + l->length > srcX) {
-					int length = l->length;
-					int skipStart = l->x < srcX ? srcX - l->x : 0;
-					length -= skipStart;
-					int skipEnd   = l->x + l->length > maxX ? l->x + l->length - maxX : 0;
-					length -= skipEnd;
-					memcpy(dstBuf.getRawBuffer((l->y - srcY) * _gameWidth + MAX(l->x - srcX, 0)),
-						   l->pixels + skipStart * format.bytesPerPixel, length * format.bytesPerPixel);
-				}
-				l = l->next;
-			}
-		} else {
-			for (int l = 0; l < clampHeight; l++) {
-				for (int r = 0; r < clampWidth; ++r) {
-					if (srcBuf.getValueAt(r) != 0xf81f) {
-						dstBuf.setPixelAt(r, srcBuf);
-					}
-				}
-				dstBuf.shiftBy(_gameWidth);
-				srcBuf.shiftBy(srcWidth);
-			}
+			imgs[i] = Graphics::tglGenBlitImage();
+			const Graphics::PixelBuffer &imageBuffer = bitmap->getImageData(i);
+			Graphics::Surface sourceSurface;
+			sourceSurface.setPixels(imageBuffer.getRawBuffer());
+			sourceSurface.format = imageBuffer.getFormat();
+			sourceSurface.w = bitmap->_width;
+			sourceSurface.h = bitmap->_height;
+			sourceSurface.pitch = sourceSurface.w * imageBuffer.getFormat().bytesPerPixel;
+			Graphics::tglUploadBlitImage(imgs[i], sourceSurface, sourceSurface.format.ARGBToColor(0, 255, 0, 255), true);
 		}
 	}
 }
 
 void GfxTinyGL::drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer, float rot) {
-
 	// PS2 EMI uses a TGA for it's splash-screen, avoid using the following
 	// code for drawing that (as it has no tiles).
-	if (g_grim->getGameType() == GType_MONKEY4 && bitmap->_data->_numImages > 1) {
-		tglColor3f(1.0f - _dimLevel, 1.0f - _dimLevel, 1.0f  - _dimLevel);
+	if (g_grim->getGameType() == GType_MONKEY4 && bitmap->_data && bitmap->_data->_texc) {
+		tglEnable(TGL_BLEND);
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+		tglColor3f(1.0f, 1.0f, 1.0f);
 
 		BitmapData *data = bitmap->_data;
 		float *texc = data->_texc;
 
-		BlitImage *b = (BlitImage *)bitmap->getTexIds();
+		Graphics::BlitImage **b = (Graphics::BlitImage **)bitmap->getTexIds();
 
+		assert(layer < data->_numLayers);
 		uint32 offset = data->_layers[layer]._offset;
 		for (uint32 i = offset; i < offset + data->_layers[layer]._numImages; ++i) {
 			const BitmapData::Vert &v = data->_verts[i];
@@ -1168,19 +950,25 @@ void GfxTinyGL::drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer, flo
 			uint32 ntex = data->_verts[i]._pos * 4;
 			uint32 numRects = data->_verts[i]._verts / 4;
 			while (numRects-- > 0) {
-				int dx1 = ((texc[ntex + 0] + 1) * _screenWidth) / 2;
-				int dy1 = ((1 - texc[ntex + 1]) * _screenHeight) / 2;
-				int dx2 = ((texc[ntex + 8] + 1) * _screenWidth) / 2;
-				int dy2 = ((1 - texc[ntex + 9]) * _screenHeight) / 2;
+				// TODO: better way to fix this:
+				// adding '+ 1' fixing broken lines at edges of bitmaps
+				// example: EMI ship scene
+				int dx1 = (((texc[ntex + 0] + 1) * _screenWidth) / 2) + 1;
+				int dy1 = (((1 - texc[ntex + 1]) * _screenHeight) / 2) + 1;
+				int dx2 = (((texc[ntex + 8] + 1) * _screenWidth) / 2) + 1;
+				int dy2 = (((1 - texc[ntex + 9]) * _screenHeight) / 2) + 1;
 				int srcX = texc[ntex + 2] * bitmap->getWidth();
 				int srcY = texc[ntex + 3] * bitmap->getHeight();
 
-				blit(bitmap->getPixelFormat(texId), &b[texId], _zb->pbuf.getRawBuffer(), bitmap->getData(texId).getRawBuffer(),
-					 x + dx1, y + dy1, srcX, srcY, dx2 - dx1, dy2 - dy1, b[texId]._width, b[texId]._height, true);
+				Graphics::BlitTransform transform(x + dx1, y + dy1);
+				transform.sourceRectangle(srcX, srcY, dx2 - dx1, dy2 - dy1);
+				transform.tint(1.0f, 1.0f - _dimLevel, 1.0f - _dimLevel, 1.0f  - _dimLevel);
+				Graphics::tglBlit(b[texId], transform);
 				ntex += 16;
 			}
 		}
 
+		tglDisable(TGL_BLEND);
 		return;
 	}
 
@@ -1192,22 +980,28 @@ void GfxTinyGL::drawBitmap(const Bitmap *bitmap, int x, int y, uint32 layer, flo
 	assert(bitmap->getActiveImage() > 0);
 	const int num = bitmap->getActiveImage() - 1;
 
-	BlitImage *b = (BlitImage *)bitmap->getTexIds();
+	Graphics::BlitImage **b = (Graphics::BlitImage **)bitmap->getTexIds();
 
-	if (bitmap->getFormat() == 1)
-		blit(bitmap->getPixelFormat(num), &b[num], (byte *)_zb->pbuf.getRawBuffer(), (byte *)bitmap->getData(num).getRawBuffer(),
-			 x, y, bitmap->getWidth(), bitmap->getHeight(), true);
-	else
-		blit(bitmap->getPixelFormat(num), nullptr, (byte *)_zb->zbuf, (byte *)bitmap->getData(num).getRawBuffer(),
-			 x, y, bitmap->getWidth(), bitmap->getHeight(), false);
+	if (bitmap->getFormat() == 1) {
+		if (bitmap->getHasTransparency()) {
+			tglEnable(TGL_BLEND);
+			tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+		}
+		Graphics::tglBlit(b[num], x, y);
+		if (bitmap->getHasTransparency()) {
+			tglDisable(TGL_BLEND);
+		}
+	} else {
+		Graphics::tglBlitZBuffer(b[num], x, y);
+	}
 }
 
 void GfxTinyGL::destroyBitmap(BitmapData *bitmap) {
+	Graphics::BlitImage **imgs = (Graphics::BlitImage **)bitmap->_texIds;
 	for (int pic = 0; pic < bitmap->_numImages; pic++) {
-		if (bitmap->_data)
-			bitmap->_data[pic].free();
+		Graphics::tglDeleteBlitImage(imgs[pic]);
 	}
-	delete[] (BlitImage*)bitmap->_texIds;
+	delete[] imgs;
 }
 
 void GfxTinyGL::createFont(Font *font) {
@@ -1217,7 +1011,7 @@ void GfxTinyGL::destroyFont(Font *font) {
 }
 
 struct TextObjectData {
-	byte *data;
+	Graphics::BlitImage *image;
 	int width, height, x, y;
 };
 
@@ -1228,55 +1022,53 @@ void GfxTinyGL::createTextObject(TextObject *text) {
 	const Color &fgColor = text->getFGColor();
 	TextObjectData *userData = new TextObjectData[numLines];
 	text->setUserData(userData);
+	uint32 kKitmapColorkey = _pixelFormat.RGBToColor(0, 255, 0);
+	const uint32 blackColor = _pixelFormat.RGBToColor(0, 0, 0);
+	const uint32 color = _pixelFormat.RGBToColor(fgColor.getRed(), fgColor.getGreen(), fgColor.getBlue());
+	while (color == kKitmapColorkey || blackColor == kKitmapColorkey) {
+		kKitmapColorkey += 1;
+	}
 	for (int j = 0; j < numLines; j++) {
 		const Common::String &currentLine = lines[j];
 
-		int width = font->getStringLength(currentLine) + 1;
-		int height = font->getHeight();
+		int width = font->getBitmapStringLength(currentLine) + 1;
+		int height = font->getStringHeight(currentLine) + 1;
 
 		uint8 *_textBitmap = new uint8[height * width];
 		memset(_textBitmap, 0, height * width);
 
-		// Fill bitmap
-		int startOffset = 0;
+		int startColumn = 0;
 		for (unsigned int d = 0; d < currentLine.size(); d++) {
 			int ch = currentLine[d];
-			int8 startingLine = font->getCharStartingLine(ch) + font->getBaseOffsetY();
-			int32 charDataWidth = font->getCharDataWidth(ch);
-			int32 charWidth = font->getCharWidth(ch);
-			int8 startingCol = font->getCharStartingCol(ch);
-			for (int line = 0; line < font->getCharDataHeight(ch); line++) {
-				int offset = startOffset + (width * (line + startingLine));
-				for (int r = 0; r < charDataWidth; r++) {
-					const byte pixel = *(font->getCharData(ch) + r + (charDataWidth * line));
-					byte *dst = _textBitmap + offset + startingCol + r;
-					if (*dst == 0 && pixel != 0)
-						_textBitmap[offset + startingCol + r] = pixel;
+			int32 charBitmapWidth = font->getCharBitmapWidth(ch);
+			int8 fontRow = font->getCharStartingLine(ch) + font->getBaseOffsetY();
+			int8 fontCol = font->getCharStartingCol(ch);
+
+			for (int line = 0; line < font->getCharBitmapHeight(ch); line++) {
+				int lineOffset = ((fontRow + line) * width);
+				for (int bitmapCol = 0; bitmapCol < charBitmapWidth; bitmapCol++) {
+					int columnOffset = startColumn + fontCol + bitmapCol;
+					int fontOffset = (charBitmapWidth * line) + bitmapCol;
+					int8 pixel = font->getCharData(ch)[fontOffset];
+					assert(lineOffset + columnOffset < width*height);
+					if (pixel != 0)
+						_textBitmap[lineOffset + columnOffset] = pixel;
 				}
-				if (line + startingLine >= font->getHeight())
-					break;
 			}
-			startOffset += charWidth;
+			startColumn += font->getCharKernedWidth(ch);
 		}
 
-		Graphics::PixelBuffer buf(_pixelFormat, width * height, DisposeAfterUse::NO);
+		Graphics::PixelBuffer buf(_pixelFormat, width * height, DisposeAfterUse::YES);
 
 		uint8 *bitmapData = _textBitmap;
-		uint8 r = fgColor.getRed();
-		uint8 g = fgColor.getGreen();
-		uint8 b = fgColor.getBlue();
-		uint32 color = _zb->cmode.RGBToColor(r, g, b);
-
-		if (color == 0xf81f)
-			color = 0xf81e;
 
 		int txData = 0;
 		for (int i = 0; i < width * height; i++, txData++, bitmapData++) {
 			byte pixel = *bitmapData;
 			if (pixel == 0x00) {
-				buf.setPixelAt(txData, 0xf81f);
+				buf.setPixelAt(txData, kKitmapColorkey);
 			} else if (pixel == 0x80) {
-				buf.setPixelAt(txData, 0);
+				buf.setPixelAt(txData, blackColor);
 			} else if (pixel == 0xFF) {
 				buf.setPixelAt(txData, color);
 			}
@@ -1284,7 +1076,15 @@ void GfxTinyGL::createTextObject(TextObject *text) {
 
 		userData[j].width = width;
 		userData[j].height = height;
-		userData[j].data = buf.getRawBuffer();
+
+		Graphics::Surface sourceSurface;
+		sourceSurface.setPixels(buf.getRawBuffer());
+		sourceSurface.format = buf.getFormat();
+		sourceSurface.w = width;
+		sourceSurface.h = height;
+		sourceSurface.pitch = sourceSurface.w * buf.getFormat().bytesPerPixel;
+		userData[j].image = Graphics::tglGenBlitImage();
+		Graphics::tglUploadBlitImage(userData[j].image, sourceSurface, kKitmapColorkey, true);
 		userData[j].x = text->getLineX(j);
 		userData[j].y = text->getLineY(j);
 
@@ -1301,10 +1101,13 @@ void GfxTinyGL::createTextObject(TextObject *text) {
 void GfxTinyGL::drawTextObject(const TextObject *text) {
 	const TextObjectData *userData = (const TextObjectData *)text->getUserData();
 	if (userData) {
+		tglEnable(TGL_BLEND);
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
 		int numLines = text->getNumLines();
 		for (int i = 0; i < numLines; ++i) {
-			blit(_pixelFormat, nullptr, (byte *)_zb->pbuf.getRawBuffer(), userData[i].data, userData[i].x, userData[i].y, userData[i].width, userData[i].height, true);
+			Graphics::tglBlit(userData[i].image, userData[i].x, userData[i].y);
 		}
+		tglDisable(TGL_BLEND);
 	}
 }
 
@@ -1313,25 +1116,25 @@ void GfxTinyGL::destroyTextObject(TextObject *text) {
 	if (userData) {
 		int numLines = text->getNumLines();
 		for (int i = 0; i < numLines; ++i) {
-			delete[] userData[i].data;
+			Graphics::tglDeleteBlitImage(userData[i].image);
 		}
 		delete[] userData;
 	}
 }
 
-void GfxTinyGL::createMaterial(Texture *material, const char *data, const CMap *cmap, bool clamp) {
-	material->_texture = new TGLuint[1];
-	tglGenTextures(1, (TGLuint *)material->_texture);
-	char *texdata = new char[material->_width * material->_height * 4];
-	char *texdatapos = texdata;
+void GfxTinyGL::createTexture(Texture *texture, const uint8 *data, const CMap *cmap, bool clamp) {
+	texture->_texture = new TGLuint[1];
+	tglGenTextures(1, (TGLuint *)texture->_texture);
+	uint8 *texdata = new uint8[texture->_width * texture->_height * 4];
+	uint8 *texdatapos = texdata;
 
 	if (cmap != nullptr) { // EMI doesn't have colour-maps
-		for (int y = 0; y < material->_height; y++) {
-			for (int x = 0; x < material->_width; x++) {
-				uint8 col = *(const uint8 *)(data);
+		for (int y = 0; y < texture->_height; y++) {
+			for (int x = 0; x < texture->_width; x++) {
+				uint8 col = *data;
 				if (col == 0) {
 					memset(texdatapos, 0, 4); // transparent
-					if (!material->_hasAlpha) {
+					if (!texture->_hasAlpha) {
 						texdatapos[3] = '\xff'; // fully opaque
 					}
 				} else {
@@ -1343,318 +1146,403 @@ void GfxTinyGL::createMaterial(Texture *material, const char *data, const CMap *
 			}
 		}
 	} else {
-		memcpy(texdata, data, material->_width * material->_height * material->_bpp);
+#ifdef SCUMM_BIG_ENDIAN
+		// Copy and swap
+		for (int y = 0; y < texture->_height; y++) {
+			for (int x = 0; x < texture->_width; x++) {
+				uint32 pixel = (y * texture->_width + x) * texture->_bpp;
+				for (int b = 0; b < texture->_bpp; b++) {
+					texdata[pixel + b] = data[pixel + (texture->_bpp - 1) - b];
+				}
+			}
+		}
+#else
+		memcpy(texdata, data, texture->_width * texture->_height * texture->_bpp);
+#endif
 	}
 
 	TGLuint format = 0;
 //	TGLuint internalFormat = 0;
-	if (material->_colorFormat == BM_RGBA) {
+	if (texture->_colorFormat == BM_RGBA) {
 		format = TGL_RGBA;
 //		internalFormat = TGL_RGBA;
-	} else if (material->_colorFormat == BM_BGRA) {
+	} else if (texture->_colorFormat == BM_BGRA) {
 		format = TGL_BGRA;
 	} else {    // The only other colorFormat we load right now is BGR
 		format = TGL_BGR;
 //		internalFormat = TGL_RGB;
 	}
 
-	TGLuint *textures = (TGLuint *)material->_texture;
+	TGLuint *textures = (TGLuint *)texture->_texture;
 	tglBindTexture(TGL_TEXTURE_2D, textures[0]);
 
-	// FIXME: TinyGL only supports TGL_REPEAT
-	// Remove darkened lines in EMI intro
-//	if (g_grim->getGameType() == GType_MONKEY4 && clamp) {
-//		tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_S, TGL_CLAMP);
-//		tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_T, TGL_CLAMP);
-//	} else {
-		tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_S, TGL_REPEAT);
-		tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_T, TGL_REPEAT);
-//	}
+	// TinyGL doesn't have issues with dark lines in EMI intro so doesn't need TGL_CLAMP_TO_EDGE
+	tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_S, TGL_REPEAT);
+	tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_T, TGL_REPEAT);
 
 	tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_MAG_FILTER, TGL_LINEAR);
 	tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_MIN_FILTER, TGL_LINEAR);
-	tglTexImage2D(TGL_TEXTURE_2D, 0, 3, material->_width, material->_height, 0, format, TGL_UNSIGNED_BYTE, texdata);
+	tglTexImage2D(TGL_TEXTURE_2D, 0, 3, texture->_width, texture->_height, 0, format, TGL_UNSIGNED_BYTE, texdata);
 	delete[] texdata;
 }
 
-void GfxTinyGL::selectMaterial(const Texture *material) {
-	TGLuint *textures = (TGLuint *)material->_texture;
+void GfxTinyGL::selectTexture(const Texture *texture) {
+	TGLuint *textures = (TGLuint *)texture->_texture;
 	tglBindTexture(TGL_TEXTURE_2D, textures[0]);
-
-	/*if (material->_hasAlpha && g_grim->getGameType() == GType_MONKEY4) {
+	
+	if (texture->_hasAlpha && g_grim->getGameType() == GType_MONKEY4) {
 		tglEnable(TGL_BLEND);
-	}*/
+	}	
 
 	// Grim has inverted tex-coords, EMI doesn't
 	if (g_grim->getGameType() != GType_MONKEY4) {
-		tglPushMatrix();
 		tglMatrixMode(TGL_TEXTURE);
 		tglLoadIdentity();
-		tglScalef(1.0f / material->_width, 1.0f / material->_height, 1);
-		tglMatrixMode(TGL_MODELVIEW);
-		tglPopMatrix();
+		tglScalef(1.0f / texture->_width, 1.0f / texture->_height, 1);
 	}
 }
 
-void GfxTinyGL::destroyMaterial(Texture *material) {
-	tglDeleteTextures(1, (TGLuint *)material->_texture);
-	delete[] (TGLuint *)material->_texture;
+void GfxTinyGL::destroyTexture(Texture *texture) {
+	TGLuint *textures = (TGLuint *)texture->_texture;
+	if (textures) {
+		tglDeleteTextures(1, textures);
+		delete[] textures;
+	}
 }
 
 void GfxTinyGL::prepareMovieFrame(Graphics::Surface *frame) {
-	_smushWidth = frame->w;
-	_smushHeight = frame->h;
-
-	Graphics::PixelBuffer srcBuf(frame->format, (byte *)frame->getPixels());
-	_smushBitmap.create(_pixelFormat, frame->w * frame->h, DisposeAfterUse::YES);
-	_smushBitmap.copyBuffer(0, frame->w * frame->h, srcBuf);
+	if (_smushImage == nullptr)
+		_smushImage = Graphics::tglGenBlitImage();
+	Graphics::tglUploadBlitImage(_smushImage, *frame, 0, false);
 }
 
 void GfxTinyGL::drawMovieFrame(int offsetX, int offsetY) {
-	if (_smushWidth == _gameWidth && _smushHeight == _gameHeight) {
-		_zb->pbuf.copyBuffer(0, _gameWidth * _gameHeight, _smushBitmap);
-	} else {
-		blit(_pixelFormat, nullptr, (byte *)_zb->pbuf.getRawBuffer(), _smushBitmap.getRawBuffer(), offsetX, offsetY, _smushWidth, _smushHeight, false);
-	}
+	Graphics::tglBlitFast(_smushImage, offsetX, offsetY);
 }
 
 void GfxTinyGL::releaseMovieFrame() {
+	Graphics::tglDeleteBlitImage(_smushImage);
 }
 
 void GfxTinyGL::loadEmergFont() {
+	Graphics::Surface characterSurface;
+	Graphics::PixelFormat textureFormat(4, 8, 8, 8, 8, 0, 8, 16, 24);
+	characterSurface.create(8, 13, textureFormat);
+	uint32 color = textureFormat.ARGBToColor(255, 255, 255, 255);
+	uint32 colorTransparent = textureFormat.ARGBToColor(0, 255, 255, 255);
+	for (int i = 0; i < 96; i++) {
+		_emergFont[i] = Graphics::tglGenBlitImage();
+		const uint8 *ptr = Font::emerFont[i];
+		for (int py = 0; py < 13; py++) {
+				int line = ptr[12 - py];
+				for (int px = 0; px < 8; px++) {
+					int pixel = line & 0x80;
+					line <<= 1;
+					*(uint32 *)characterSurface.getBasePtr(px, py) = pixel ? color : colorTransparent;
+				}
+		}
+		Graphics::tglUploadBlitImage(_emergFont[i], characterSurface, 0, false);
+	}
+	characterSurface.free();
 }
 
 void GfxTinyGL::drawEmergString(int x, int y, const char *text, const Color &fgColor) {
-	uint32 color = _pixelFormat.RGBToColor(fgColor.getRed(), fgColor.getGreen(), fgColor.getBlue());
-
 	int length = strlen(text);
 
 	for (int l = 0; l < length; l++) {
 		int c = text[l];
 		assert(c >= 32 && c <= 127);
-		const uint8 *ptr = Font::emerFont[c - 32];
-		for (int py = 0; py < 13; py++) {
-			if ((py + y) < _gameHeight && (py + y) >= 0) {
-				int line = ptr[12 - py];
-				for (int px = 0; px < 8; px++) {
-					if ((px + x) < _gameWidth && (px + x) >= 0) {
-						int pixel = line & 0x80;
-						line <<= 1;
-						if (pixel) {
-							_zb->pbuf.setPixelAt(((py + y) * _gameWidth) + (px + x), color);
-						}
-					}
-				}
-			}
-		}
+		Graphics::BlitTransform transform(x, y);
+		transform.tint(1.0f, fgColor.getRed() / 255.0f, fgColor.getGreen() / 255.0f, fgColor.getBlue() / 255.0f);
+		Graphics::tglBlit(_emergFont[c - 32], transform);
 		x += 10;
 	}
 }
 
-Bitmap *GfxTinyGL::getScreenshot(int w, int h) {
-	Graphics::PixelBuffer buffer = Graphics::PixelBuffer::createBuffer<565>(w * h, DisposeAfterUse::YES);
-
-	int i1 = (_gameWidth * w - 1) / _gameWidth + 1;
-	int j1 = (_gameHeight * h - 1) / _gameHeight + 1;
-
-	for (int j = 0; j < j1; j++) {
-		for (int i = 0; i < i1; i++) {
-			int x0 = i * _gameWidth / w;
-			int x1 = ((i + 1) * _gameWidth - 1) / w + 1;
-			int y0 = j * _gameHeight / h;
-			int y1 = ((j + 1) * _gameHeight - 1) / h + 1;
-			uint32 color = 0;
-			for (int y = y0; y < y1; y++) {
-				for (int x = x0; x < x1; x++) {
-					uint8 lr, lg, lb;
-					_zb->pbuf.getRGBAt(y * _gameWidth + x, lr, lg, lb);
-					color += (lr + lg + lb) / 3;
-				}
-			}
-			color /= (x1 - x0) * (y1 - y0);
-			buffer.setPixelAt(j * w + i, color, color, color);
-		}
+Bitmap *GfxTinyGL::getScreenshot(int w, int h, bool useStored) {
+	if (useStored) {
+		return createScreenshotBitmap(_storedDisplay, w, h, true);
+	} else {
+		Graphics::PixelBuffer src(_pixelFormat, _screenWidth * _screenHeight, DisposeAfterUse::YES);
+		_zb->copyToBuffer(src);
+		return createScreenshotBitmap(src, w, h, true);
 	}
+}
 
-	Bitmap *screenshot = new Bitmap(buffer, w, h, "screenshot");
-	return screenshot;
+void GfxTinyGL::createSpecialtyTextureFromScreen(uint id, uint8 *data, int x, int y, int width, int height) {
+	readPixels(x, y, width, height, data);
+	createSpecialtyTexture(id, data, width, height);
 }
 
 void GfxTinyGL::storeDisplay() {
-	_storedDisplay.copyBuffer(0, _gameWidth * _gameHeight, _zb->pbuf);
+	TinyGL::tglPresentBuffer();
+	_zb->copyToBuffer(_storedDisplay);
 }
 
 void GfxTinyGL::copyStoredToDisplay() {
-	_zb->pbuf.copyBuffer(0, _gameWidth * _gameHeight, _storedDisplay);
+	Bitmap *bitmap = getScreenshot(_gameWidth, _gameHeight, true);
+	drawBitmap(bitmap, 0, 0, 0);
+	delete bitmap;
 }
 
 void GfxTinyGL::dimScreen() {
-	for (int l = 0; l < _gameWidth * _gameHeight; l++) {
-		uint8 r, g, b;
-		_storedDisplay.getRGBAt(l, r, g, b);
-		uint32 color = (r + g + b) / 10;
-		_storedDisplay.setPixelAt(l, color, color, color);
-	}
+	dimRegion(0, 0, _gameWidth, _gameHeight, 0.2f);
 }
 
 void GfxTinyGL::dimRegion(int x, int y, int w, int h, float level) {
-	for (int ly = y; ly < y + h; ly++) {
-		for (int lx = x; lx < x + w; lx++) {
-			uint8 r, g, b;
-			_zb->pbuf.getRGBAt(ly * _gameWidth + lx, r, g, b);
-			uint32 color = (uint32)(((r + g + b) / 3) * level);
-			_zb->pbuf.setPixelAt(ly * _gameWidth + lx, color, color, color);
-		}
-	}
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+	tglOrtho(0, _gameWidth, _gameHeight, 0, 0, 1);
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_LIGHTING);
+	tglDisable(TGL_DEPTH_TEST);
+	tglDepthMask(TGL_FALSE);
+	tglEnable(TGL_BLEND);
+	tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+
+	tglColor4f(0, 0, 0, 1 - level);
+
+	tglBegin(TGL_QUADS);
+	tglVertex2f(x, y);
+	tglVertex2f(x + w, y);
+	tglVertex2f(x + w, y + h);
+	tglVertex2f(x, y + h);
+	tglEnd();
+
+	tglColor3f(1.0f, 1.0f, 1.0f);
+
+	tglDisable(TGL_BLEND);
+	tglDepthMask(TGL_TRUE);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
 }
 
 void GfxTinyGL::irisAroundRegion(int x1, int y1, int x2, int y2) {
-	for (int ly = 0; ly < _gameHeight; ly++) {
-		for (int lx = 0; lx < _gameWidth; lx++) {
-			// Don't do anything with the data in the region we draw Around
-			if (lx > x1 && lx < x2 && ly > y1 && ly < y2)
-				continue;
-			// But set everything around it to black.
-			_zb->pbuf.setPixelAt(ly * _gameWidth + lx, 0);
-		}
-	}
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+	tglOrtho(0.0, _gameWidth, _gameHeight, 0.0, 0.0, 1.0);
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_DEPTH_TEST);
+	tglDisable(TGL_TEXTURE_2D);
+	tglDisable(TGL_BLEND);
+	tglDisable(TGL_LIGHTING);
+	tglDepthMask(TGL_FALSE);
+
+	tglColor3f(0.0f, 0.0f, 0.0f);
+
+	//Explicitly cast to avoid problems with C++11
+	float fx1 = x1;
+	float fx2 = x2;
+	float fy1 = y1;
+	float fy2 = y2;
+	float width = _screenWidth;
+	float height = _screenHeight;
+	float points[20] = {
+		0.0f, 0.0f,
+		0.0f, fy1,
+		width, 0.0f,
+		fx2, fy1,
+		width, height,
+		fx2, fy2,
+		0.0f, height,
+		fx1, fy2,
+		0.0f, fy1,
+		fx1, fy1
+	};
+
+	tglEnableClientState(TGL_VERTEX_ARRAY);
+	tglVertexPointer(2, TGL_FLOAT, 0, points);
+	tglDrawArrays(TGL_TRIANGLE_STRIP, 0, 10);
+	tglDisableClientState(TGL_VERTEX_ARRAY);
+
+	tglColor3f(1.0f, 1.0f, 1.0f);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
+	tglDepthMask(TGL_TRUE);
 }
 
 void GfxTinyGL::drawRectangle(const PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	float x1 = primitive->getP1().x * _scaleW;
+	float y1 = primitive->getP1().y * _scaleH;
+	float x2 = primitive->getP2().x * _scaleW;
+	float y2 = primitive->getP2().y * _scaleH;
+	const Color color(primitive->getColor());
 
-	const Color &color = primitive->getColor();
-	uint32 c = _pixelFormat.RGBToColor(color.getRed(), color.getGreen(), color.getBlue());
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+	tglOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_LIGHTING);
+	tglDisable(TGL_DEPTH_TEST);
+	tglDepthMask(TGL_FALSE);
+
+	tglColor3ub(color.getRed(), color.getGreen(), color.getBlue());
 
 	if (primitive->isFilled()) {
-		for (; y1 <= y2; y1++)
-			if (y1 >= 0 && y1 < _gameHeight)
-				for (int x = x1; x <= x2; x++)
-					if (x >= 0 && x < _gameWidth)
-						_zb->pbuf.setPixelAt(_gameWidth * y1 + x, c);
+		tglBegin(TGL_QUADS);
+		tglVertex2f(x1, y1);
+		tglVertex2f(x2 + 1, y1);
+		tglVertex2f(x2 + 1, y2 + 1);
+		tglVertex2f(x1, y2 + 1);
+		tglEnd();
 	} else {
-		if (y1 >= 0 && y1 < _gameHeight)
-			for (int x = x1; x <= x2; x++)
-				if (x >= 0 && x < _gameWidth)
-					_zb->pbuf.setPixelAt(_gameWidth * y1 + x, c);
-		if (y2 >= 0 && y2 < _gameHeight)
-			for (int x = x1; x <= x2; x++)
-				if (x >= 0 && x < _gameWidth)
-					_zb->pbuf.setPixelAt(_gameWidth * y2 + x, c);
-		if (x1 >= 0 && x1 < _gameWidth)
-			for (int y = y1; y <= y2; y++)
-				if (y >= 0 && y < _gameHeight)
-					_zb->pbuf.setPixelAt(_gameWidth * y + x1, c);
-		if (x2 >= 0 && x2 < _gameWidth)
-			for (int y = y1; y <= y2; y++)
-				if (y >= 0 && y < _gameHeight)
-					_zb->pbuf.setPixelAt(_gameWidth * y + x2, c);
+		tglBegin(TGL_LINE_LOOP);
+		tglVertex2f(x1, y1);
+		tglVertex2f(x2 + 1, y1);
+		tglVertex2f(x2 + 1, y2 + 1);
+		tglVertex2f(x1, y2 + 1);
+		tglEnd();
 	}
+
+	tglColor3f(1.0f, 1.0f, 1.0f);
+
+	tglDepthMask(TGL_TRUE);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
 }
 
 void GfxTinyGL::drawLine(const PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	float x1 = primitive->getP1().x * _scaleW;
+	float y1 = primitive->getP1().y * _scaleH;
+	float x2 = primitive->getP2().x * _scaleW;
+	float y2 = primitive->getP2().y * _scaleH;
 
 	const Color &color = primitive->getColor();
 
-	if (x2 == x1) {
-		for (int y = y1; y <= y2; y++) {
-			if (x1 >= 0 && x1 < _gameWidth && y >= 0 && y < _gameHeight)
-				_zb->pbuf.setPixelAt(_gameWidth * y + x1, color.getRed(), color.getGreen(), color.getBlue());
-		}
-	} else {
-		float m = (y2 - y1) / (x2 - x1);
-		int b = (int)(-m * x1 + y1);
-		for (int x = x1; x <= x2; x++) {
-			int y = (int)(m * x) + b;
-			if (x >= 0 && x < _gameWidth && y >= 0 && y < _gameHeight)
-				_zb->pbuf.setPixelAt(_gameWidth * y + x, color.getRed(), color.getGreen(), color.getBlue());
-		}
-	}
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+	tglOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_LIGHTING);
+	tglDisable(TGL_DEPTH_TEST);
+	tglDepthMask(TGL_FALSE);
+
+	tglColor3ub(color.getRed(), color.getGreen(), color.getBlue());
+
+//	tglLineWidth(_scaleW); // Not implemented in TinyGL
+
+	tglBegin(TGL_LINES);
+	tglVertex2f(x1, y1);
+	tglVertex2f(x2, y2);
+	tglEnd();
+
+	tglColor3f(1.0f, 1.0f, 1.0f);
+
+	tglDepthMask(TGL_TRUE);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
+}
+
+void GfxTinyGL::drawDimPlane() {
+	if (_dimLevel == 0.0f) return;
+
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_DEPTH_TEST);
+	tglDepthMask(TGL_FALSE);
+
+	tglDisable(TGL_LIGHTING);
+	tglEnable(TGL_BLEND);
+	tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+
+	tglColor4f(0.0f, 0.0f, 0.0f, _dimLevel);
+
+	tglBegin(TGL_QUADS);
+	tglVertex2f(-1, -1);
+	tglVertex2f(1.0, -1);
+	tglVertex2f(1.0, 1.0);
+	tglVertex2f(-1, 1.0);
+	tglEnd();
+
+	tglColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	tglDisable(TGL_BLEND);
+	tglDepthMask(TGL_TRUE);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
 }
 
 void GfxTinyGL::drawPolygon(const PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
-	int x3 = primitive->getP3().x;
-	int y3 = primitive->getP3().y;
-	int x4 = primitive->getP4().x;
-	int y4 = primitive->getP4().y;
-	float m;
-	int b;
+	float x1 = primitive->getP1().x * _scaleW;
+	float y1 = primitive->getP1().y * _scaleH;
+	float x2 = primitive->getP2().x * _scaleW;
+	float y2 = primitive->getP2().y * _scaleH;
+	float x3 = primitive->getP3().x * _scaleW;
+	float y3 = primitive->getP3().y * _scaleH;
+	float x4 = primitive->getP4().x * _scaleW;
+	float y4 = primitive->getP4().y * _scaleH;
 
 	const Color &color = primitive->getColor();
-	uint32 c = _pixelFormat.RGBToColor(color.getRed(), color.getGreen(), color.getBlue());
 
-	m = (y2 - y1) / (x2 - x1);
-	b = (int)(-m * x1 + y1);
-	for (int x = x1; x <= x2; x++) {
-		int y = (int)(m * x) + b;
-		if (x >= 0 && x < _gameWidth && y >= 0 && y < _gameHeight)
-			_zb->pbuf.setPixelAt(_gameWidth * y + x, c);
-	}
-	m = (y4 - y3) / (x4 - x3);
-	b = (int)(-m * x3 + y3);
-	for (int x = x3; x <= x4; x++) {
-		int y = (int)(m * x) + b;
-		if (x >= 0 && x < _gameWidth && y >= 0 && y < _gameHeight)
-			_zb->pbuf.setPixelAt(_gameWidth * y + x, c);
-	}
+	tglMatrixMode(TGL_PROJECTION);
+	tglLoadIdentity();
+	tglOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	tglMatrixMode(TGL_MODELVIEW);
+	tglLoadIdentity();
+
+	tglDisable(TGL_LIGHTING);
+	tglDisable(TGL_DEPTH_TEST);
+	tglDepthMask(TGL_FALSE);
+
+	tglColor3ub(color.getRed(), color.getGreen(), color.getBlue());
+
+	tglBegin(TGL_LINES);
+	tglVertex2f(x1, y1);
+	tglVertex2f(x2 + 1, y2 + 1);
+	tglVertex2f(x3, y3 + 1);
+	tglVertex2f(x4 + 1, y4);
+	tglEnd();
+
+	tglColor3f(1.0f, 1.0f, 1.0f);
+
+	tglDepthMask(TGL_TRUE);
+	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_LIGHTING);
 }
 
 void GfxTinyGL::readPixels(int x, int y, int width, int height, uint8 *buffer) {
+	assert(x >= 0);
+	assert(y >= 0);
+	assert(x < _screenWidth);
+	assert(y < _screenHeight);
+
 	uint8 r, g, b;
-	int pos = x + y * 640;
+	int pos = x + y * _screenWidth;
 	for (int i = 0; i < height; ++i) {
 		for (int j = 0; j < width; ++j) {
-			_zb->pbuf.getRGBAt(pos + j, r, g, b);
-			buffer[0] = r;
-			buffer[1] = g;
-			buffer[2] = b;
+			if ((j + x) >= _screenWidth || (i + y) >= _screenHeight) {
+				buffer[0] = buffer[1] = buffer[2] = 0;
+			} else {
+				_zb->readPixelRGB(pos + j, r, g, b);
+				buffer[0] = r;
+				buffer[1] = g;
+				buffer[2] = b;
+			}
 			buffer[3] = 255;
 			buffer += 4;
 		}
-		pos += 640;
+		pos += _screenWidth;
 	}
 }
 
-void GfxTinyGL::createSpecialtyTextures() {
-	//make a buffer big enough to hold any of the textures
-	uint8 *buffer = new uint8[256 * 256 * 4];
-
-	readPixels(0, 0, 256, 256, buffer);
-	_specialty[0].create((const char *)buffer, 256, 256);
-
-	readPixels(256, 0, 256, 256, buffer);
-	_specialty[1].create((const char *)buffer, 256, 256);
-
-	readPixels(512, 0, 128, 128, buffer);
-	_specialty[2].create((const char *)buffer, 128, 128);
-
-	readPixels(512, 128, 128, 128, buffer);
-	_specialty[3].create((const char *)buffer, 128, 128);
-
-	readPixels(0, 256, 256, 224, buffer);
-	_specialty[4].create((const char *)buffer, 256, 256);
-
-	readPixels(256, 256, 256, 224, buffer);
-	_specialty[5].create((const char *)buffer, 256, 256);
-
-	readPixels(512, 256, 128, 128, buffer);
-	_specialty[6].create((const char *)buffer, 128, 128);
-
-	readPixels(512, 384, 128, 96, buffer);
-	_specialty[7].create((const char *)buffer, 128, 128);
-
-	delete[] buffer;
+void GfxTinyGL::setBlendMode(bool additive) {
+	if (additive) {
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE);
+	} else {
+		tglBlendFunc(TGL_SRC_ALPHA, TGL_ONE_MINUS_SRC_ALPHA);
+	}
 }
 
 } // end of namespace Grim

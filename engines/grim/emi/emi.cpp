@@ -29,6 +29,7 @@
 #include "engines/grim/set.h"
 #include "engines/grim/gfx_base.h"
 #include "engines/grim/actor.h"
+#include "graphics/pixelbuffer.h"
 
 
 namespace Grim {
@@ -142,25 +143,48 @@ void EMIEngine::drawNormalMode() {
 	// Draw actors
 	buildActiveActorsList();
 	sortActiveActorsList();
+	sortLayers();
 
 	Bitmap *background = _currSet->getCurrSetup()->_bkgndBm;
 	background->_data->load();
 	uint32 numLayers = background->_data->_numLayers;
+
+	Common::List<Layer *>::const_iterator nextLayer = _layers.begin();
+	Common::List<Actor *>::const_iterator nextActor = _activeActors.begin();
 	int32 currentLayer = numLayers - 1;
-	foreach (Actor *a, _activeActors) {
-		int sortorder = a->getEffectiveSortOrder();
-		if (sortorder < 0)
-			break;
 
-		while (sortorder <= currentLayer * 10 && currentLayer >= 0) {
-			background->drawLayer(currentLayer--);
+	int aso = (nextActor != _activeActors.end()) ? (*nextActor)->getEffectiveSortOrder() : -1;
+	int lso = (nextLayer != _layers.end()) ? (*nextLayer)->getSortOrder() : -1;
+	int bgso = currentLayer * 10;
+
+	// interleave actors, background layers and additional stand-alone layers based
+	// on their sortorder
+	//
+	// priority for same sort order:
+	//   background layers (highest priority)
+	//   stand-alone layers
+	//   actors
+	while (1) {
+		if (aso >= 0 && aso > bgso && aso > lso) {
+			if ((*nextActor)->isVisible() && ! (*nextActor)->isInOverworld())
+				(*nextActor)->draw();
+			nextActor++;
+			aso = (nextActor != _activeActors.end()) ? (*nextActor)->getEffectiveSortOrder() : -1;
+			continue;
 		}
-
-		if (a->isVisible() && ! a->isInOverworld())
-			a->draw();
-	}
-	while (currentLayer >= 0) {
-		background->drawLayer(currentLayer--);
+		if (bgso >= 0 && bgso >= lso && bgso >= aso) {
+			background->drawLayer(currentLayer);
+			currentLayer--;
+			bgso = currentLayer * 10;
+			continue;
+		}
+		if (lso >= 0 && lso > bgso && lso >= aso) {
+			(*nextLayer)->draw();
+			nextLayer++;
+			lso = (nextLayer != _layers.end()) ? (*nextLayer)->getSortOrder() : -1;
+			continue;
+		}
+		break;
 	}
 
 	/* Clear depth buffer before starting to draw the Overworld:
@@ -169,6 +193,8 @@ void EMIEngine::drawNormalMode() {
 	 *   is drawn above the inventory
 	 */
 	g_driver->clearDepthBuffer();
+
+	g_driver->drawDimPlane();
 
 	foreach (Actor *a, _activeActors) {
 		if (a->isInOverworld())
@@ -182,6 +208,39 @@ void EMIEngine::drawNormalMode() {
 
 	flagRefreshShadowMask(false);
 
+}
+
+void EMIEngine::storeSaveGameImage(SaveGame *state) {
+	unsigned int width = 160, height = 120;
+	Bitmap *screenshot = g_driver->getScreenshot(width, height, true);
+	if (!screenshot) {
+		warning("Unable to store screenshot.");
+		return;
+	}
+
+	// screenshots are not using the whole size of the texture
+	// copy the actual screenshot to the correct position
+	unsigned int texWidth = 256, texHeight = 128;
+	unsigned int size = texWidth * texHeight;
+	Graphics::PixelBuffer buffer = Graphics::PixelBuffer::createBuffer<565>(size, DisposeAfterUse::YES);
+	buffer.clear(size);
+	for (unsigned int j = 0; j < 120; j++) {
+		buffer.copyBuffer(j * texWidth, j * width, width, screenshot->getData(0));
+	}
+
+	state->beginSection('SIMG');
+	uint16 *data = (uint16 *)buffer.getRawBuffer();
+	for (unsigned int l = 0; l < size; l++) {
+		state->writeLEUint16(data[l]);
+	}
+	state->endSection();
+	delete screenshot;
+}
+
+void EMIEngine::temporaryStoreSaveGameImage() {
+	// store current rendered screen in g_driver
+	g_grim->updateDisplayScene();
+	g_driver->storeDisplay();
 }
 
 void EMIEngine::updateDrawMode() {
@@ -203,7 +262,18 @@ void EMIEngine::invalidateSortOrder() {
 }
 
 bool EMIEngine::compareTextLayer(const TextObject *x, const TextObject *y) {
-	return x->getLayer() < y->getLayer();
+	int xl = x->getLayer();
+	int yl = y->getLayer();
+
+	if (xl == yl) {
+		return x->getId() < y->getId();
+	} else {
+		return xl < yl;
+	}
+}
+
+bool EMIEngine::compareLayer(const Layer *x, const Layer *y) {
+	return x->getSortOrder() > y->getSortOrder();
 }
 
 void EMIEngine::drawTextObjects() {
@@ -229,9 +299,30 @@ void EMIEngine::sortTextObjects() {
 	Common::sort(_textObjects.begin(), _textObjects.end(), compareTextLayer);
 }
 
+void EMIEngine::sortLayers() {
+	_layers.clear();
+	foreach (Layer *l, Layer::getPool()) {
+		_layers.push_back(l);
+	}
+
+	Common::sort(_layers.begin(), _layers.end(), compareLayer);
+}
+
 bool EMIEngine::compareActor(const Actor *x, const Actor *y) {
 	if (x->getEffectiveSortOrder() == y->getEffectiveSortOrder()) {
-		return x->getId() < y->getId();
+		Set::Setup *setup = g_grim->getCurrSet()->getCurrSetup();
+		Math::Matrix4 camRot = setup->_rot;
+
+		Math::Vector3d xp(x->getWorldPos() - setup->_pos);
+		Math::Vector3d yp(y->getWorldPos() - setup->_pos);
+		camRot.inverseRotate(&xp);
+		camRot.inverseRotate(&yp);
+
+		if (fabs(xp.z() - yp.z()) < 0.001f) {
+			return x->getId() < y->getId();
+		} else {
+			return xp.z() > yp.z();
+		}
 	}
 	return x->getEffectiveSortOrder() > y->getEffectiveSortOrder();
 }

@@ -1,3 +1,31 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
+
 #define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
 #define FORBIDDEN_SYMBOL_EXCEPTION_stderr
 
@@ -12,7 +40,7 @@ void gl_print_matrix(const float *m) {
 }
 
 static inline void gl_matrix_update(GLContext *c) {
-	c->matrix_model_projection_updated = (c->matrix_mode <= 1);
+	c->matrix_model_projection_updated |= (c->matrix_mode <= 1);
 }
 
 void glopMatrixMode(GLContext *c, GLParam *p) {
@@ -184,11 +212,39 @@ void glopFrustum(GLContext *c, GLParam *p) {
 	float top = p[4].f;
 	float nearp = p[5].f;
 	float farp = p[6].f;
-	Matrix4 m = Matrix4::frustrum(left, right, bottom, top, nearp, farp);
+	Matrix4 m = Matrix4::frustum(left, right, bottom, top, nearp, farp);
 
 	*c->matrix_stack_ptr[c->matrix_mode] *= m;
 
 	gl_matrix_update(c);
+}
+
+void glopOrtho(GLContext *context, GLParam *p) {
+	float *r;
+	TinyGL::Matrix4 m;
+	float left = p[1].f;
+	float right = p[2].f;
+	float bottom = p[3].f;
+	float top = p[4].f;
+	float zNear = p[5].f;
+	float zFar = p[6].f;
+
+	float a = 2.0f / (right - left);
+	float b = 2.0f / (top - bottom);
+	float c = -2.0f / (zFar - zNear);
+
+	float tx = -(right + left) / (right - left);
+	float ty = -(top + bottom) / (top - bottom);
+	float tz = -(zFar + zNear) / (zFar - zNear);
+
+	r = &m._m[0][0];
+	r[0] = a; r[1] = 0; r[2] = 0; r[3] = tx;
+	r[4] = 0; r[5] = b; r[6] = 0; r[7] = ty;
+	r[8] = 0; r[9] = 0; r[10] = c; r[11] = tz;
+	r[12] = 0; r[13] = 0; r[14] = 0; r[15] = 1;
+
+	*context->matrix_stack_ptr[context->matrix_mode] *= m;
+	gl_matrix_update(context);
 }
 
 } // end of namespace TinyGL

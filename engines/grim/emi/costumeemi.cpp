@@ -29,7 +29,8 @@
 #include "engines/grim/actor.h"
 #include "engines/grim/emi/costumeemi.h"
 #include "engines/grim/emi/modelemi.h"
-#include "engines/grim/costume/head.h"
+#include "engines/grim/emi/skeleton.h"
+#include "engines/grim/emi/costume/emihead.h"
 #include "engines/grim/emi/costume/emianim_component.h"
 #include "engines/grim/emi/costume/emiluavar_component.h"
 #include "engines/grim/emi/costume/emiluacode_component.h"
@@ -57,9 +58,7 @@ void EMICostume::load(Common::SeekableReadStream *data) {
 
 		char name[32];
 		data->read(name, nameLength);
-		char f[4];
-		data->read(f, 4);
-		float length = get_float(f);
+		float length = data->readFloatLE();
 		int numTracks = data->readUint32LE();
 
 		if (length == 1000)
@@ -107,10 +106,8 @@ void EMICostume::load(Common::SeekableReadStream *data) {
 
 			for (int j = 0; j < track.numKeys; j++) {
 				float time, value;
-				char v[8];
-				data->read(v, 8);
-				time = get_float(v);
-				value = get_float(v + 4);
+				time = data->readFloatLE();
+				value = data->readFloatLE();
 				track.keys[j].time = (int)(time * 1000);
 				length = MAX(length, time * 1000);
 				track.keys[j].value = (int)value;
@@ -125,8 +122,7 @@ void EMICostume::load(Common::SeekableReadStream *data) {
 		_components[i] = components[i];
 	}
 
-	// The wearChore is active by default
-	_isWearChoreActive = true;
+	_head = new EMIHead(this);
 }
 
 void EMICostume::playChore(int num, uint msecs) {
@@ -202,7 +198,7 @@ void EMICostume::draw() {
 		}
 	}
 
-	if (_wearChore && !drewMesh && _isWearChoreActive) {
+	if (_wearChore && !drewMesh) {
 		_wearChore->getMesh()->draw();
 	}
 }
@@ -280,12 +276,10 @@ Material *EMICostume::findMaterial(const Common::String &name) {
 }
 
 Material *EMICostume::loadMaterial(const Common::String &name, bool clamp) {
-	Material *mat = _owner->loadMaterial(name, clamp);
+	MaterialPtr mat = _owner->loadMaterial(name, clamp);
 	if (mat) {
-		// We keep track of the list of materials per costume, so we
-		// can load older savegames from a time when materials were managed
-		// by EMICostume instead of Actor. Once support for older saves is
-		// dropped, this list can be removed.
+		// Save a reference to the material, so it will not be freed during the
+		// lifetime of this costume.
 		if (Common::find(_materials.begin(), _materials.end(), mat) == _materials.end())
 			_materials.push_back(mat);
 	}
@@ -303,8 +297,33 @@ void EMICostume::setWearChore(EMIChore *chore) {
 	}
 }
 
-void EMICostume::setWearChoreActive(bool isActive) {
-	_isWearChoreActive = isActive;
+void EMICostume::setHead(const char *joint, const Math::Vector3d &offset) {
+	static_cast<EMIHead *>(_head)->setJoint(joint, offset);
+}
+
+void EMICostume::setHeadLimits(float yawRange, float maxPitch, float minPitch) {
+	static_cast<EMIHead *>(_head)->setLimits(yawRange, maxPitch, minPitch);
+}
+
+EMIModel *EMICostume::getEMIModel() const {
+	if (!_wearChore)
+		return nullptr;
+	return _wearChore->getMesh()->_obj;
+}
+
+EMIModel *EMICostume::getEMIModel(int num) const {
+	if (num >= _numChores) {
+		return nullptr;
+	}
+	EMIChore *chore = static_cast<EMIChore *>(_chores[num]);
+	if (chore == nullptr) {
+		return nullptr;
+	}
+	EMIMeshComponent *mesh = chore->getMesh();
+	if (mesh == nullptr) {
+		return nullptr;
+	}
+	return mesh->_obj;
 }
 
 } // end of namespace Grim

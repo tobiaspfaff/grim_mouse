@@ -1,3 +1,30 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 // The following constants come from Mesa
 
@@ -558,6 +585,10 @@ enum {
 	TGL_RGB10_A2                    = 0x8059,
 	TGL_RGBA12                      = 0x805A,
 	TGL_RGBA16                      = 0x805B,
+	TGL_UNSIGNED_SHORT_5_6_5        = 0x8363,
+	TGL_UNSIGNED_SHORT_5_6_5_REV    = 0x8364,
+	TGL_UNSIGNED_INT_8_8_8_8        = 0x8035,
+	TGL_UNSIGNED_INT_8_8_8_8_REV    = 0x8367,
 
 	// Utility
 	TGL_VENDOR                      = 0x1F00,
@@ -686,26 +717,26 @@ void tglEnd();
 #define PROTO_GL1(name)				\
 void tgl ## name ## 1f(float);		\
 void tgl ## name ## 1d(double);		\
-void tgl ## name ## 1fv(float *);	\
-void tgl ## name ## 1dv(double *);
+void tgl ## name ## 1fv(const float *);	\
+void tgl ## name ## 1dv(const double *);
 
 #define PROTO_GL2(name)					\
 void tgl ## name ## 2f(float, float);	\
 void tgl ## name ## 2d(double, double);	\
-void tgl ## name ## 2fv(float *);		\
-void tgl ## name ## 2dv(double *);
+void tgl ## name ## 2fv(const float *);		\
+void tgl ## name ## 2dv(const double *);
 
 #define PROTO_GL3(name)							\
 void tgl ## name ## 3f(float, float, float);	\
 void tgl ## name ## 3d(double, double, double);	\
-void tgl ## name ## 3fv(float *);				\
-void tgl ## name ## 3dv(double *);
+void tgl ## name ## 3fv(const float *);				\
+void tgl ## name ## 3dv(const double *);
 
 #define PROTO_GL4(name)									\
 void tgl ## name ## 4f(float, float, float, float);		\
 void tgl ## name ## 4d(double, double, double, double);	\
-void tgl ## name ## 4fv(float *);						\
-void tgl ## name ## 4dv(double *);
+void tgl ## name ## 4fv(const float *);						\
+void tgl ## name ## 4dv(const double *);
 
 PROTO_GL2(Vertex)
 PROTO_GL3(Vertex)
@@ -713,6 +744,7 @@ PROTO_GL4(Vertex)
 
 PROTO_GL3(Color)
 PROTO_GL4(Color)
+void tglColor3ub(unsigned char r, unsigned char g, unsigned char b);
 void tglColor4ub(unsigned char r, unsigned char g, unsigned char b,
 				 unsigned char a);
 
@@ -739,6 +771,7 @@ void tglScalef(float x, float y, float z);
 void tglViewport(int x, int y, int width, int height);
 void tglFrustum(double left, double right, double bottom, double top,
 				double nearv, double farv);
+void tglOrtho(double left, double right, double bottom, double top, double zNear, double zFar);
 
 // lists
 unsigned int tglGenLists(int range);
@@ -774,14 +807,14 @@ void tglPixelStorei(int pname, int param);
 
 // lighting
 
-void tglMaterialfv(int mode, int type, float *v);
+void tglMaterialfv(int mode, int type, const float *v);
 void tglMaterialf(int mode, int type, float v);
 void tglColorMaterial(int mode, int type);
 
-void tglLightfv(int light, int type, float *v);
-void tglLightf(int light, int type, float v);
+void tglLightfv(int light, int type, const float *v);
+void tglLightf(int light, int type, const float v);
 void tglLightModeli(int pname, int param);
-void tglLightModelfv(int pname, float *param);
+void tglLightModelfv(int pname, const float *param);
 
 // misc
 
@@ -791,6 +824,10 @@ void tglGetIntegerv(int pname, int *params);
 void tglGetFloatv(int pname, float *v);
 void tglFrontFace(int mode);
 void tglColorMask(TGLboolean r, TGLboolean g, TGLboolean b, TGLboolean a);
+void tglDepthMask(int enableWrite);
+void tglBlendFunc(TGLenum sfactor, TGLenum dfactor);
+void tglAlphaFunc(TGLenum func, float ref);
+void tglDepthFunc(TGLenum func);
 
 void tglSetShadowMaskBuf(unsigned char *buf);
 void tglSetShadowColor(unsigned char r, unsigned char g, unsigned char b);
@@ -799,6 +836,7 @@ void tglSetShadowColor(unsigned char r, unsigned char g, unsigned char b);
 void tglEnableClientState(TGLenum array);
 void tglDisableClientState(TGLenum array);
 void tglArrayElement(TGLint i);
+void tglDrawArrays(TGLenum mode, TGLint first, TGLsizei count);
 void tglVertexPointer(TGLint size, TGLenum type, TGLsizei stride, const TGLvoid *pointer);
 void tglColorPointer(TGLint size, TGLenum type, TGLsizei stride, const TGLvoid *pointer);
 void tglNormalPointer(TGLenum type, TGLsizei stride, const TGLvoid *pointer);
@@ -807,6 +845,14 @@ void tglTexCoordPointer(TGLint size, TGLenum type, TGLsizei stride, const TGLvoi
 // opengl 1.2 polygon offset
 void tglPolygonOffset(TGLfloat factor, TGLfloat units);
 
+void tglEnableDirtyRects(bool enable);
+
 void tglDebug(int mode);
+
+namespace TinyGL {
+
+void tglPresentBuffer();
+
+} // end of namespace TinyGL
 
 #endif

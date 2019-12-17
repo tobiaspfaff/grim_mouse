@@ -134,6 +134,12 @@ WindowsFilesystemNode::WindowsFilesystemNode(const Common::String &p, const bool
 
 	_displayName = lastPathComponent(_path, '\\');
 
+	setFlags();
+
+	_isPseudoRoot = false;
+}
+
+void WindowsFilesystemNode::setFlags() {
 	// Check whether it is a directory, and whether the file actually exists
 	DWORD fileAttribs = GetFileAttributes(toUnicode(_path.c_str()));
 
@@ -148,7 +154,6 @@ WindowsFilesystemNode::WindowsFilesystemNode(const Common::String &p, const bool
 			_path += '\\';
 		}
 	}
-	_isPseudoRoot = false;
 }
 
 AbstractFSNode *WindowsFilesystemNode::getChild(const Common::String &n) const {
@@ -242,6 +247,13 @@ Common::SeekableReadStream *WindowsFilesystemNode::createReadStream() {
 
 Common::WriteStream *WindowsFilesystemNode::createWriteStream() {
 	return StdioStream::makeFromPath(getPath(), true);
+}
+
+bool WindowsFilesystemNode::createDirectory() {
+	if (CreateDirectory(toUnicode(_path.c_str()), NULL) != 0)
+		setFlags();
+
+	return _isValid && _isDirectory;
 }
 
 #endif //#ifdef WIN32

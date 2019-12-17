@@ -24,6 +24,7 @@
 #define PLATFORM_SDL_WIN32_H
 
 #include "backends/platform/sdl/sdl.h"
+#include "backends/platform/sdl/win32/win32-window.h"
 
 class OSystem_Win32 : public OSystem_SDL {
 public:
@@ -36,20 +37,23 @@ public:
 
 	virtual bool displayLogFile();
 
-protected:
-	/**
-	 * The path of the currently open log file, if any.
-	 *
-	 * @note This is currently a string and not an FSNode for simplicity;
-	 * e.g. we don't need to include fs.h here, and currently the
-	 * only use of this value is to use it to open the log file in an
-	 * editor; for that, we need it only as a string anyway.
-	 */
-	Common::String _logFilePath;
+	virtual bool openUrl(const Common::String &url);
 
-	virtual void setupIcon();
+	virtual void logMessage(LogMessageType::Type type, const char *message);
+
+	virtual Common::String getSystemLanguage() const;
+
+	virtual Common::String getScreenshotsPath();
+
+protected:
 	virtual Common::String getDefaultConfigFileName();
-	virtual Common::WriteStream *createLogFile();
+	virtual Common::String getDefaultLogFileName();
+
+	// Override createAudioCDManager() to get our Windows-specific
+	// version.
+	virtual AudioCDManager *createAudioCDManager();
+	
+	HWND getHwnd() { return ((SdlWindow_Win32*)_window)->getHwnd(); }
 };
 
 #endif

@@ -40,7 +40,7 @@ class TextSplitter;
 class ModelComponent;
 class Component;
 class Chore;
-class Head;
+class BaseHead;
 class Actor;
 
 class Costume : public Object {
@@ -71,18 +71,18 @@ public:
 	Chore *getChore(const char *name);
 	Chore *getChore(int i) { return _chores[i]; }
 	int getChoreId(const char *name);
+	const Common::List<Chore *> &getPlayingChores() const { return _playingChores; }
 
 	void setHead(int joint1, int joint2, int joint3, float maxRoll, float maxPitch, float maxYaw);
 	void setLookAtRate(float rate);
 	float getLookAtRate() const;
-	void moveHead(bool entering, const Math::Vector3d &lookAt);
+	virtual void moveHead(bool entering, const Math::Vector3d &lookAt);
 	int getHeadJoint() const;
 
 	CMap *getCMap() { return _cmap; }
 
 	virtual int update(uint frameTime);
 	void animate();
-	void setupTextures();
 	virtual void draw();
 	void getBoundingBox(int *x1, int *y1, int *x2, int *y2);
 	void setPosRotate(const Math::Vector3d &pos, const Math::Angle &pitch,
@@ -109,7 +109,7 @@ protected:
 	int _numComponents;
 	Component **_components;
 
-	Head *_head;
+	BaseHead *_head;
 
 	ObjectPtr<CMap> _cmap;
 	int _numChores;

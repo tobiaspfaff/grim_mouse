@@ -27,43 +27,46 @@
 
 #include "common/array.h"
 
-namespace Graphics {
-	class Font;
-}
-
 namespace Myst3 {
 
 class Myst3Engine;
+class DirectorySubEntry;
 
-class Subtitles : public Drawable {
+class Subtitles : public Window {
 public:
 	static Subtitles *create(Myst3Engine *vm, uint32 id);
 	virtual ~Subtitles();
 
+	// Window API
+	Common::Rect getPosition() const override;
+	Common::Rect getOriginalPosition() const override;
+
 	void setFrame(int32 frame);
-	void drawOverlay();
+	void drawOverlay() override;
 
-private:
-	Subtitles(Myst3Engine *vm);
-
-	void loadFontSettings(int32 id);
-	void loadFont();
-	bool loadSubtitles(int32 id);
-	void createTexture();
-
+protected:
 	struct Phrase {
 		uint32 offset;
 		int32 frame;
 		Common::String string;
 	};
 
+	Subtitles(Myst3Engine *vm);
+
+	void loadFontSettings(int32 id);
+	virtual void loadResources() = 0;
+	virtual bool loadSubtitles(int32 id) = 0;
+	virtual void drawToTexture(const Phrase *phrase) = 0;
+	void freeTexture();
+
+	int32 checkOverridenId(int32 id);
+	const DirectorySubEntry *loadText(int32 id, bool overriden);
+
 	Myst3Engine *_vm;
-	const Graphics::Font *_font;
 
 	Common::Array<Phrase> _phrases;
 
 	int32 _frame;
-	Graphics::Surface *_surface;
 	Texture *_texture;
 
 	// Font settings
@@ -76,8 +79,8 @@ private:
 	uint _line2Top;
 	uint _surfaceTop;
 	int32 _fontCharsetCode;
-	uint8 _charset[255 - 32];
 };
 
-} /* namespace Myst3 */
-#endif /* SUBTITLES_H_ */
+} // End of namespace Myst3
+
+#endif // SUBTITLES_H_

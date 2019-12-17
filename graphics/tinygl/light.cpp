@@ -1,3 +1,30 @@
+/* ResidualVM - A 3D game interpreter
+ *
+ * ResidualVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the AUTHORS
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+/*
+ * This file is based on, or a modified version of code from TinyGL (C) 1997-1998 Fabrice Bellard,
+ * which is licensed under the zlib-license (see LICENSE).
+ * It also has modifications by the ResidualVM-team, which are covered under the GPLv2 (or later).
+ */
 
 #include "graphics/tinygl/zgl.h"
 
@@ -31,6 +58,7 @@ void glopMaterial(GLContext *c, GLParam *p) {
 		break;
 	case TGL_SPECULAR:
 		m->specular = v;
+		m->has_specular = v.X != 0 || v.Y != 0 || v.Z != 0 || v.W != 1;
 		break;
 	case TGL_SHININESS:
 		m->shininess = v.X;
@@ -72,6 +100,7 @@ void glopLight(GLContext *c, GLParam *p) {
 		break;
 	case TGL_SPECULAR:
 		l->specular = v;
+		l->has_specular = v.X != 0 || v.Y != 0 || v.Z != 0 || v.W != 1;
 		break;
 	case TGL_POSITION: {
 		Vector4 pos;
@@ -91,7 +120,7 @@ void glopLight(GLContext *c, GLParam *p) {
 		l->spot_direction.X = v.X;
 		l->spot_direction.Y = v.Y;
 		l->spot_direction.Z = v.Z;
-		l->norm_spot_direction = l->spot_direction;
+		c->matrix_stack_ptr[0]->transform3x3(l->spot_direction, l->norm_spot_direction);
 		l->norm_spot_direction.normalize();
 		break;
 	case TGL_SPOT_EXPONENT:
@@ -198,9 +227,10 @@ void gl_shade_vertex(GLContext *c, GLVertex *v) {
 
 		if (l->position.W == 0) {
 			// light at infinity
-			d.X = l->position.X;
-			d.Y = l->position.Y;
-			d.Z = l->position.Z;
+			d.X = l->norm_position.X;
+			d.Y = l->norm_position.Y;
+			d.Z = l->norm_position.Z;
+			dist = 1;
 			att = 1;
 		} else {
 			// distance attenuation
@@ -208,10 +238,6 @@ void gl_shade_vertex(GLContext *c, GLVertex *v) {
 			d.Y = l->position.Y - v->ec.Y;
 			d.Z = l->position.Z - v->ec.Z;
 			dist = sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
-			if (dist > 1E-3) {
-				tmp = 1 / dist;
-				d *= tmp;
-			}
 			att = 1.0f / (l->attenuation[0] + dist * (l->attenuation[1] +
 			              dist * l->attenuation[2]));
 		}
@@ -219,71 +245,72 @@ void gl_shade_vertex(GLContext *c, GLVertex *v) {
 		if (twoside && dot < 0)
 			dot = -dot;
 		if (dot > 0) {
+			tmp = 1 / dist;
+			d *= tmp;
+			dot *= tmp;
 			// diffuse light
 			lR += dot * l->diffuse.X * m->diffuse.X;
 			lG += dot * l->diffuse.Y * m->diffuse.Y;
 			lB += dot * l->diffuse.Z * m->diffuse.Z;
 
-			// spot light
-			if (l->spot_cutoff != 180) {
-				dot_spot = -(d.X * l->norm_spot_direction.X +
-							 d.Y * l->norm_spot_direction.Y +
-							 d.Z * l->norm_spot_direction.Z);
-				if (twoside && dot_spot < 0)
-					dot_spot = -dot_spot;
-				if (dot_spot < l->cos_spot_cutoff) {
-					// no contribution
-					continue;
-				} else {
-					// TODO: optimize
-					if (l->spot_exponent > 0) {
-						att = att * pow(dot_spot, l->spot_exponent);
+			const bool is_spotlight = l->spot_cutoff != 180;
+			const bool has_specular = l->has_specular && m->has_specular;
+			if (is_spotlight || has_specular) {
+				if (is_spotlight) {
+					dot_spot = -(d.X * l->norm_spot_direction.X +
+								 d.Y * l->norm_spot_direction.Y +
+								 d.Z * l->norm_spot_direction.Z);
+					if (twoside && dot_spot < 0)
+						dot_spot = -dot_spot;
+					if (dot_spot < l->cos_spot_cutoff) {
+						// no contribution
+						continue;
+					} else {
+						// TODO: optimize
+						if (l->spot_exponent > 0) {
+							att = att * pow(dot_spot, l->spot_exponent);
+						}
 					}
 				}
-			}
 
-			// specular light
+				if (has_specular) {
+					if (c->local_light_model) {
+						Vector3 vcoord;
+						vcoord.X = v->ec.X;
+						vcoord.Y = v->ec.Y;
+						vcoord.Z = v->ec.Z;
+						vcoord.normalize();
+						s.X = d.X - vcoord.X;
+						s.Y = d.Y - vcoord.Y;
+						s.Z = d.Z - vcoord.Z;
+					} else {
+						s.X = d.X;
+						s.Y = d.Y;
+						s.Z = (float)(d.Z + 1.0);
+					}
+					dot_spec = n.X * s.X + n.Y * s.Y + n.Z * s.Z;
+					if (twoside && dot_spec < 0)
+						dot_spec = -dot_spec;
+					if (dot_spec > 0) {
+						GLSpecBuf *specbuf;
+						int idx;
+						dot_spec = dot_spec / sqrt(s.X * s.X + s.Y * s.Y + s.Z * s.Z);
+						// TODO: optimize
+						// testing specular buffer code
+						// dot_spec= pow(dot_spec,m->shininess)
+						specbuf = specbuf_get_buffer(c, m->shininess_i, m->shininess);
+						tmp = dot_spec * SPECULAR_BUFFER_SIZE;
+						if (tmp > SPECULAR_BUFFER_SIZE)
+							idx = SPECULAR_BUFFER_SIZE;
+						else
+							idx = (int)tmp;
 
-			if (c->local_light_model) {
-				Vector3 vcoord;
-				vcoord.X = v->ec.X;
-				vcoord.Y = v->ec.Y;
-				vcoord.Z = v->ec.Z;
-				vcoord.normalize();
-				s.X = d.X - vcoord.X;
-				s.Y = d.Y - vcoord.X;
-				s.Z = d.Z - vcoord.X;
-				//NOTE: this operation is rather suspicious, this code should be tested.
-			} else {
-				s.X = d.X;
-				s.Y = d.Y;
-				s.Z = (float)(d.Z + 1.0);
-			}
-			dot_spec = n.X * s.X + n.Y * s.Y + n.Z * s.Z;
-			if (twoside && dot_spec < 0)
-				dot_spec = -dot_spec;
-			if (dot_spec > 0) {
-				GLSpecBuf *specbuf;
-				int idx;
-				tmp = sqrt(s.X * s.X + s.Y * s.Y + s.Z * s.Z);
-				if (tmp > 1E-3) {
-					dot_spec = dot_spec / tmp;
+						dot_spec = specbuf->buf[idx];
+						lR += dot_spec * l->specular.X * m->specular.X;
+						lG += dot_spec * l->specular.Y * m->specular.Y;
+						lB += dot_spec * l->specular.Z * m->specular.Z;
+					}
 				}
-
-				// TODO: optimize
-				// testing specular buffer code
-				// dot_spec= pow(dot_spec,m->shininess)
-				specbuf = specbuf_get_buffer(c, m->shininess_i, m->shininess);
-				tmp = dot_spec * SPECULAR_BUFFER_SIZE;
-				if (tmp > SPECULAR_BUFFER_SIZE)
-					idx = SPECULAR_BUFFER_SIZE;
-				else
-					idx = (int)tmp;
-
-				dot_spec = specbuf->buf[idx];
-				lR += dot_spec * l->specular.X * m->specular.X;
-				lG += dot_spec * l->specular.Y * m->specular.Y;
-				lB += dot_spec * l->specular.Z * m->specular.Z;
 			}
 		}
 
@@ -292,10 +319,10 @@ void gl_shade_vertex(GLContext *c, GLVertex *v) {
 		B += att * lB;
 	}
 
-	v->color.X = clampf(R, 0, 1);
-	v->color.Y = clampf(G, 0, 1);
-	v->color.Z = clampf(B, 0, 1);
-	v->color.W = A;
+	v->color.X = clampf(c->current_color.X * R, 0, 1);
+	v->color.Y = clampf(c->current_color.Y * G, 0, 1);
+	v->color.Z = clampf(c->current_color.Z * B, 0, 1);
+	v->color.W = c->current_color.W * A;
 }
 
 } // end of namespace TinyGL

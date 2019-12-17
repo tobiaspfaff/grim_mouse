@@ -31,8 +31,8 @@
 #include "graphics/palette.h"
 #include "graphics/surface.h"
 #include "graphics/pixelbuffer.h"
-#include "graphics/opengles2/system_headers.h"
-#include "graphics/opengles2/framebuffer.h"
+#include "graphics/opengl/system_headers.h"
+#include "graphics/opengl/framebuffer.h"
 #include "backends/base-backend.h"
 #include "backends/plugins/posix/posix-provider.h"
 #include "backends/fs/posix/posix-fs-factory.h"
@@ -98,6 +98,7 @@ extern void checkGlError(const char *expr, const char *file, int line);
 #define GLTHREADCHECK do {  } while (false)
 #endif
 
+class MutexManager;
 class OSystem_Android : public EventsBaseBackend, public PaletteManager, public KeyReceiver {
 private:
 	// passed from the dark side
@@ -115,7 +116,7 @@ private:
 	// Game layer
 	GLESBaseTexture *_game_texture;
 	Graphics::PixelBuffer _game_pbuf;
-	Graphics::FrameBuffer *_frame_buffer;
+	OpenGL::FrameBuffer *_frame_buffer;
 
 	Common::Rect _focus_rect;
 
@@ -132,8 +133,6 @@ private:
 	int _mouse_targetscale;
 	//bool _show_mouse;
 	bool _use_mouse_palette;
-
-	bool _virtcontrols_on;
 
 	int _graphicsMode;
 	bool _fullscreen;
@@ -152,6 +151,7 @@ private:
 	bool _enable_zoning;
 	bool _virtkeybd_on;
 
+	MutexManager *_mutexManager;
 	Audio::MixerImpl *_mixer;
 	timeval _startTime;
 
@@ -164,7 +164,6 @@ private:
 	void initOverlay();
 
 #ifdef USE_RGB_COLOR
-	Common::String getPixelFormatName(const Graphics::PixelFormat &format) const;
 	void initTexture(GLESBaseTexture **texture, uint width, uint height,
 						const Graphics::PixelFormat *format);
 #endif
@@ -217,6 +216,7 @@ public:
 public:
 	void pushEvent(int type, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6);
 	void keyPress(const Common::KeyCode keycode, const KeyReceiver::KeyPressType type);
+	bool shouldGenerateMouseEvents();
 
 private:
 	Common::Queue<Common::Event> _event_queue;
@@ -237,7 +237,7 @@ private:
 	int _mouse_action; // action to perform on left click
 
 	void clipMouse(Common::Point &p);
-	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true);
+	void scaleMouse(Common::Point &p, int x, int y, bool deductDrawRect = true, bool touchpadMode = false);
 	void updateEventScale();
 	void disableCursorPalette();
 
@@ -248,7 +248,7 @@ private:
 protected:
 	// PaletteManager API
 	virtual void setPalette(const byte *colors, uint start, uint num);
-	virtual void grabPalette(byte *colors, uint start, uint num);
+	virtual void grabPalette(byte *colors, uint start, uint num) const;
 
 public:
 	virtual void copyRectToScreen(const void *buf, int pitch, int x, int y,
@@ -301,15 +301,21 @@ public:
 	virtual void logMessage(LogMessageType::Type type, const char *message);
 	virtual void addSysArchivesToSearchSet(Common::SearchSet &s,
 											int priority = 0);
+	virtual bool openUrl(const Common::String &url);
+	virtual bool hasTextInClipboard();
+	virtual Common::String getTextFromClipboard();
+	virtual bool setTextInClipboard(const Common::String &text);
+	virtual bool isConnectionLimited();
 	virtual Common::String getSystemLanguage() const;
 
 	// ResidualVM specific method
 	virtual void launcherInitSize(uint w, uint h);
 	bool lockMouse(bool lock);
-	Graphics::PixelBuffer setupScreen(int screenW, int screenH, bool fullscreen, bool accel3d) {
-		return setupScreen(screenW, screenH, fullscreen, accel3d, true);
+	void setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d) {
+		setupScreen(screenW, screenH, fullscreen, accel3d, true);
 	}
-	Graphics::PixelBuffer setupScreen(int screenW, int screenH, bool fullscreen, bool accel3d, bool isGame);
+	void setupScreen(uint screenW, uint screenH, bool fullscreen, bool accel3d, bool isGame);
+	Graphics::PixelBuffer getScreenPixelBuffer();
 };
 
 #endif

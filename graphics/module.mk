@@ -12,9 +12,17 @@ MODULE_OBJS := \
 	fonts/ttf.o \
 	fonts/winfont.o \
 	maccursor.o \
+	managed_surface.o \
+	nine_patch.o \
+	pixelformat.o \
 	primitives.o \
+	renderer.o \
+	screen.o \
 	sjis.o \
 	surface.o \
+	transform_struct.o \
+	transform_tools.o \
+	transparent_surface.o \
 	thumbnail.o \
 	VectorRenderer.o \
 	VectorRendererSpec.o \
@@ -22,12 +30,15 @@ MODULE_OBJS := \
 	yuv_to_rgb.o \
 	yuva_to_rgba.o \
 	pixelbuffer.o \
-	opengles2/extensions.o \
-	opengles2/shader.o \
-	opengles2/framebuffer.o \
-	opengles2/box_shaders.o \
-	opengles2/control_shaders.o \
-	opengles2/compat_shaders.o \
+	opengl/context.o \
+	opengl/framebuffer.o \
+	opengl/texture.o \
+	opengl/tiledsurface.o \
+	opengl/shader.o \
+	opengl/surfacerenderer.o \
+	opengl/box_shaders.o \
+	opengl/control_shaders.o \
+	opengl/compat_shaders.o \
 	tinygl/api.o \
 	tinygl/arrays.o \
 	tinygl/clear.o \
@@ -47,8 +58,12 @@ MODULE_OBJS := \
 	tinygl/zbuffer.o \
 	tinygl/zline.o \
 	tinygl/zmath.o \
-	tinygl/ztriangle.o
+	tinygl/ztriangle.o \
+	tinygl/zblit.o \
+	tinygl/zdirtyrect.o
+
 #   tinygl/ztriangle_shadow.o
+
 ifdef USE_OPENGL_SHADERS
 MODULE_OBJS += \
 	projection.o

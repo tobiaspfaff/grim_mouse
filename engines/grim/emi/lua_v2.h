@@ -35,6 +35,9 @@ public:
 protected:
 	virtual bool findCostume(lua_Object costumeObj, Actor *actor, Costume **costume) override;
 	void setChoreAndCostume(lua_Object choreObj, lua_Object costumeObj, Actor *actor, Costume *&costume, int &chore);
+	static uint convertEmiVolumeToMixer(uint emiVolume);
+	static uint convertMixerVolumeToEmi(uint volume);
+	static const uint MAX_EMI_VOLUME = 100;
 
 	DECLARE_LUA_OPCODE(UndimAll);
 	DECLARE_LUA_OPCODE(SetActorLocalAlpha);
@@ -60,6 +63,7 @@ protected:
 	DECLARE_LUA_OPCODE(SetActorSortOrder);
 	DECLARE_LUA_OPCODE(ActorActivateShadow);
 	DECLARE_LUA_OPCODE(ActorStopMoving);
+	DECLARE_LUA_OPCODE(ActorLookAt);
 	DECLARE_LUA_OPCODE(PutActorInOverworld);
 	DECLARE_LUA_OPCODE(GetActorWorldPos);
 	DECLARE_LUA_OPCODE(MakeScreenTextures);
@@ -79,6 +83,7 @@ protected:
 	DECLARE_LUA_OPCODE(SetActorCollisionScale);
 	DECLARE_LUA_OPCODE(GetActorPuckVector);
 	DECLARE_LUA_OPCODE(SetActorHeadLimits);
+	DECLARE_LUA_OPCODE(SetActorHead);
 	DECLARE_LUA_OPCODE(SetActorFOV);
 	DECLARE_LUA_OPCODE(AttachActor);
 	DECLARE_LUA_OPCODE(DetachActor);
@@ -128,6 +133,8 @@ protected:
 	DECLARE_LUA_OPCODE(ImStateHasEnded);
 	DECLARE_LUA_OPCODE(ImPushState);
 	DECLARE_LUA_OPCODE(ImPopState);
+	DECLARE_LUA_OPCODE(ImPause);
+	DECLARE_LUA_OPCODE(ImResume);
 	DECLARE_LUA_OPCODE(GetSectorName);
 	DECLARE_LUA_OPCODE(GetCameraPosition);
 	DECLARE_LUA_OPCODE(GetCameraYaw);
@@ -171,11 +178,14 @@ protected:
 	DECLARE_LUA_OPCODE(GammaEnabled);
 	DECLARE_LUA_OPCODE(FileFindFirst);
 	DECLARE_LUA_OPCODE(WalkActorToAvoiding);
+	DECLARE_LUA_OPCODE(WalkActorVector);
 	DECLARE_LUA_OPCODE(LocalizeString);
 	DECLARE_LUA_OPCODE(WorldToScreen);
+	DECLARE_LUA_OPCODE(RenderModeUser);
 	//PS2:
 	DECLARE_LUA_OPCODE(GetMemoryCardId);
 	DECLARE_LUA_OPCODE(OverWorldToScreen);
+	DECLARE_LUA_OPCODE(SetReplayMode);
 	//ResidualVM-hacks:
 	DECLARE_LUA_OPCODE(GetResidualVMPreference);
 	DECLARE_LUA_OPCODE(SetResidualVMPreference);

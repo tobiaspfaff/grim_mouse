@@ -20,57 +20,20 @@
  *
  */
 
-#ifndef VIDEO_MPEG_DECODER_H
-#define VIDEO_MPEG_DECODER_H
+#ifndef VIDEO_MPEGPS_DECODER_H
+#define VIDEO_MPEGPS_DECODER_H
 
+#include "common/inttypes.h"
 #include "common/hashmap.h"
-#include "common/rational.h"
-#include "common/rect.h"
-#include "common/str.h"
+#include "common/queue.h"
 #include "graphics/surface.h"
 #include "video/video_decoder.h"
 
-#ifdef USE_MAD
-#include <mad.h>
-#endif
-
-#ifdef USE_MPEG2
-
-#if defined(__PLAYSTATION2__)
-	typedef uint8 uint8_t;
-	typedef uint16 uint16_t;
-	typedef uint32 uint32_t;
-#elif defined(_WIN32_WCE)
-	typedef signed char int8_t;
-	typedef signed short int16_t;
-	typedef unsigned char uint8_t;
-	typedef unsigned short uint16_t;
-#elif defined(_MSC_VER)
-	typedef signed char int8_t;
-	typedef signed short int16_t;
-	typedef unsigned char uint8_t;
-	typedef unsigned short uint16_t;
-	#if !defined(SDL_COMPILEDVERSION) || (SDL_COMPILEDVERSION < 1210)
-	typedef signed long int32_t;
-	typedef unsigned long uint32_t;
-	#endif
-#else
-#	include <inttypes.h>
-#endif
-
-extern "C" {
-	#include <mpeg2dec/mpeg2.h>
-}
-
-#endif
-
 namespace Audio {
-class QueuingAudioStream;
+class PacketizedAudioStream;
 }
 
 namespace Common {
-class BitStream;
-class Huffman;
 class SeekableReadStream;
 }
 
@@ -78,11 +41,20 @@ namespace Graphics {
 struct PixelFormat;
 }
 
+namespace Image {
+class MPEGDecoder;
+}
+
 namespace Video {
 
+/**
+ * Decoder for MPEG Program Stream videos.
+ * Video decoder used in engines:
+ *  - zvision
+ */
 class MPEGPSDecoder : public VideoDecoder {
 public:
-	MPEGPSDecoder();
+	MPEGPSDecoder(double decibel = 0.0);
 	virtual ~MPEGPSDecoder();
 
 	bool loadStream(Common::SeekableReadStream *stream);
@@ -93,6 +65,40 @@ protected:
 	bool useAudioSync() const { return false; }
 
 private:
+	class MPEGPSDemuxer {
+	public:
+		MPEGPSDemuxer();
+		~MPEGPSDemuxer();
+
+		bool loadStream(Common::SeekableReadStream *stream);
+		void close();
+
+		Common::SeekableReadStream *getFirstVideoPacket(int32 &startCode, uint32 &pts, uint32 &dts);
+		Common::SeekableReadStream *getNextPacket(uint32 currentTime, int32 &startCode, uint32 &pts, uint32 &dts);
+
+	private:
+		class Packet {
+		public:
+			Packet(Common::SeekableReadStream *stream, int32 startCode, uint32 pts, uint32 dts) : _stream(stream), _startCode(startCode), _pts(pts), _dts(dts) {}
+
+			Common::SeekableReadStream *_stream;
+			int32 _startCode;
+			uint32 _pts;
+			uint32 _dts;
+		};
+		bool queueNextPacket();
+		bool fillQueues();
+		int readNextPacketHeader(int32 &startCode, uint32 &pts, uint32 &dts);
+		int findNextStartCode(uint32 &size);
+		uint32 readPTS(int c);
+		void parseProgramStreamMap(int length);
+
+		Common::SeekableReadStream *_stream;
+		Common::Queue<Packet> _videoQueue;
+		Common::Queue<Packet> _audioQueue;
+	};
+
+	// Base class for handling MPEG streams
 	class MPEGStream {
 	public:
 		virtual ~MPEGStream() {}
@@ -102,10 +108,11 @@ private:
 			kStreamTypeAudio
 		};
 
-		virtual bool sendPacket(Common::SeekableReadStream *firstPacket, uint32 pts, uint32 dts) = 0;
+		virtual bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts) = 0;
 		virtual StreamType getStreamType() const = 0;
 	};
 
+	// An MPEG 1/2 video track
 	class MPEGVideoTrack : public VideoTrack, public MPEGStream {
 	public:
 		MPEGVideoTrack(Common::SeekableReadStream *firstPacket, const Graphics::PixelFormat &format);
@@ -127,26 +134,22 @@ private:
 	private:
 		bool _endOfTrack;
 		int _curFrame;
+		uint32 _framePts;
 		Audio::Timestamp _nextFrameStartTime;
 		Graphics::Surface *_surface;
 
 		void findDimensions(Common::SeekableReadStream *firstPacket, const Graphics::PixelFormat &format);
 
 #ifdef USE_MPEG2
-		enum {
-			BUFFER_SIZE = 4096
-		};
-
-		byte _buffer[BUFFER_SIZE];
-		mpeg2dec_t *_mpegDecoder;
-		const mpeg2_info_t *_mpegInfo;
+		Image::MPEGDecoder *_mpegDecoder;
 #endif
 	};
 
 #ifdef USE_MAD
+	// An MPEG audio track
 	class MPEGAudioTrack : public AudioTrack, public MPEGStream {
 	public:
-		MPEGAudioTrack(Common::SeekableReadStream *firstPacket);
+		MPEGAudioTrack(Common::SeekableReadStream &firstPacket, Audio::Mixer::SoundType soundType);
 		~MPEGAudioTrack();
 
 		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
@@ -156,38 +159,31 @@ private:
 		Audio::AudioStream *getAudioStream() const;
 
 	private:
-		Audio::QueuingAudioStream *_audStream;
-
-		enum State {
-			MP3_STATE_INIT,  // Need to init the decoder
-			MP3_STATE_READY, // ready for processing data
-			MP3_STATE_EOS    // end of data reached (may need to loop)
-		};
-
-		State _state;
-
-		mad_stream _stream;
-		mad_frame _frame;
-		mad_synth _synth;
-
-		enum {
-			BUFFER_SIZE = 5 * 8192
-		};
-
-		// This buffer contains a slab of input data
-		byte _buf[BUFFER_SIZE + MAD_BUFFER_GUARD];
-
-		void initStream(Common::SeekableReadStream *packet);
-		void deinitStream();
-		void readMP3Data(Common::SeekableReadStream *packet);
-		void readHeader(Common::SeekableReadStream *packet);
-		void decodeMP3Data(Common::SeekableReadStream *packet);
+		Audio::PacketizedAudioStream *_audStream;
 	};
 #endif
 
+#ifdef USE_A52
+	class AC3AudioTrack : public AudioTrack, public MPEGStream {
+	public:
+		AC3AudioTrack(Common::SeekableReadStream &firstPacket, double decibel, Audio::Mixer::SoundType soundType);
+		~AC3AudioTrack();
+
+		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
+		StreamType getStreamType() const { return kStreamTypeAudio; }
+
+	protected:
+		Audio::AudioStream *getAudioStream() const;
+
+	private:
+		Audio::PacketizedAudioStream *_audStream;
+	};
+#endif
+
+// ResidualVM specific start
 	class PS2AudioTrack : public AudioTrack, public MPEGStream {
 	public:
-		PS2AudioTrack(Common::SeekableReadStream *firstPacket);
+		PS2AudioTrack(Common::SeekableReadStream *firstPacket, Audio::Mixer::SoundType soundType);
 		~PS2AudioTrack();
 
 		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
@@ -197,7 +193,7 @@ private:
 		Audio::AudioStream *getAudioStream() const;
 
 	private:
-		Audio::QueuingAudioStream *_audStream;
+		Audio::PacketizedAudioStream *_audStream;
 
 		enum {
 			PS2_PCM = 0x01,
@@ -214,27 +210,29 @@ private:
 
 		uint32 calculateSampleCount(uint32 packetSize) const;
 	};
+// ResidualVM specific end
 
+	// The different types of private streams we can detect at the moment
 	enum PrivateStreamType {
 		kPrivateStreamUnknown,
+		kPrivateStreamAC3,
+		kPrivateStreamDTS,
+		kPrivateStreamDVDPCM,
 		kPrivateStreamPS2Audio
 	};
 
-	bool addFirstVideoTrack();
-
-	int readNextPacketHeader(int32 &startCode, uint32 &pts, uint32 &dts);
-	int findNextStartCode(uint32 &size);
-	uint32 readPTS(int c);
-
-	void parseProgramStreamMap(int length);
-	byte _psmESType[256];
-
 	PrivateStreamType detectPrivateStreamType(Common::SeekableReadStream *packet);
 
+	bool addFirstVideoTrack();
+	MPEGStream *getStream(uint32 startCode, Common::SeekableReadStream *packet);
+
+	MPEGPSDemuxer *_demuxer;
+
+	// A map from stream types to stream handlers
 	typedef Common::HashMap<int, MPEGStream *> StreamMap;
 	StreamMap _streamMap;
 
-	Common::SeekableReadStream *_stream;
+	double _decibel;
 };
 
 } // End of namespace Video

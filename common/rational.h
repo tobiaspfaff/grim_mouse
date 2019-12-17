@@ -34,6 +34,7 @@ public:
 	Rational();
 	Rational(int num);
 	Rational(int num, int denom);
+	Rational(const Rational &rational);
 
 	Rational &operator=(const Rational &right);
 	Rational &operator=(int right);
@@ -83,6 +84,8 @@ public:
 
 	int getNumerator() const { return _num; }
 	int getDenominator() const { return _denom; }
+
+	bool isOne() const { return _num == _denom; }
 
 	void debugPrint(int debuglevel = 0, const char *caption = "Rational:") const;
 

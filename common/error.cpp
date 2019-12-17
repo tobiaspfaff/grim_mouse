@@ -42,6 +42,8 @@ static String errorToString(ErrorCode errorCode) {
 		return _s("Game id not supported");
 	case kUnsupportedColorMode:
 		return _s("Unsupported color mode");
+	case kAudioDeviceInitFailed:
+		return _s("Audio device initialization failed");
 
 	case kReadPermissionDenied:
 		return _s("Read permission denied");
@@ -65,7 +67,7 @@ static String errorToString(ErrorCode errorCode) {
 	case kEnginePluginNotFound:
 		return _s("Could not find suitable engine plugin");
 	case kEnginePluginNotSupportSaves:
-		return _s("Engine plugin does not support save states");
+		return _s("Engine plugin does not support saved games");
 
 	case kUserCanceled:
 		return _s("User canceled");

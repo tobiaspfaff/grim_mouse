@@ -50,6 +50,7 @@
 #include "common/memstream.h"
 #include "common/file.h"
 #include "common/config-manager.h"
+#include "common/translation.h"
 
 namespace Grim {
 
@@ -92,15 +93,15 @@ ResourceLoader::ResourceLoader() {
 		if (!SearchMan.hasArchive("update")) {
 			const char *errorMessage = nullptr;
 			if (g_grim->getGameType() == GType_GRIM) {
-				errorMessage =  "The original patch of Grim Fandango\n"
+				errorMessage = _("The original patch of Grim Fandango\n"
 								"is missing. Please download it from\n"
 								"http://www.residualvm.org/downloads/\n"
-								"and put it in the game data files directory";
+								"and put it in the game data files directory");
 			} else if (g_grim->getGameType() == GType_MONKEY4) {
-				errorMessage =  "The original patch of Escape from Monkey Island is missing. \n"
+				errorMessage = _("The original patch of Escape from Monkey Island is missing. \n"
 								"Please download it from http://www.residualvm.org/downloads/\n"
 								"and put it in the game data files directory.\n"
-								"Pay attention to download the correct version according to the game's language";
+								"Pay attention to download the correct version according to the game's language");
 			}
 
 			GUI::displayErrorDialog(errorMessage);
@@ -114,12 +115,13 @@ ResourceLoader::ResourceLoader() {
                 error("mouse.lab not found");
             SearchMan.listMatchingMembers(files, "mouse.lab");
             SearchMan.listMatchingMembers(files, "gfdemo01.lab");
+			SearchMan.listMatchingMembers(files, "gdemo001.lab"); // For the english demo with video.
 			SearchMan.listMatchingMembers(files, "grimdemo.mus");
 			SearchMan.listMatchingMembers(files, "sound001.lab");
 			SearchMan.listMatchingMembers(files, "voice001.lab");
 		} else {
 			if (!SearchMan.hasFile("mouse.lab"))
-				error("mouse.lab not found");
+				error("%s", _("mouse.lab not found"));
 			
             //SearchMan.listMatchingMembers(files, "residualvm-grim-patch.lab");
 			SearchMan.listMatchingMembers(files, "mouse.lab");
@@ -142,14 +144,14 @@ ResourceLoader::ResourceLoader() {
 			//In this case put it in the top of the list
 			const char *datausr_name = "datausr.lab";
 			if (SearchMan.hasFile(datausr_name) && ConfMan.getBool("datausr_load")) {
-				warning("Loading datausr.lab. Please note that the ResidualVM-team doesn't provide support for using such patches");
+				warning("%s", _("Loading datausr.lab. Please note that the ResidualVM-team doesn't provide support for using such patches"));
 				files.push_front(SearchMan.getMember(datausr_name));
 			}
 		}
 	} else if (g_grim->getGameType() == GType_MONKEY4) {
 		const char *emi_patches_filename = "residualvm-emi-patch.m4b";
 		if (!SearchMan.hasFile(emi_patches_filename))
-			error("%s not found", emi_patches_filename);
+			error(_("%s not found"), emi_patches_filename);
 
 		SearchMan.listMatchingMembers(files, emi_patches_filename);
 
@@ -180,14 +182,14 @@ ResourceLoader::ResourceLoader() {
 			//In this case put it in the top of the list
 			const char *datausr_name = "datausr.m4b";
 			if (SearchMan.hasFile(datausr_name) && ConfMan.getBool("datausr_load")) {
-				warning("Loading datausr.m4b. Please note that the ResidualVM-team doesn't provide support for using such patches");
+				warning("%s", _("Loading datausr.m4b. Please note that the ResidualVM-team doesn't provide support for using such patches"));
 				files.push_front(SearchMan.getMember(datausr_name));
 			}
 		}
 	}
 
 	if (files.empty())
-		error("Cannot find game data - check configuration file");
+		error("%s", _("Cannot find game data - check configuration file"));
 
 	//load labs
 	int priority = files.size();
@@ -200,7 +202,11 @@ ResourceLoader::ResourceLoader() {
 			continue;
 
 		l = new Lab();
-		if (l->open(filename))
+		// Caching "local.m4b" to speed up the launch of the mac version,
+		// we _COULD_ protect this with a platform check, but the file isn't
+		// really big anyhow...
+		bool useCache = (filename == "local.m4b");
+		if (l->open(filename, useCache))
 			SearchMan.add(filename, l, priority--, true);
 		else
 			delete l;
@@ -411,7 +417,7 @@ Material *ResourceLoader::loadMaterial(const Common::String &filename, CMap *c, 
 	Common::SeekableReadStream *stream;
 
 	stream = openNewStreamFile(fname.c_str(), true);
-	if (!stream) {
+	if (!stream && !filename.hasPrefix("specialty")) {
 		// FIXME: EMI demo references files that aren't included. Return a known material.
 		// This should be fixed in the data files instead.
 		if (g_grim->getGameType() == GType_MONKEY4 && g_grim->getGameFlags() & ADGF_DEMO) {

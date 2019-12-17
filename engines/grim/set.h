@@ -38,7 +38,8 @@ namespace Grim {
 
 class SaveGame;
 class CMap;
-class Light;
+struct Light;
+struct SetShadow;
 
 class Set : public PoolObject<Set> {
 public:
@@ -50,6 +51,7 @@ public:
 
 	void loadText(TextSplitter &ts);
 	void loadBinary(Common::SeekableReadStream *data);
+	void setupOverworldLights();
 
 	void saveState(SaveGame *savedState) const;
 	bool restoreState(SaveGame *savedState);
@@ -62,7 +64,7 @@ public:
 	void drawBitmaps(ObjectState::Position stage);
 	void setupCamera();
 
-	void setupLights(const Math::Vector3d &pos);
+	void setupLights(const Math::Vector3d &pos, bool inOverworld);
 
 	void setSoundPosition(const char *soundName, const Math::Vector3d &pos);
 	void setSoundPosition(const char *soundName, const Math::Vector3d &pos, int minVol, int maxVol);
@@ -96,6 +98,7 @@ public:
 	Sector *getSectorBySubstring(const Common::String &str, const Math::Vector3d &pos);
 
 	Sector *findPointSector(const Math::Vector3d &p, Sector::SectorType type);
+	int findSectorSortOrder(const Math::Vector3d &p, Sector::SectorType type);
 	void findClosestSector(const Math::Vector3d &p, Sector **sect, Math::Vector3d *closestPt);
 	void shrinkBoxes(float radius);
 	void unshrinkBoxes();
@@ -111,6 +114,7 @@ public:
 	ObjectState *addObjectState(int setupID, ObjectState::Position pos, const char *bitmap, const char *zbitmap, bool transparency);
 	ObjectState *findState(const Common::String &filename);
 
+	// Setups contain the camera information and background for all views in a Set
 	struct Setup {      // Camera setup data
 		void load(Set *set, int id, TextSplitter &ts);
 		void loadBinary(Common::SeekableReadStream *data);
@@ -118,9 +122,18 @@ public:
 		void saveState(SaveGame *savedState) const;
 		bool restoreState(SaveGame *savedState);
 
+		void getRotation(float *x, float *y, float *z);
+		Math::Matrix4 getRotation() { return _rot; }
+		void setPitch(Math::Angle p);
+		void setYaw(Math::Angle y);
+		void setRoll(Math::Angle r);
+
 		Common::String _name;
 		Bitmap::Ptr _bkgndBm, _bkgndZBm;
+
+		// Camera settings
 		Math::Vector3d _pos, _interest;
+		Math::Matrix4 _rot;
 		float _roll, _fov, _nclip, _fclip;
 	};
 
@@ -131,20 +144,26 @@ public:
 	};
 
 	Setup *getCurrSetup() { return _currSetup; }
-	const Common::List<Light *> &getLights() { return _lightsList; }
+	const Common::List<Light *> &getLights(bool inOverworld) { return (inOverworld ? _overworldLightsList : _lightsList); }
 	const Math::Frustum &getFrustum() { return _frustum; }
+
+	int getShadowCount() const { return _numShadows; }
+	SetShadow *getShadow(int i);
+	SetShadow *getShadowByName(const Common::String &name);
 
 private:
 	bool _locked;
 	Common::String _name;
 	int _numCmaps;
 	ObjectPtr<CMap> *_cmaps;
-	int _numSetups, _numLights, _numSectors, _numObjectStates;
+	int _numSetups, _numLights, _numSectors, _numObjectStates, _numShadows;
 	bool _enableLights;
 	Sector **_sectors;
 	Light *_lights;
 	Common::List<Light *> _lightsList;
+	Common::List<Light *> _overworldLightsList;
 	Setup *_setups;
+	SetShadow *_shadows;
 
 	Setup *_currSetup;
 	typedef Common::List<ObjectState::Ptr> StateList;
@@ -155,12 +174,19 @@ private:
 	friend class GrimEngine;
 };
 
-class Light {       // Set lighting data
-public:
+/**
+* \struct Light
+* Set lighting data
+*/
+struct Light {
+	Light();
 	void load(TextSplitter &ts);
 	void loadBinary(Common::SeekableReadStream *data);
 	void saveState(SaveGame *savedState) const;
 	bool restoreState(SaveGame *savedState);
+	void setIntensity(float intensity);
+	void setUmbra(float angle);
+	void setPenumbra(float angle);
 
 	enum LightType {
 		Omni = 1,
@@ -174,9 +200,27 @@ public:
 	Math::Vector3d _pos, _dir;
 	Color _color;
 	float _intensity, _umbraangle, _penumbraangle, _falloffNear, _falloffFar;
+	float _scaledintensity, _cosumbraangle, _cospenumbraangle;
 	bool _enabled;
 	// there may be more lights with the same position, so this is used to make the sort stable
 	int _id;
+};
+
+/**
+* \struct SetShadow
+* Set shadow data (EMI)
+*/
+struct SetShadow {
+	SetShadow();
+	void loadBinary(Common::SeekableReadStream *data, Set *set);
+	void saveState(SaveGame *savedState) const;
+	void restoreState(SaveGame *savedState);
+
+	Common::String _name;
+	Math::Vector3d _shadowPoint;
+	int _numSectors;
+	Common::List<Common::String> _sectorNames;
+	Color _color;
 };
 
 } // end of namespace Grim

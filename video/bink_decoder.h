@@ -32,6 +32,7 @@
 #define VIDEO_BINK_DECODER_H
 
 #include "common/array.h"
+#include "common/bitstream.h"
 #include "common/rational.h"
 #include "graphics/surface.h" // ResidualVM specific
 
@@ -46,7 +47,7 @@ class QueuingAudioStream;
 
 namespace Common {
 class SeekableReadStream;
-class BitStream;
+template <class BITSTREAM>
 class Huffman;
 
 class RDFT;
@@ -72,6 +73,9 @@ public:
 
 	bool loadStream(Common::SeekableReadStream *stream);
 	void close();
+
+	// ResidualVM-specific:
+	Common::Rational getFrameRate();
 protected:
 	void readNextPacket();
 	bool supportsAudioTrackSwitching() const { return true; }
@@ -104,7 +108,7 @@ private:
 
 		uint32 sampleCount;
 
-		Common::BitStream *bits;
+		Common::BitStream32LELSB *bits;
 
 		bool first;
 
@@ -137,7 +141,7 @@ private:
 		uint32 offset;
 		uint32 size;
 
-		Common::BitStream *bits;
+		Common::BitStream32LELSB *bits;
 
 		VideoFrame();
 		~VideoFrame();
@@ -157,13 +161,14 @@ private:
 // ResidualVM-specific:
 		bool isSeekable() const { return true; }
 		bool seek(const Audio::Timestamp &time) { return true; }
+		bool rewind() override;
 		void setCurFrame(uint32 frame) { _curFrame = frame; }
 // End of ResidualVM-specific
 
 		/** Decode a video packet. */
 		void decodePacket(VideoFrame &frame);
 
-	protected:
+	public: // ResidualVM
 		Common::Rational getFrameRate() const { return _frameRate; }
 
 	private:
@@ -256,12 +261,17 @@ private:
 
 		Bundle _bundles[kSourceMAX]; ///< Bundles for decoding all data types.
 
-		Common::Huffman *_huffman[16]; ///< The 16 Huffman codebooks used in Bink decoding.
+		Common::Huffman<Common::BitStream32LELSB> *_huffman[16]; ///< The 16 Huffman codebooks used in Bink decoding.
 
 		/** Huffman codebooks to use for decoding high nibbles in color data types. */
 		Huffman _colHighHuffman[16];
 		/** Value of the last decoded high nibble in color data types. */
 		int _colLastVal;
+
+		uint32 _yBlockWidth;   ///< Width of the Y plane in blocks
+		uint32 _yBlockHeight;  ///< Height of the Y plane in blocks
+		uint32 _uvBlockWidth;  ///< Width of the U and V planes in blocks
+		uint32 _uvBlockHeight; ///< Height of the U and V planes in blocks
 
 		byte *_curPlanes[4]; ///< The 4 color planes, YUVA, current frame.
 		byte *_oldPlanes[4]; ///< The 4 color planes, YUVA, last frame.
@@ -318,26 +328,27 @@ private:
 		void readPatterns    (VideoFrame &video, Bundle &bundle);
 		void readColors      (VideoFrame &video, Bundle &bundle);
 		void readDCS         (VideoFrame &video, Bundle &bundle, int startBits, bool hasSign);
-		void readDCTCoeffs   (VideoFrame &video, int16 *block, bool isIntra);
+		void readDCTCoeffs   (VideoFrame &video, int32 *block, bool isIntra);
 		void readResidue     (VideoFrame &video, int16 *block, int masksCount);
 
 		// Bink video IDCT
-		void IDCT(int16 *block);
-		void IDCTPut(DecodeContext &ctx, int16 *block);
-		void IDCTAdd(DecodeContext &ctx, int16 *block);
+		void IDCT(int32 *block);
+		void IDCTPut(DecodeContext &ctx, int32 *block);
+		void IDCTAdd(DecodeContext &ctx, int32 *block);
 	};
 
 	class BinkAudioTrack : public AudioTrack {
 	public:
-		BinkAudioTrack(AudioInfo &audio);
+		BinkAudioTrack(AudioInfo &audio, Audio::Mixer::SoundType soundType);
 		~BinkAudioTrack();
 
 		/** Decode an audio packet. */
 		void decodePacket();
 
-		bool seek(const Audio::Timestamp &time) { return true; }  // ResidualVM-specific
+		bool seek(const Audio::Timestamp &time);  // ResidualVM-specific
 		bool isSeekable() const { return true; }  // ResidualVM-specific
 		void skipSamples(const Audio::Timestamp &length);  // ResidualVM-specific
+		int getRate(); // ResidualVM-specific
 	protected:
 		Audio::AudioStream *getAudioStream() const;
 

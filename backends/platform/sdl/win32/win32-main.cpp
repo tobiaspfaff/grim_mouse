@@ -33,15 +33,26 @@
 // "ARRAYSIZE" for example.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#undef ARRAYSIZE // winnt.h defines ARRAYSIZE, but we want our own one...
 
 #include "backends/platform/sdl/win32/win32.h"
 #include "backends/plugins/sdl/sdl-provider.h"
 #include "base/main.h"
 
 int __stdcall WinMain(HINSTANCE /*hInst*/, HINSTANCE /*hPrevInst*/,  LPSTR /*lpCmdLine*/, int /*iShowCmd*/) {
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
 	SDL_SetModuleHandle(GetModuleHandle(NULL));
+#endif
+// HACK: __argc, __argv are broken and return zero when using mingwrt 4.0+ on MinGW
+// HACK: MinGW-w64 based toolchains neither feature _argc nor _argv. The 32 bit
+// incarnation only defines __MINGW32__. This leads to build breakage due to
+// missing declarations. Luckily MinGW-w64 based toolchains define
+// __MINGW64_VERSION_foo macros inside _mingw.h, which is included from all
+// system headers. Thus we abuse that to detect them.
+#if defined(__GNUC__) && defined(__MINGW32__) && !defined(__MINGW64_VERSION_MAJOR)
+	return main(_argc, _argv);
+#else
 	return main(__argc, __argv);
+#endif
 }
 
 int main(int argc, char *argv[]) {
@@ -60,7 +71,7 @@ int main(int argc, char *argv[]) {
 	int res = scummvm_main(argc, argv);
 
 	// Free OSystem
-	delete (OSystem_Win32 *)g_system;
+	g_system->destroy();
 
 	return res;
 }

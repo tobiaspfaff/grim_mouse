@@ -20,12 +20,14 @@
  *
  */
 
+#include "engines/myst3/database.h"
 #include "engines/myst3/effects.h"
 #include "engines/myst3/node.h"
 #include "engines/myst3/myst3.h"
 #include "engines/myst3/state.h"
 #include "engines/myst3/subtitles.h"
 
+#include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/rect.h"
 
@@ -34,22 +36,35 @@ namespace Myst3 {
 void Face::setTextureFromJPEG(const DirectorySubEntry *jpegDesc) {
 	_bitmap = Myst3Engine::decodeJpeg(jpegDesc);
 	_texture = _vm->_gfx->createTexture(_bitmap);
+
+	// Set the whole texture as dirty
+	addTextureDirtyRect(Common::Rect(_bitmap->w, _bitmap->h));
 }
 
 Face::Face(Myst3Engine *vm) :
-	_vm(vm),
-	_textureDirty(true),
-	_texture(0),
-	_bitmap(0),
-	_finalBitmap(0) {
+		_vm(vm),
+		_textureDirty(true),
+		_texture(0),
+		_bitmap(0),
+		_finalBitmap(0) {
+}
+
+void Face::addTextureDirtyRect(const Common::Rect &rect) {
+	if (!_textureDirty) {
+		_textureDirtyRect = rect;
+	} else {
+		_textureDirtyRect.extend(rect);
+	}
+
+	_textureDirty = true;
 }
 
 void Face::uploadTexture() {
 	if (_textureDirty) {
 		if (_finalBitmap)
-			_texture->update(_finalBitmap);
+			_texture->updatePartial(_finalBitmap, _textureDirtyRect);
 		else
-			_texture->update(_bitmap);
+			_texture->updatePartial(_bitmap, _textureDirtyRect);
 
 		_textureDirty = false;
 	}
@@ -71,30 +86,55 @@ Face::~Face() {
 }
 
 Node::Node(Myst3Engine *vm, uint16 id) :
-	_vm(vm),
-	_subtitles(0) {
-	for (uint i = 0; i < 6; i++)
-		_faces[i] = 0;
+		_vm(vm),
+		_id(id),
+		_subtitles(nullptr) {
+	for (uint i = 0; i < ARRAYSIZE(_faces); i++)
+		_faces[i] = nullptr;
+}
+
+void Node::initEffects() {
+	resetEffects();
+
+	if (_vm->_state->getViewType() == kMenu) {
+		// The node init script does not clear the magnet effect state.
+		// Here we ignore effects on menu nodes so we don't try to
+		// to load the magnet effect when opening the main menu on Amateria.
+		return;
+	}
 
 	if (_vm->_state->getWaterEffects()) {
-		Effect *effect = WaterEffect::create(vm, id);
+		Effect *effect = WaterEffect::create(_vm, _id);
 		if (effect) {
 			_effects.push_back(effect);
 			_vm->_state->setWaterEffectActive(true);
 		}
 	}
 
-	Effect *effect = MagnetEffect::create(vm, id);
+	Effect *effect = MagnetEffect::create(_vm, _id);
 	if (effect) {
 		_effects.push_back(effect);
 		_vm->_state->setMagnetEffectActive(true);
 	}
 
-	effect = LavaEffect::create(vm, id);
+	effect = LavaEffect::create(_vm, _id);
 	if (effect) {
 		_effects.push_back(effect);
 		_vm->_state->setLavaEffectActive(true);
 	}
+
+	effect = ShieldEffect::create(_vm, _id);
+	if (effect) {
+		_effects.push_back(effect);
+		_vm->_state->setShieldEffectActive(true);
+	}
+}
+
+void Node::resetEffects() {
+	for (uint i = 0; i < _effects.size(); i++) {
+		delete _effects[i];
+	}
+	_effects.clear();
 }
 
 Node::~Node() {
@@ -103,13 +143,12 @@ Node::~Node() {
 	}
 	_spotItems.clear();
 
-	for (uint i = 0; i < _effects.size(); i++) {
-		delete _effects[i];
-	}
-	_effects.clear();
+	resetEffects();
+
 	_vm->_state->setWaterEffectActive(false);
 	_vm->_state->setMagnetEffectActive(false);
 	_vm->_state->setLavaEffectActive(false);
+	_vm->_state->setShieldEffectActive(false);
 
 	for (int i = 0; i < 6; i++) {
 		delete _faces[i];
@@ -118,7 +157,7 @@ Node::~Node() {
 	delete _subtitles;
 }
 
-void Node::loadSpotItem(uint16 id, uint16 condition, bool fade) {
+void Node::loadSpotItem(uint16 id, int16 condition, bool fade) {
 	SpotItem *spotItem = new SpotItem(_vm);
 
 	spotItem->setCondition(condition);
@@ -126,27 +165,36 @@ void Node::loadSpotItem(uint16 id, uint16 condition, bool fade) {
 	spotItem->setFadeVar(abs(condition));
 
 	for (int i = 0; i < 6; i++) {
-		const DirectorySubEntry *jpegDesc = _vm->getFileDescription(0, id, i + 1, DirectorySubEntry::kLocalizedSpotItem);
+		DirectorySubEntryList spotItemImages = _vm->listFilesMatching("", id, i + 1, DirectorySubEntry::kLocalizedSpotItem);
 
-		if (!jpegDesc)
-			jpegDesc = _vm->getFileDescription(0, id, i + 1, DirectorySubEntry::kSpotItem);
+		if (spotItemImages.empty())
+			spotItemImages = _vm->listFilesMatching("", id, i + 1, DirectorySubEntry::kSpotItem);
 
-		if (!jpegDesc) continue;
+		for (uint j = 0; j < spotItemImages.size(); j++) {
+			const DirectorySubEntry *image = spotItemImages[j];
 
-		SpotItemFace *spotItemFace = new SpotItemFace(
-				_faces[i],
-				jpegDesc->getSpotItemData().u,
-				jpegDesc->getSpotItemData().v);
+			SpotItemFace *spotItemFace = new SpotItemFace(
+					_faces[i],
+					image->getSpotItemData().u,
+					image->getSpotItemData().v);
 
-		spotItemFace->loadData(jpegDesc);
+			spotItemFace->loadData(image);
 
-		spotItem->addFace(spotItemFace);
+			// SpotItems with an always true conditions cannot be undrawn.
+			// Draw them now to make sure the "non drawn backups" for other, potentially
+			// overlapping SpotItems have them drawn.
+			if (condition == 1) {
+				spotItemFace->draw();
+			}
+
+			spotItem->addFace(spotItemFace);
+		}
 	}
 
 	_spotItems.push_back(spotItem);
 }
 
-SpotItemFace *Node::loadMenuSpotItem(uint16 condition, const Common::Rect &rect) {
+SpotItemFace *Node::loadMenuSpotItem(int16 condition, const Common::Rect &rect) {
 	SpotItem *spotItem = new SpotItem(_vm);
 
 	spotItem->setCondition(condition);
@@ -168,17 +216,23 @@ void Node::loadSubtitles(uint32 id) {
 }
 
 bool Node::hasSubtitlesToDraw() {
-	if (!_subtitles)
+	if (!_subtitles || _vm->_state->getSpotSubtitle() <= 0)
 		return false;
 
-	return _vm->_state->getSpotSubtitle() > 0;
+	if (!_vm->isTextLanguageEnglish() && _vm->_state->getLocationRoom() == kRoomNarayan) {
+		// The words written on the walls in Narayan are always in English.
+		// Show the subtitles regardless of the "subtitles" setting if the game language is not English.
+		return true;
+	}
+
+	return ConfMan.getBool("subtitles");
 }
 
 void Node::drawOverlay() {
 	if (hasSubtitlesToDraw()) {
 		uint subId = _vm->_state->getSpotSubtitle();
 		_subtitles->setFrame(15 * subId + 1);
-		_subtitles->drawOverlay();
+		_vm->_gfx->renderWindowOverlay(_subtitles);
 	}
 }
 
@@ -202,7 +256,12 @@ void Node::update() {
 	for (uint faceId = 0; faceId < 6; faceId++) {
 		Face *face = _faces[faceId];
 
-		if (face == 0) continue;
+		if (face == 0)
+			continue; // No such face in this node
+
+		if (!isFaceVisible(faceId)) {
+			continue; // This face is not currently visible
+		}
 
 		uint effectsForFace = 0;
 		for (uint i = 0; i < _effects.size(); i++) {
@@ -210,8 +269,10 @@ void Node::update() {
 				effectsForFace++;
 		}
 
-		if (effectsForFace == 0) continue;
-		if (!needsUpdate && !face->isTextureDirty()) continue;
+		if (effectsForFace == 0)
+			continue;
+		if (!needsUpdate && !face->isTextureDirty())
+			continue;
 
 		// Alloc the target surface if necessary
 		if (!face->_finalBitmap) {
@@ -222,7 +283,7 @@ void Node::update() {
 		if (effectsForFace == 1) {
 			_effects[0]->applyForFace(faceId, face->_bitmap, face->_finalBitmap);
 
-			face->markTextureDirty();
+			face->addTextureDirtyRect(_effects[0]->getUpdateRectForFace(faceId));
 		} else if (effectsForFace == 2) {
 			// TODO: Keep the same temp surface to avoid heap fragmentation ?
 			Graphics::Surface *tmp = new Graphics::Surface();
@@ -234,7 +295,8 @@ void Node::update() {
 			tmp->free();
 			delete tmp;
 
-			face->markTextureDirty();
+			face->addTextureDirtyRect(_effects[0]->getUpdateRectForFace(faceId));
+			face->addTextureDirtyRect(_effects[1]->getUpdateRectForFace(faceId));
 		} else {
 			error("Unable to render more than 2 effects per faceId (%d)", effectsForFace);
 		}
@@ -280,14 +342,13 @@ void SpotItem::updateDraw() {
 }
 
 SpotItemFace::SpotItemFace(Face *face, uint16 posX, uint16 posY):
-	_face(face),
-	_posX(posX),
-	_posY(posY),
-	_drawn(false),
-	_bitmap(0),
-	_notDrawnBitmap(0),
-	_fadeValue(0)
-{
+		_face(face),
+		_posX(posX),
+		_posY(posY),
+		_drawn(false),
+		_bitmap(0),
+		_notDrawnBitmap(0),
+		_fadeValue(0) {
 }
 
 SpotItemFace::~SpotItemFace() {
@@ -305,10 +366,16 @@ SpotItemFace::~SpotItemFace() {
 }
 
 void SpotItemFace::initBlack(uint16 width, uint16 height) {
+	if (_bitmap) {
+		_bitmap->free();
+	}
+
 	_bitmap = new Graphics::Surface();
-	_bitmap->create(width, height, Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	_bitmap->create(width, height, Texture::getRGBAPixelFormat());
 
 	initNotDrawn(width, height);
+
+	_drawn = false;
 }
 
 void SpotItemFace::loadData(const DirectorySubEntry *jpegDesc) {
@@ -320,12 +387,10 @@ void SpotItemFace::loadData(const DirectorySubEntry *jpegDesc) {
 
 void SpotItemFace::updateData(const Graphics::Surface *surface) {
 	assert(_bitmap && surface);
+	assert(surface->format == Texture::getRGBAPixelFormat());
 
 	_bitmap->free();
 	_bitmap->copyFrom(*surface);
-
-	// Ensure the pixel format is correct
-	_bitmap->convertToInPlace(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
 
 	_drawn = false;
 }
@@ -339,12 +404,20 @@ void SpotItemFace::clear() {
 void SpotItemFace::initNotDrawn(uint16 width, uint16 height) {
 	// Copy not drawn SpotItem image from face
 	_notDrawnBitmap = new Graphics::Surface();
-	_notDrawnBitmap->create(width, height, Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	_notDrawnBitmap->create(width, height, Texture::getRGBAPixelFormat());
 
 	for (uint i = 0; i < height; i++) {
 		memcpy(_notDrawnBitmap->getBasePtr(0, i),
 				_face->_bitmap->getBasePtr(_posX, _posY + i), width * 4);
 	}
+}
+
+Common::Rect SpotItemFace::getFaceRect() const {
+	assert(_bitmap);
+
+	Common::Rect r = Common::Rect(_bitmap->w, _bitmap->h);
+	r.translate(_posX, _posY);
+	return r;
 }
 
 void SpotItemFace::draw() {
@@ -355,7 +428,7 @@ void SpotItemFace::draw() {
 	}
 
 	_drawn = true;
-	_face->markTextureDirty();
+	_face->addTextureDirtyRect(getFaceRect());
 }
 
 void SpotItemFace::undraw() {
@@ -366,10 +439,12 @@ void SpotItemFace::undraw() {
 	}
 
 	_drawn = false;
-	_face->markTextureDirty();
+	_face->addTextureDirtyRect(getFaceRect());
 }
 
 void SpotItemFace::fadeDraw() {
+	uint16 fadeValue = CLIP<uint16>(_fadeValue, 0, 100);
+
 	for (int i = 0; i < _bitmap->h; i++) {
 		byte *ptrND = (byte *)_notDrawnBitmap->getBasePtr(0, i);
 		byte *ptrD = (byte *)_bitmap->getBasePtr(0, i);
@@ -386,15 +461,15 @@ void SpotItemFace::fadeDraw() {
 			ptrD++; // Alpha
 
 			// TODO: optimize ?
-			*ptrDest++ = rND * (100 - _fadeValue) / 100 + rD * _fadeValue / 100;
-			*ptrDest++ = gND * (100 - _fadeValue) / 100 + gD * _fadeValue / 100;
-			*ptrDest++ = bND * (100 - _fadeValue) / 100 + bD * _fadeValue / 100;
+			*ptrDest++ = rND * (100 - fadeValue) / 100 + rD * fadeValue / 100;
+			*ptrDest++ = gND * (100 - fadeValue) / 100 + gD * fadeValue / 100;
+			*ptrDest++ = bND * (100 - fadeValue) / 100 + bD * fadeValue / 100;
 			ptrDest++; // Alpha
 		}
 	}
 
 	_drawn = true;
-	_face->markTextureDirty();
+	_face->addTextureDirtyRect(getFaceRect());
 }
 
 } // end of namespace Myst3

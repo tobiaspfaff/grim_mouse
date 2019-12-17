@@ -31,12 +31,20 @@
 #include "common/foreach.h"
 #include "common/fs.h"
 #include "common/config-manager.h"
+#include "common/translation.h"
 
 #include "graphics/pixelbuffer.h"
+#include "graphics/renderer.h"
+
+#ifdef USE_OPENGL
+#include "graphics/opengl/context.h"
+#endif
 
 #include "gui/error.h"
 #include "gui/gui-manager.h"
 #include "gui/message.h"
+
+#include "image/png.h"
 
 #include "engines/engine.h"
 
@@ -67,6 +75,7 @@
 #include "engines/grim/hotspot.h"
 
 #include "engines/grim/imuse/imuse.h"
+#include "engines/grim/emi/sound/emisound.h"
 
 #include "engines/grim/lua/lua.h"
 
@@ -97,10 +106,6 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 	g_imuse = nullptr;
 
 	//Set default settings
-	ConfMan.registerDefault("soft_renderer", false);
-	ConfMan.registerDefault("engine_speed", 60);
-	ConfMan.registerDefault("fullscreen", false);
-	ConfMan.registerDefault("show_fps", false);
 	ConfMan.registerDefault("use_arb_shaders", true);
 
 	_showFps = ConfMan.getBool("show_fps");
@@ -123,16 +128,23 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 		_controlsEnabled[i] = false;
 		_controlsState[i] = false;
 	}
+	_joyAxisPosition = new float[NUM_JOY_AXES];
+	for (int i = 0; i < NUM_JOY_AXES; i++) {
+		_joyAxisPosition[i] = 0;
+	}
 	_speechMode = TextAndVoice;
 	_textSpeed = 7;
 	_mode = _previousMode = NormalMode;
 	_flipEnable = true;
 	int speed = ConfMan.getInt("engine_speed");
-	if (speed <= 0 || speed > 100)
+	if (speed == 0) {
+		_speedLimitMs = 0;
+	} else if (speed < 0 || speed > 100) {
 		_speedLimitMs = 1000 / 60;
-	else
+		ConfMan.setInt("engine_speed", 1000 / _speedLimitMs);
+	} else {
 		_speedLimitMs = 1000 / speed;
-	ConfMan.setInt("engine_speed", 1000 / _speedLimitMs);
+	}
 	_listFilesIter = nullptr;
 	_savedState = nullptr;
 	_fps[0] = 0;
@@ -168,6 +180,7 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 	const Common::FSNode gameDataDir(ConfMan.get("path"));
 	SearchMan.addSubDirectoryMatching(gameDataDir, "movies"); // Add 'movies' subdirectory for the demo
 	SearchMan.addSubDirectoryMatching(gameDataDir, "credits");
+	SearchMan.addSubDirectoryMatching(gameDataDir, "widescreen");
 
 	Debug::registerDebugChannels();
 }
@@ -175,6 +188,7 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 GrimEngine::~GrimEngine() {
 	delete[] _controlsEnabled;
 	delete[] _controlsState;
+	delete[] _joyAxisPosition;
 
 	clearPools();
 
@@ -188,6 +202,8 @@ GrimEngine::~GrimEngine() {
 	g_movie = nullptr;
 	delete g_imuse;
 	g_imuse = nullptr;
+	delete g_emiSound;
+	g_emiSound = nullptr;
 	delete g_sound;
 	g_sound = nullptr;
 	delete g_localizer;
@@ -223,23 +239,48 @@ LuaBase *GrimEngine::createLua() {
 	return new Lua_V1();
 }
 
-void GrimEngine::createRenderer() {
-#ifdef USE_OPENGL
-	_softRenderer = ConfMan.getBool("soft_renderer");
+GfxBase *GrimEngine::createRenderer(int screenW, int screenH, bool fullscreen) {
+	Common::String rendererConfig = ConfMan.get("renderer");
+	Graphics::RendererType desiredRendererType = Graphics::parseRendererTypeCode(rendererConfig);
+	Graphics::RendererType matchingRendererType = Graphics::getBestMatchingAvailableRendererType(desiredRendererType);
+
+	_softRenderer = matchingRendererType == Graphics::kRendererTypeTinyGL;
+	_system->setupScreen(screenW, screenH, fullscreen, !_softRenderer);
+
+#if defined(USE_OPENGL)
+	// Check the OpenGL context actually supports shaders
+	if (matchingRendererType == Graphics::kRendererTypeOpenGLShaders && !OpenGLContext.shadersSupported) {
+		matchingRendererType = Graphics::kRendererTypeOpenGL;
+	}
 #endif
 
-	if (!_softRenderer && !g_system->hasFeature(OSystem::kFeatureOpenGL)) {
-		warning("gfx backend doesn't support hardware rendering");
-		_softRenderer = true;
+	if (matchingRendererType != desiredRendererType && desiredRendererType != Graphics::kRendererTypeDefault) {
+		// Display a warning if unable to use the desired renderer
+		warning("Unable to create a '%s' renderer", rendererConfig.c_str());
 	}
 
-	if (_softRenderer) {
-		g_driver = CreateGfxTinyGL();
-#ifdef USE_OPENGL
-	} else {
-		g_driver = CreateGfxOpenGL();
-#endif
+	GfxBase *renderer = nullptr;
+#if defined(USE_GLES2) || defined(USE_OPENGL_SHADERS)
+	if (matchingRendererType == Graphics::kRendererTypeOpenGLShaders) {
+		renderer = CreateGfxOpenGLShader();
 	}
+#endif
+#if defined(USE_OPENGL) && !defined(USE_GLES2)
+	if (matchingRendererType == Graphics::kRendererTypeOpenGL) {
+		renderer = CreateGfxOpenGL();
+	}
+#endif
+	if (matchingRendererType == Graphics::kRendererTypeTinyGL) {
+		renderer = CreateGfxTinyGL();
+	}
+
+	if (!renderer) {
+		error("Unable to create a '%s' renderer", rendererConfig.c_str());
+	}
+
+	renderer->setupScreen(screenW, screenH, fullscreen);
+	renderer->loadEmergFont();
+	return renderer;
 }
 
 const char *GrimEngine::getUpdateFilename() {
@@ -252,24 +293,37 @@ const char *GrimEngine::getUpdateFilename() {
 Common::Error GrimEngine::run() {
 	// Try to see if we have the EMI Mac installer present
 	// Currently, this requires the data fork to be standalone
-	if (getGameType() == GType_MONKEY4 && SearchMan.hasFile("Monkey Island 4 Installer")) {
-		StuffItArchive *archive = new StuffItArchive();
+	if (getGameType() == GType_MONKEY4) {
+		if (SearchMan.hasFile("Monkey Island 4 Installer")) {
+			StuffItArchive *archive = new StuffItArchive();
 
-		if (archive->open("Monkey Island 4 Installer"))
-			SearchMan.add("Monkey Island 4 Installer", archive, 0, true);
-		else
-			delete archive;
+			if (archive->open("Monkey Island 4 Installer"))
+				SearchMan.add("Monkey Island 4 Installer", archive, 0, true);
+			else
+				delete archive;
+		}
+		if (SearchMan.hasFile("EFMI Installer")) {
+			StuffItArchive *archive = new StuffItArchive();
+
+			if (archive->open("EFMI Installer"))
+				SearchMan.add("EFMI Installer", archive, 0, true);
+			else
+				delete archive;
+
+		}
 	}
 
 	ConfMan.registerDefault("check_gamedata", true);
 	if (ConfMan.getBool("check_gamedata") && false) { // HACK
 		MD5CheckDialog d;
 		if (!d.runModal()) {
-			Common::String confirmString("ResidualVM found some problems with your game data files.\n"
-										 "Running ResidualVM nevertheless may cause game bugs or even crashes.\n"
-										 "Do you still want to run ");
-			confirmString += (GType_MONKEY4 == getGameType() ? "Escape From Monkey Island?" : "Grim Fandango?");
-			GUI::MessageDialog msg(confirmString, "Yes", "No");
+			Common::String confirmString = Common::String::format(_(
+				"ResidualVM found some problems with your game data files.\n"
+				"Running ResidualVM nevertheless may cause game bugs or even crashes.\n"
+				"Do you still want to run %s?"),
+			GType_MONKEY4 == getGameType() ? _("Escape From Monkey Island") : _("Grim Fandango")
+			 );
+			GUI::MessageDialog msg(confirmString, _("Yes"), _("No"));
 			if (!msg.runModal()) {
 				return Common::kUserCanceled;
 			}
@@ -289,27 +343,32 @@ Common::Error GrimEngine::run() {
 		else
 			g_movie = CreateBinkPlayer(demo);
 	}
-	g_imuse = new Imuse(20, demo);
+	if (getGameType() == GType_GRIM) {
+		g_imuse = new Imuse(20, demo);
+		g_emiSound = nullptr;
+	} else if (getGameType() == GType_MONKEY4) {
+		g_emiSound = new EMISound(20);
+		g_imuse = nullptr;
+	}
 	g_sound = new SoundPlayer();
 
 	bool fullscreen = ConfMan.getBool("fullscreen");
-	createRenderer();
 	if (ConfMan.hasKey("gameWidth") && ConfMan.hasKey("gameHeight")) {
-        g_driver->setupScreen(ConfMan.getInt("gameWidth"), ConfMan.getInt("gameHeight"), fullscreen);
-    }
-    else {
+	g_driver->setupScreen(ConfMan.getInt("gameWidth"), ConfMan.getInt("gameHeight"), fullscreen);
+	}
+	else {
 #ifdef ANDROID
 		g_driver->setupScreen(1024, 768, fullscreen);
 #else
-		g_driver->setupScreen(640, 480, fullscreen);
+		g_driver = createRenderer(640, 480, fullscreen);
 #endif
 	}
 	_system->showMouse(false);
 	_system->lockMouse(false);
 
 	if (getGameType() == GType_MONKEY4 && SearchMan.hasFile("AMWI.m4b")) {
-		// TODO: Play EMI Mac Aspyr logo
-		warning("TODO: Play Aspyr logo");
+		// Play EMI Mac Aspyr logo
+		playAspyrLogo();
 	}
 
 	_cursor = new Cursor(this);
@@ -339,6 +398,11 @@ Common::Error GrimEngine::run() {
 	lua->registerOpcodes();
 	lua->registerLua();
 
+	// One version of the demo doesn't set the demo flag in scripts.
+	if (getGameType() == GType_GRIM && _gameFlags & ADGF_DEMO) {
+		lua->forceDemo();
+	}
+
 	//Initialize Localizer first. In system-script are already localizeable Strings
 	g_localizer = new Localizer();
 	lua->loadSystemScript();
@@ -359,10 +423,60 @@ Common::Error GrimEngine::run() {
 	return Common::kNoError;
 }
 
+void GrimEngine::playAspyrLogo() {
+	// A trimmed down version of the code found in mainloop
+	// for the purpose of playing the Aspyr-logo. 
+	// The reason for this, is that the logo needs a different
+	// codec than all the other videos (which are Bink).
+	// Code is provided to keep within the fps-limit, as well as to
+	// allow for pressing ESC to skip the movie.
+	MoviePlayer *defaultPlayer = g_movie;
+	g_movie = CreateQuickTimePlayer();
+	g_movie->play("AMWI.m4b", false, 0, 0);
+	setMode(SmushMode);
+	while (g_movie->isPlaying()) {
+		_doFlip = true;
+		uint32 startTime = g_system->getMillis();
+
+		updateDisplayScene();
+		if (_doFlip) {
+			doFlip();
+		}
+		// Process events to allow the user to skip the logo.
+		Common::Event event;
+		while (g_system->getEventManager()->pollEvent(event)) {
+			// Ignore everything but ESC when movies are playing
+			Common::EventType type = event.type;
+			if (type == Common::EVENT_KEYDOWN && event.kbd.keycode == Common::KEYCODE_ESCAPE) {
+				g_movie->stop();
+				break;
+			}
+		}
+
+		uint32 endTime = g_system->getMillis();
+		if (startTime > endTime)
+			continue;
+		uint32 diffTime = endTime - startTime;
+		if (_speedLimitMs == 0)
+			continue;
+		if (diffTime < _speedLimitMs) {
+			uint32 delayTime = _speedLimitMs - diffTime;
+			g_system->delayMillis(delayTime);
+		}
+	}
+	delete g_movie;
+	setMode(NormalMode);
+	g_movie = defaultPlayer;
+}
+
 Common::Error GrimEngine::loadGameState(int slot) {
 	assert(slot >= 0);
 	if (getGameType() == GType_MONKEY4) {
-		_savegameFileName = Common::String::format("efmi%03d.gsv", slot);
+		if (getGamePlatform() == Common::kPlatformPS2) {
+			_savegameFileName = Common::String::format("efmi%03d.ps2", slot);
+		} else {
+			_savegameFileName = Common::String::format("efmi%03d.gsv", slot);
+		}
 	} else {
 		_savegameFileName = Common::String::format("grim%02d.gsv", slot);
 	}
@@ -432,7 +546,8 @@ void GrimEngine::handleDebugLoadResource() {
 	else if (strstr(buf, ".snm"))
 		resource = (void *)g_movie->play(buf, false, 0, 0);
 	else if (strstr(buf, ".wav") || strstr(buf, ".imu")) {
-		g_imuse->startSfx(buf);
+		if (g_imuse)
+			g_imuse->startSfx(buf);
 		resource = (void *)1;
 	} else if (strstr(buf, ".mat")) {
 		CMap *cmap = g_resourceloader->loadColormap("item.cmp");
@@ -449,19 +564,6 @@ void GrimEngine::handleDebugLoadResource() {
 void GrimEngine::drawTextObjects() {
 	foreach (TextObject *t, TextObject::getPool()) {
 		t->draw();
-	}
-}
-
-void GrimEngine::drawPrimitives() {
-	_iris->draw();
-
-	// Draw text
-	if (_mode == SmushMode) {
-		if (_movieSubtitle) {
-			_movieSubtitle->draw();
-		}
-	} else {
-		drawTextObjects();
 	}
 }
 
@@ -542,10 +644,10 @@ void GrimEngine::updateDisplayScene() {
 				g_driver->releaseMovieFrame();
 		}
 		// Draw Primitives
-		foreach (PrimitiveObject *p, PrimitiveObject::getPool()) {
-			p->draw();
+		_iris->draw();
+		if (_movieSubtitle) {
+			_movieSubtitle->draw();
 		}
-		drawPrimitives();
 	} else if (_mode == NormalMode || _mode == OverworldMode) {
 		updateNormalMode();
 	} else if (_mode == DrawMode) {
@@ -555,15 +657,15 @@ void GrimEngine::updateDisplayScene() {
 }
 
 void GrimEngine::updateNormalMode() {
-	if (!_currSet)
+	if (!_currSet || !_flipEnable)
 		return;
 
 	g_driver->clearScreen();
 
 	drawNormalMode();
 
-	g_driver->drawBuffers();
-	drawPrimitives();
+	_iris->draw();
+	drawTextObjects();
 }
 
 void GrimEngine::updateDrawMode() {
@@ -622,6 +724,7 @@ void GrimEngine::drawNormalMode() {
 	if (_setupChanged) {
 		cameraPostChangeHandle(_currSet->getSetup());
 		_setupChanged = false;
+		setSideTextures(_currSet->getCurrSetup()->_name.c_str());
 	}
 
 	// Draw actors
@@ -662,7 +765,7 @@ void GrimEngine::doFlip() {
 		unsigned int currentTime = g_system->getMillis();
 		unsigned int delta = currentTime - _lastFrameTime;
 		if (delta > 500) {
-			sprintf(_fps, "%7.2f", (double)(_frameCounter * 1000) / (double)delta);
+			snprintf(_fps, sizeof(_fps), "%7.2f", (double)(_frameCounter * 1000) / (double)delta);
 			_frameCounter = 0;
 			_lastFrameTime = currentTime;
 		}
@@ -706,15 +809,24 @@ void GrimEngine::mainLoop() {
 			savegameSave();
 		}
 
+		// If the backend can keep the OpenGL context when switching to fullscreen,
+		// just toggle the fullscreen feature (SDL2 path).
+		if (_changeFullscreenState &&
+				_system->hasFeature(OSystem::kFeatureFullscreenToggleKeepsContext)) {
+			bool fullscreen = _system->getFeatureState(OSystem::kFeatureFullscreenMode);
+			_system->setFeatureState(OSystem::kFeatureFullscreenMode, !fullscreen);
+			_changeFullscreenState = false;
+		}
+
+		// If the backend destroys the OpenGL context or the user switched to a different
+		// renderer, the GFX driver needs to be recreated (SDL1 path).
 		if (_changeHardwareState || _changeFullscreenState) {
 			_changeHardwareState = false;
 
-			bool fullscreen = g_driver->isFullscreen();
+			bool fullscreen = _system->getFeatureState(OSystem::kFeatureFullscreenMode);
 			if (_changeFullscreenState) {
 				fullscreen = !fullscreen;
 			}
-			g_system->setFeatureState(OSystem::kFeatureFullscreenMode, fullscreen);
-			ConfMan.setBool("fullscreen", fullscreen);
 
 			uint screenWidth = g_driver->getScreenWidth();
 			uint screenHeight = g_driver->getScreenHeight();
@@ -726,8 +838,7 @@ void GrimEngine::mainLoop() {
 			clearPools();
 
 			delete g_driver;
-			createRenderer();
-			g_driver->setupScreen(screenWidth, screenHeight, fullscreen);
+			g_driver = createRenderer(screenWidth, screenHeight, fullscreen);
 			savegameRestore();
 
 			if (mode == DrawMode) {
@@ -742,8 +853,10 @@ void GrimEngine::mainLoop() {
 
 		//_hotspotManager->update();
 
-		g_imuse->flushTracks();
-		g_imuse->refreshScripts();
+		g_sound->flushTracks();
+		if (g_imuse) {
+			g_imuse->refreshScripts();
+		}
 
 		_debugger->onFrame();
 
@@ -887,16 +1000,30 @@ void GrimEngine::mainLoop() {
 
 				handleControls(type, event.kbd);
 
-				// Allow lua to react to the event.
-				// Without this lua_update switching the entries in the menu is slow because
-				// if the button is not kept pressed the KEYUP will arrive just after the KEYDOWN
-				// and it will break the lua scripts that checks for the state of the button
-				// with GetControlState()
+				if (getGameType() != GType_MONKEY4) {
+					// Allow lua to react to the event.
+					// Without this lua_update switching the entries in the menu is slow because
+					// if the button is not kept pressed the KEYUP will arrive just after the KEYDOWN
+					// and it will break the lua scripts that checks for the state of the button
+					// with GetControlState()
+					//
+					// This call seems to be only necessary to handle Grim's menu correctly.
+					// In EMI it would have the side-effect that luaUpdate() is sometimes called
+					// in the same millisecond which causes getPerSecond() to return 0 for
+					// any given rate which is not compatible with e.g. actor walking.
 
-				// We do not want the scripts to update while a movie is playing in the PS2-version.
-				if (!(getGamePlatform() == Common::kPlatformPS2 && _mode == SmushMode)) {
-					luaUpdate();
+					// We do not want the scripts to update while a movie is playing in the PS2-version.
+					if (!(getGamePlatform() == Common::kPlatformPS2 && _mode == SmushMode)) {
+						luaUpdate();
+					}
 				}
+			}
+			if (type == Common::EVENT_JOYAXIS_MOTION)
+				handleJoyAxis(event.joystick.axis, event.joystick.position);
+			if (type == Common::EVENT_JOYBUTTON_DOWN || type == Common::EVENT_JOYBUTTON_UP)
+				handleJoyButton(type, event.joystick.button);
+			if (type == Common::EVENT_SCREEN_CHANGED) {
+				handleUserPaint();
 			}
 		}
 
@@ -910,13 +1037,13 @@ void GrimEngine::mainLoop() {
 			updateDisplayScene();
 		}
 
+		if (_mode != PauseMode) {
+			doFlip();
+		}
+
 		// We do not want the scripts to update while a movie is playing in the PS2-version.
 		if (!(getGamePlatform() == Common::kPlatformPS2 && _mode == SmushMode)) {
 			luaUpdate();
-		}
-
-		if (_mode != PauseMode) {
-			doFlip();
 		}
 
 		if (g_imuseState != -1) {
@@ -963,10 +1090,13 @@ void GrimEngine::savegameRestore() {
 	_savedState = SaveGame::openForLoading(filename);
 	if (!_savedState || !_savedState->isCompatible())
 		return;
-	g_imuse->stopAllSounds();
-	g_imuse->resetState();
+	if (g_imuse) {
+		g_imuse->stopAllSounds();
+		g_imuse->resetState();
+	}
 	g_movie->stop();
-	g_imuse->pause(true);
+	if (g_imuse)
+		g_imuse->pause(true);
 	g_movie->pause(true);
 	if (g_registry)
 	    g_registry->save();
@@ -1034,7 +1164,8 @@ void GrimEngine::savegameRestore() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 
 	LuaBase::instance()->postRestoreHandle();
-	g_imuse->pause(false);
+	if (g_imuse)
+		g_imuse->pause(false);
 	g_movie->pause(false);
 	debug("GrimEngine::savegameRestore() finished.");
 
@@ -1043,12 +1174,8 @@ void GrimEngine::savegameRestore() {
 	invalidateActiveActorsList();
 	buildActiveActorsList();
 
-	g_driver->refreshBuffers();
 	_currSet->setupCamera();
 	g_driver->set3DMode();
-	foreach (Actor *a, Actor::getPool()) {
-		a->restoreCleanBuffer();
-	}
 	_cursor->reload();
 }
 
@@ -1089,21 +1216,18 @@ void GrimEngine::restoreGRIM() {
 }
 
 void GrimEngine::storeSaveGameImage(SaveGame *state) {
+	const Graphics::PixelFormat image_format = Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0);
 	int width = 250, height = 188;
 	Bitmap *screenshot;
 
 	debug("GrimEngine::StoreSaveGameImage() started.");
 
-	EngineMode mode = g_grim->getMode();
-	g_grim->setMode(_previousMode);
-	g_grim->updateDisplayScene();
-	g_driver->storeDisplay();
-	screenshot = g_driver->getScreenshot(width, height);
-	g_grim->setMode(mode);
+	screenshot = g_driver->getScreenshot(width, height, true);
 	state->beginSection('SIMG');
 	if (screenshot) {
 		int size = screenshot->getWidth() * screenshot->getHeight();
 		screenshot->setActiveImage(0);
+		screenshot->getBitmapData()->convertToColorFormat(image_format);
 		uint16 *data = (uint16 *)screenshot->getData().getRawBuffer();
 		for (int l = 0; l < size; l++) {
 			state->writeLEUint16(data[l]);
@@ -1137,7 +1261,8 @@ void GrimEngine::savegameSave() {
 
 	storeSaveGameImage(_savedState);
 
-	g_imuse->pause(true);
+	if (g_imuse)
+		g_imuse->pause(true);
 	g_movie->pause(true);
 
 	savegameCallback();
@@ -1193,7 +1318,8 @@ void GrimEngine::savegameSave() {
 
 	delete _savedState;
 
-	g_imuse->pause(false);
+	if (g_imuse)
+		g_imuse->pause(false);
 	g_movie->pause(false);
 	debug("GrimEngine::savegameSave() finished.");
 
@@ -1291,10 +1417,7 @@ void GrimEngine::setSet(Set *scene) {
 	// and coords change too.
 	foreach (Actor *a, Actor::getPool()) {
 		a->stopWalking();
-		a->clearCleanBuffer();
-		a->setSortOrder(0);
 	}
-	g_driver->refreshBuffers();
 
 	Set *lastSet = _currSet;
 	_currSet = scene;
@@ -1311,11 +1434,6 @@ void GrimEngine::setSet(Set *scene) {
 void GrimEngine::makeCurrentSetup(int num) {
 	int prevSetup = g_grim->getCurrSet()->getSetup();
 	if (prevSetup != num) {
-		foreach (Actor *a, Actor::getPool()) {
-			a->clearCleanBuffer();
-		}
-		g_driver->refreshBuffers();
-
 		getCurrSet()->setSetup(num);
 		getCurrSet()->setSoundParameters(20, 127);
 		cameraChangeHandle(prevSetup, num);
@@ -1335,6 +1453,10 @@ void GrimEngine::setTextSpeed(int speed) {
 }
 
 float GrimEngine::getControlAxis(int num) {
+	int idx = num - KEYCODE_AXIS_JOY1_X;
+	if (idx >= 0 && idx < NUM_JOY_AXES) {
+		return _joyAxisPosition[idx];
+	}
 	return 0;
 }
 
@@ -1362,7 +1484,7 @@ void GrimEngine::buildActiveActorsList() {
 
 	_activeActors.clear();
 	foreach (Actor *a, Actor::getPool()) {
-		if (((_mode == NormalMode || _mode == DrawMode) && a->isInSet(_currSet->getName())) ||
+		if (((_mode == NormalMode || _mode == DrawMode) && a->isDrawableInSet(_currSet->getName())) ||
 		    a->isInOverworld()) {
 			_activeActors.push_back(a);
 		}
@@ -1415,18 +1537,15 @@ void GrimEngine::clearEventQueue() {
 bool GrimEngine::hasFeature(EngineFeature f) const {
 	return
 		(f == kSupportsRTL) ||
-		(f == kSupportsLoadingDuringRuntime);
-}
-
-void GrimEngine::openMainMenuDialog() {
-	Common::KeyState key(Common::KEYCODE_F1, Common::ASCII_F1);
-	handleControls(Common::EVENT_KEYDOWN, key);
-	handleControls(Common::EVENT_KEYUP, key);
+		(f == kSupportsLoadingDuringRuntime) ||
+		(f == kSupportsJoystick);
 }
 
 void GrimEngine::pauseEngineIntern(bool pause) {
-	g_imuse->pause(pause);
-	g_movie->pause(pause);
+	if (g_imuse)
+		g_imuse->pause(pause);
+	if (g_movie)
+		g_movie->pause(pause);
 
 	if (pause) {
 		_pauseStartTime = _system->getMillis();
@@ -1434,6 +1553,34 @@ void GrimEngine::pauseEngineIntern(bool pause) {
 		_frameStart += _system->getMillis() - _pauseStartTime;
 	}
 }
+
+
+Graphics::Surface *loadPNG(const Common::String &filename) {
+	Image::PNGDecoder d;
+	Common::SeekableReadStream *s = SearchMan.createReadStreamForMember(filename);
+	if (!s)
+		return nullptr;
+	d.loadStream(*s);
+	delete s;
+
+	Graphics::Surface *srf = d.getSurface()->convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24));
+	return srf;
+}
+
+void GrimEngine::setSideTextures(const Common::String &setup) {
+	if (! g_system->hasFeature(OSystem::kFeatureSideTextures))
+			return;
+	Graphics::Surface *t1 = loadPNG(Common::String::format("%s_left.png", setup.c_str()));
+	Graphics::Surface *t2 = loadPNG(Common::String::format("%s_right.png", setup.c_str()));
+	g_system->suggestSideTextures(t1, t2);
+	if (t1)
+		t1->free();
+	if (t2)
+		t2->free();
+	delete t1;
+	delete t2;
+}
+
 
 void GrimEngine::debugLua(const Common::String &str) {
 	lua_dostring(str.c_str());

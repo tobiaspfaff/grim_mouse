@@ -27,13 +27,17 @@
 
 namespace Myst3 {
 
-class NodeCube: public Myst3::Node {
+class NodeCube: public Node {
 public:
 	NodeCube(Myst3Engine *vm, uint16 id);
 	virtual ~NodeCube();
 
-	void draw();
+	void draw() override;
+
+protected:
+	virtual bool isFaceVisible(uint faceId) override;
 };
 
-} /* namespace Myst3 */
-#endif /* NODECUBE_H_ */
+} // End of namespace Myst3
+
+#endif // NODECUBE_H_

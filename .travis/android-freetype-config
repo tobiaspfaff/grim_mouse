@@ -1,0 +1,10 @@
+#!/bin/sh
+
+root=$(realpath $(dirname $0)/..)
+
+for flag in "$@"; do
+	case "$flag" in
+		--libs) echo "-L$root/lib -lfreetype -lz" ;;
+		--cflags) echo "-I$root/include/freetype2" ;;
+	esac
+done

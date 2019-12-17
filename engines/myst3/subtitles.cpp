@@ -22,110 +22,131 @@
 
 #include "engines/myst3/subtitles.h"
 #include "engines/myst3/myst3.h"
+#include "engines/myst3/scene.h"
 #include "engines/myst3/state.h"
+
+#include "common/archive.h"
+#include "common/iconv.h"
 
 #include "graphics/fontman.h"
 #include "graphics/font.h"
 #include "graphics/fonts/ttf.h"
 
+#include "video/bink_decoder.h"
+
 namespace Myst3 {
 
-Subtitles *Subtitles::create(Myst3Engine *vm, uint32 id) {
-	Subtitles *s = new Subtitles(vm);
+class FontSubtitles : public Subtitles {
+public:
+	FontSubtitles(Myst3Engine *vm);
+	virtual ~FontSubtitles();
 
-	s->loadFontSettings(1100);
+protected:
+	void loadResources() override;
+	bool loadSubtitles(int32 id) override;
+	void drawToTexture(const Phrase *phrase) override;
 
-	if (!s->loadSubtitles(id)) {
-		delete s;
-		return 0;
-	}
+private:
+	void loadCharset(int32 id);
+	void createTexture();
+	void readPhrases(const DirectorySubEntry *desc);
+	static Common::String fakeBidiProcessing(const Common::String &phrase);
 
-	s->loadFont();
-	s->createTexture();
+	const Graphics::Font *_font;
+	Graphics::Surface *_surface;
+	float _scale;
+	uint8 *_charset;
+};
 
-	return s;
-}
-
-Subtitles::Subtitles(Myst3Engine *vm) :
-	_vm(vm),
+FontSubtitles::FontSubtitles(Myst3Engine *vm) :
+	Subtitles(vm),
+	_font(0),
 	_surface(0),
-	_texture(0),
-	_frame(-1),
-	_font(0) {
+	_scale(1.0),
+	_charset(nullptr) {
 }
 
-Subtitles::~Subtitles() {
+FontSubtitles::~FontSubtitles() {
 	if (_surface) {
 		_surface->free();
 		delete _surface;
 	}
-	if (_texture) {
-		_vm->_gfx->freeTexture(_texture);
-	}
 
 	delete _font;
+	delete[] _charset;
 }
 
-void Subtitles::loadFontSettings(int32 id) {
-	// Load font settings
-	const DirectorySubEntry *fontNums = _vm->getFileDescription("NUMB", id, 0, DirectorySubEntry::kNumMetadata);
+void FontSubtitles::loadResources() {
+	// We draw the subtitles in the adequate resolution so that they are not
+	// scaled up. This is the scale factor of the current resolution
+	// compared to the original
+	_scale = getPosition().width() / (float) getOriginalPosition().width();
 
-	if (!fontNums)
-		error("Unable to load font settings values");
-
-	_fontSize = fontNums->getMiscData(0);
-	_fontBold = fontNums->getMiscData(1);
-	_surfaceHeight = fontNums->getMiscData(2);
-	_singleLineTop = fontNums->getMiscData(3);
-	_line1Top = fontNums->getMiscData(4);
-	_line2Top = fontNums->getMiscData(5);
-	_surfaceTop = fontNums->getMiscData(6) + Renderer::kTopBorderHeight + Renderer::kFrameHeight;
-	_fontCharsetCode = fontNums->getMiscData(7);
-
-
-	const DirectorySubEntry *fontText = _vm->getFileDescription("TEXT", id, 0, DirectorySubEntry::kTextMetadata);
-
-	if (!fontText)
-		error("Unable to load font face");
-
-	_fontFace = fontText->getTextData(0);
-
-	const DirectorySubEntry *fontCharset = _vm->getFileDescription("CHAR", id, 0, DirectorySubEntry::kRawData);
-
-	if (!fontCharset)
-		error("Unable to load font charset");
-
-	Common::MemoryReadStream *data = fontCharset->getData();
-	data->read(_charset, sizeof(_charset));
-	delete data;
-}
-
-void Subtitles::loadFont() {
-	// Use the TTF font provided by the game if TTF support is available
 #ifdef USE_FREETYPE2
-	Common::SeekableReadStream *s = SearchMan.createReadStreamForMember("arir67w.ttf");
+	Common::String ttfFile;
+	if (_fontFace == "Arial Narrow") {
+		// Use the TTF font provided by the game if TTF support is available
+		ttfFile = "arir67w.ttf";
+	} else if (_fontFace == "MS Gothic") {
+		// The Japanese font has to be supplied by the user
+		ttfFile = "msgothic.ttf";
+	} else if (_fontFace == "Arial2") {
+		// The Hebrew font has to be supplied by the user
+		ttfFile = "hebrew.ttf";
+	} else {
+		error("Unknown subtitles font face '%s'", _fontFace.c_str());
+	}
+
+	Common::SeekableReadStream *s = SearchMan.createReadStreamForMember(ttfFile);
 	if (s) {
-		_font = Graphics::loadTTFFont(*s, _fontSize);
+		_font = Graphics::loadTTFFont(*s, _fontSize * _scale);
 		delete s;
+	} else {
+		warning("Unable to load the subtitles font '%s'", ttfFile.c_str());
 	}
 #endif
 }
 
-bool Subtitles::loadSubtitles(int32 id) {
-	// Subtitles may be overridden using a variable
-	const DirectorySubEntry *desc;
-	if (_vm->_state->getMovieOverrideSubtitles()) {
-		id = _vm->_state->getMovieOverrideSubtitles();
-		_vm->_state->setMovieOverrideSubtitles(0);
+void FontSubtitles::loadCharset(int32 id) {
+	const DirectorySubEntry *fontCharset = _vm->getFileDescription("CHAR", id, 0, DirectorySubEntry::kRawData);
 
-		desc = _vm->getFileDescription("IMGR", 100000 + id, 0, DirectorySubEntry::kText);
-	} else {
-		desc = _vm->getFileDescription(0, 100000 + id, 0, DirectorySubEntry::kText);
+	// Load the font charset if any
+	if (fontCharset) {
+		Common::MemoryReadStream *data = fontCharset->getData();
+
+		_charset = new uint8[data->size()];
+
+		data->read(_charset, data->size());
+
+		delete data;
 	}
+}
+
+bool FontSubtitles::loadSubtitles(int32 id) {
+	// No game-provided charset for the Japanese version
+	if (_fontCharsetCode == 0) {
+		loadCharset(1100);
+	}
+
+	int32 overridenId = checkOverridenId(id);
+
+	const DirectorySubEntry *desc = loadText(overridenId, overridenId != id);
 
 	if (!desc)
 		return false;
 
+	readPhrases(desc);
+
+	if (_vm->getGameLanguage() == Common::HE_ISR) {
+		for (uint i = 0; i < _phrases.size(); i++) {
+			_phrases[i].string = fakeBidiProcessing(_phrases[i].string);
+		}
+	}
+
+	return true;
+}
+
+void FontSubtitles::readPhrases(const DirectorySubEntry *desc) {
 	Common::MemoryReadStream *crypted = desc->getData();
 
 	// Read the frames and associated text offsets
@@ -145,48 +166,108 @@ bool Subtitles::loadSubtitles(int32 id) {
 		crypted->seek(_phrases[i].offset);
 
 		uint8 key = 35;
-		uint8 c = 0;
-		do {
-			c = crypted->readByte() ^ key++;
+		while (true) {
+			uint8 c = crypted->readByte() ^ key++;
 
-			if (c >= 32)
+			if (c >= 32 && _charset)
 				c = _charset[c - 32];
 
+			if (!c)
+				break;
+
 			_phrases[i].string += c;
-		} while (c);
+		}
 	}
 
 	delete crypted;
-
-	return true;
 }
 
-void Subtitles::createTexture() {
-	// Create a surface to draw the subtitles on
-	// Use RGB 565 to allow use of BDF fonts
-	_surface = new Graphics::Surface();
-	_surface->create(Renderer::kOriginalWidth, _surfaceHeight, Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0));
-
-	_texture = _vm->_gfx->createTexture(_surface);
+static bool isPunctuation(char c) {
+	return c == '.' || c == ',' || c == '\"'  || c == '!' || c == '?';
 }
 
-void Subtitles::setFrame(int32 frame) {
-	const Phrase *phrase = 0;
+Common::String FontSubtitles::fakeBidiProcessing(const Common::String &phrase) {
+	// The Hebrew subtitles are stored in logical order:
+	// .ABC DEF GHI
+	// This line should be rendered in visual order as:
+	// .IHG FED CBA
 
-	for (uint i = 0; i < _phrases.size(); i++) {
-		if (_phrases[i].frame > frame)
-			break;
+	// Notice how the dot is on the left both in logical and visual order. This is
+	// because it is in left to right order while the Hebrew characters are in right to
+	// left order. Text rendering code needs to apply what is called the BiDirectional
+	// algorithm to know which parts of an input string are LTR or RTL and how to render
+	// them. This is a quite complicated algorithm. Fortunately the subtitles in Myst III
+	// only require very specific BiDi processing. The punctuation signs at the beginning of
+	// each line need to be moved to the end so that they are visually to the left once
+	// the string is rendered from right to left.
+	// This method works around the need to implement proper BiDi processing
+	// by exploiting that fact.
 
-		phrase = &_phrases[i];
+	uint punctuationCounter = 0;
+	while (punctuationCounter < phrase.size() && isPunctuation(phrase[punctuationCounter])) {
+		punctuationCounter++;
 	}
 
-	if (phrase == 0
-			|| phrase->frame == _frame)
-		return;
+	Common::String output = Common::String(phrase.c_str() + punctuationCounter);
+	for (uint i = 0; i < punctuationCounter; i++) {
+		output += phrase[i];
+	}
 
-	_frame = phrase->frame;
+	// Also reverse the string so that it is in visual order.
+	// This is necessary because our text rendering code does not actually support RTL.
+	for (int i = 0, j = output.size() - 1; i < j; i++, j--) {
+		char c = output[i];
+		output.setChar(output[j], i);
+		output.setChar(c, j);
+	}
 
+	return output;
+}
 
+void FontSubtitles::createTexture() {
+	// Create a surface to draw the subtitles on
+	// Use RGB 565 to allow use of BDF fonts
+	if (!_surface) {
+		uint16 width = Renderer::kOriginalWidth * _scale;
+		uint16 height = _surfaceHeight * _scale;
+
+		// Make sure the width is even. Some graphics drivers have trouble reading from
+		// surfaces with an odd width (Mesa 18 on Intel).
+		width &= ~1;
+
+		_surface = new Graphics::Surface();
+		_surface->create(width, height, Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0));
+	}
+
+	if (!_texture) {
+		_texture = _vm->_gfx->createTexture(_surface);
+	}
+}
+
+#ifdef USE_ICONV
+/** Return an encoding from a GDI Charset as provided to CreateFont */
+static Common::Encoding getEncodingFromCharsetCode(uint32 gdiCharset) {
+	static const struct {
+		uint32 charset;
+		Common::Encoding encoding;
+	} codepages[] = {
+			{ 128, Common::kEncodingCP932            }, // SHIFTJIS_CHARSET
+			{ 177, Common::kEncodingCP1255           }, // HEBREW_CHARSET
+			{ 204, Common::kEncodingCP1251           }, // RUSSIAN_CHARSET
+			{ 238, Common::kEncodingMacCentralEurope }  // EASTEUROPE_CHARSET
+	};
+
+	for (uint i = 0; i < ARRAYSIZE(codepages); i++) {
+		if (gdiCharset == codepages[i].charset) {
+			return codepages[i].encoding;
+		}
+	}
+
+	error("Unknown font charset code '%d'", gdiCharset);
+}
+#endif
+
+void FontSubtitles::drawToTexture(const Phrase *phrase) {
 	const Graphics::Font *font;
 	if (_font)
 		font = _font;
@@ -196,20 +277,282 @@ void Subtitles::setFrame(int32 frame) {
 	if (!font)
 		error("No available font");
 
+	if (!_texture || !_surface) {
+		createTexture();
+	}
+
 	// Draw the new text
 	memset(_surface->getPixels(), 0, _surface->pitch * _surface->h);
-	font->drawString(_surface, phrase->string, 0, _singleLineTop, _surface->w, 0xFFFFFFFF, Graphics::kTextAlignCenter);
+
+
+	if (_fontCharsetCode == 0) {
+		font->drawString(_surface, phrase->string, 0, _singleLineTop * _scale, _surface->w, 0xFFFFFFFF, Graphics::kTextAlignCenter);
+	} else {
+#ifdef USE_ICONV
+		Common::Encoding encoding = getEncodingFromCharsetCode(_fontCharsetCode);
+		Common::U32String unicode = Common::convertToU32String(encoding, phrase->string);
+		font->drawString(_surface, unicode, 0, _singleLineTop * _scale, _surface->w, 0xFFFFFFFF, Graphics::kTextAlignCenter);
+#else
+		warning("Unable to display charset '%d' subtitles, iconv support is not compiled in.", _fontCharsetCode);
+#endif
+	}
 
 	// Update the texture
 	_texture->update(_surface);
 }
 
+class MovieSubtitles : public Subtitles {
+public:
+	MovieSubtitles(Myst3Engine *vm);
+	virtual ~MovieSubtitles();
+
+protected:
+	void loadResources() override;
+	bool loadSubtitles(int32 id) override;
+	void drawToTexture(const Phrase *phrase) override;
+
+private:
+	const DirectorySubEntry *loadMovie(int32 id, bool overriden);
+	void readPhrases(const DirectorySubEntry *desc);
+
+	Video::BinkDecoder _bink;
+};
+
+MovieSubtitles::MovieSubtitles(Myst3Engine *vm) :
+		Subtitles(vm) {
+}
+
+MovieSubtitles::~MovieSubtitles() {
+}
+
+void MovieSubtitles::readPhrases(const DirectorySubEntry *desc) {
+	Common::MemoryReadStream *frames = desc->getData();
+
+	// Read the frames
+	uint index = 0;
+	while (true) {
+		Phrase s;
+		s.frame = frames->readUint32LE();
+		s.offset = index;
+
+		if (!s.frame)
+			break;
+
+		_phrases.push_back(s);
+		index++;
+	}
+
+	delete frames;
+}
+
+const DirectorySubEntry *MovieSubtitles::loadMovie(int32 id, bool overriden) {
+	const DirectorySubEntry *desc;
+	if (overriden) {
+		desc = _vm->getFileDescription("IMGR", 200000 + id, 0, DirectorySubEntry::kMovie);
+	} else {
+		desc = _vm->getFileDescription("", 200000 + id, 0, DirectorySubEntry::kMovie);
+	}
+	return desc;
+}
+
+bool MovieSubtitles::loadSubtitles(int32 id) {
+	int32 overridenId = checkOverridenId(id);
+
+	const DirectorySubEntry *phrases = loadText(overridenId, overridenId != id);
+	const DirectorySubEntry *movie = loadMovie(overridenId, overridenId != id);
+
+	if (!phrases || !movie)
+		return false;
+
+	readPhrases(phrases);
+
+	// Load the movie
+	Common::MemoryReadStream *movieStream = movie->getData();
+	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
+	_bink.loadStream(movieStream);
+	_bink.start();
+
+	return true;
+}
+
+void MovieSubtitles::loadResources() {
+}
+
+void MovieSubtitles::drawToTexture(const Phrase *phrase) {
+	_bink.seekToFrame(phrase->offset);
+	const Graphics::Surface *surface = _bink.decodeNextFrame();
+
+	if (!_texture) {
+		_texture = _vm->_gfx->createTexture(surface);
+	} else {
+		_texture->update(surface);
+	}
+}
+
+Subtitles::Subtitles(Myst3Engine *vm) :
+		Window(),
+		_vm(vm),
+		_texture(0),
+		_frame(-1) {
+	_scaled = !_vm->isWideScreenModEnabled();
+}
+
+Subtitles::~Subtitles() {
+	freeTexture();
+}
+
+void Subtitles::loadFontSettings(int32 id) {
+	// Load font settings
+	const DirectorySubEntry *fontNums = _vm->getFileDescription("NUMB", id, 0, DirectorySubEntry::kNumMetadata);
+
+	if (!fontNums)
+		error("Unable to load font settings values");
+
+	_fontSize = fontNums->getMiscData(0);
+	_fontBold = fontNums->getMiscData(1);
+	_surfaceHeight = fontNums->getMiscData(2);
+	_singleLineTop = fontNums->getMiscData(3);
+	_line1Top = fontNums->getMiscData(4);
+	_line2Top = fontNums->getMiscData(5);
+	_surfaceTop = fontNums->getMiscData(6);
+	_fontCharsetCode = fontNums->getMiscData(7);
+
+	if (_fontCharsetCode > 0) {
+		_fontCharsetCode = 128; // The Japanese subtitles are encoded in CP 932 / Shift JIS
+	}
+
+	if (_vm->getGameLanguage() == Common::HE_ISR) {
+		// The Hebrew subtitles are encoded in CP 1255, but the game data does not specify the appropriate encoding
+		_fontCharsetCode = 177;
+	}
+
+	if (_fontCharsetCode < 0) {
+		_fontCharsetCode = -_fontCharsetCode; // Negative values are GDI charset codes
+	}
+
+	const DirectorySubEntry *fontText = _vm->getFileDescription("TEXT", id, 0, DirectorySubEntry::kTextMetadata);
+
+	if (!fontText)
+		error("Unable to load font face");
+
+	_fontFace = fontText->getTextData(0);
+}
+
+int32 Subtitles::checkOverridenId(int32 id) {
+	// Subtitles may be overridden using a variable
+	if (_vm->_state->getMovieOverrideSubtitles()) {
+		id = _vm->_state->getMovieOverrideSubtitles();
+		_vm->_state->setMovieOverrideSubtitles(0);
+	}
+	return id;
+}
+
+const DirectorySubEntry *Subtitles::loadText(int32 id, bool overriden) {
+	const DirectorySubEntry *desc;
+	if (overriden) {
+		desc = _vm->getFileDescription("IMGR", 100000 + id, 0, DirectorySubEntry::kText);
+	} else {
+		desc = _vm->getFileDescription("", 100000 + id, 0, DirectorySubEntry::kText);
+	}
+	return desc;
+}
+
+void Subtitles::setFrame(int32 frame) {
+	const Phrase *phrase = nullptr;
+
+	for (uint i = 0; i < _phrases.size(); i++) {
+		if (_phrases[i].frame > frame)
+			break;
+
+		phrase = &_phrases[i];
+	}
+
+	if (!phrase) {
+		freeTexture();
+		return;
+	}
+
+	if (phrase->frame == _frame) {
+		return;
+	}
+
+	_frame = phrase->frame;
+
+	drawToTexture(phrase);
+}
+
 void Subtitles::drawOverlay() {
-	Common::Rect textureRect = Common::Rect(_texture->width, _texture->height);
-	Common::Rect bottomBorder = textureRect;
+	if (!_texture) return;
+
+	Common::Rect screen = _vm->_gfx->viewport();
+	Common::Rect bottomBorder = Common::Rect(Renderer::kOriginalWidth, _surfaceHeight);
 	bottomBorder.translate(0, _surfaceTop);
+
+	if (_vm->isWideScreenModEnabled()) {
+		// Draw a black background to cover the main game frame
+		_vm->_gfx->drawRect2D(Common::Rect(screen.width(), Renderer::kBottomBorderHeight), 0xFF000000);
+
+		// Center the subtitles in the screen
+		bottomBorder.translate((screen.width() - Renderer::kOriginalWidth) / 2, 0);
+	}
+
+	Common::Rect textureRect = Common::Rect(_texture->width, _texture->height);
 
 	_vm->_gfx->drawTexturedRect2D(bottomBorder, textureRect, _texture);
 }
 
-} /* namespace Myst3 */
+Subtitles *Subtitles::create(Myst3Engine *vm, uint32 id) {
+	Subtitles *s;
+
+	if (vm->getPlatform() == Common::kPlatformXbox) {
+		s = new MovieSubtitles(vm);
+	} else {
+		s = new FontSubtitles(vm);
+	}
+
+	s->loadFontSettings(1100);
+
+	if (!s->loadSubtitles(id)) {
+		delete s;
+		return 0;
+	}
+
+	s->loadResources();
+
+	return s;
+}
+
+void Subtitles::freeTexture() {
+	if (_texture) {
+		_vm->_gfx->freeTexture(_texture);
+		_texture = nullptr;
+	}
+}
+
+Common::Rect Subtitles::getPosition() const {
+	Common::Rect screen = _vm->_gfx->viewport();
+
+	Common::Rect frame;
+
+	if (_vm->isWideScreenModEnabled()) {
+		frame = Common::Rect(screen.width(), Renderer::kBottomBorderHeight);
+
+		Common::Rect scenePosition = _vm->_scene->getPosition();
+		int16 top = CLIP<int16>(screen.height() - frame.height(), 0, scenePosition.bottom);
+
+		frame.translate(0, top);
+	} else {
+		frame = Common::Rect(screen.width(), screen.height() * Renderer::kBottomBorderHeight / Renderer::kOriginalHeight);
+		frame.translate(screen.left, screen.top + screen.height() * (Renderer::kTopBorderHeight + Renderer::kFrameHeight) / Renderer::kOriginalHeight);
+	}
+
+	return frame;
+}
+
+Common::Rect Subtitles::getOriginalPosition() const {
+	Common::Rect originalPosition = Common::Rect(Renderer::kOriginalWidth, Renderer::kBottomBorderHeight);
+	originalPosition.translate(0, Renderer::kTopBorderHeight + Renderer::kFrameHeight);
+	return originalPosition;
+}
+
+} // End of namespace Myst3

@@ -68,7 +68,8 @@ enum {
 	kPopUpWidget		= 'POPU',
 	kTabWidget			= 'TABW',
 	kGraphicsWidget		= 'GFXW',
-	kContainerWidget	= 'CTNR'
+	kContainerWidget	= 'CTNR',
+	kScrollContainerWidget = 'SCTR'
 };
 
 enum {
@@ -77,6 +78,15 @@ enum {
 
 enum {
 	kPressedButtonTime = 200
+};
+
+enum {
+	kPicButtonStateEnabled = 0,
+	kPicButtonHighlight = 1,
+	kPicButtonStateDisabled = 2,
+	kPicButtonStatePressed = 3,
+
+	kPicButtonStateMax = 3
 };
 
 /* Widget */
@@ -93,10 +103,12 @@ protected:
 
 private:
 	uint16		_flags;
+	bool		_needsRedraw;
 
 public:
 	static Widget *findWidgetInChain(Widget *start, int x, int y);
 	static Widget *findWidgetInChain(Widget *start, const char *name);
+	static bool containsWidgetInChain(Widget *start, Widget *search);
 
 public:
 	Widget(GuiObject *boss, int x, int y, int w, int h, const char *tooltip = 0);
@@ -125,7 +137,12 @@ public:
 	virtual bool handleKeyUp(Common::KeyState state) { return false; }	// Return true if the event was handled
 	virtual void handleTickle() {}
 
-	void draw();
+	/** Mark the widget and its children as dirty so they are redrawn on the next screen update */
+	virtual void markAsDirty();
+
+	/** Redraw the widget if it was marked as dirty, and recursively proceed with its children */
+	virtual void draw();
+
 	void receivedFocus() { _hasFocus = true; receivedFocusWidget(); }
 	void lostFocus() { _hasFocus = false; lostFocusWidget(); }
 	virtual bool wantsFocus() { return false; }
@@ -146,6 +163,8 @@ public:
 	bool hasTooltip() const { return !_tooltip.empty(); }
 	const Common::String &getTooltip() const { return _tooltip; }
 	void setTooltip(const Common::String &tooltip) { _tooltip = tooltip; }
+
+	virtual bool containsWidget(Widget *) const { return false; }
 
 protected:
 	void updateState(int oldFlags, int newFlags);
@@ -168,9 +187,10 @@ class StaticTextWidget : public Widget {
 protected:
 	Common::String			_label;
 	Graphics::TextAlign		_align;
+	ThemeEngine::FontStyle	_font;
 public:
-	StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, Graphics::TextAlign align, const char *tooltip = 0);
-	StaticTextWidget(GuiObject *boss, const Common::String &name, const Common::String &text, const char *tooltip = 0);
+	StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, Graphics::TextAlign align, const char *tooltip = 0, ThemeEngine::FontStyle font = ThemeEngine::kFontStyleBold);
+	StaticTextWidget(GuiObject *boss, const Common::String &name, const Common::String &text, const char *tooltip = 0, ThemeEngine::FontStyle font = ThemeEngine::kFontStyleBold);
 	void setValue(int value);
 	void setLabel(const Common::String &label);
 	const Common::String &getLabel() const		{ return _label; }
@@ -198,21 +218,48 @@ public:
 
 	void handleMouseUp(int x, int y, int button, int clickCount);
 	void handleMouseDown(int x, int y, int button, int clickCount);
-	void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); draw(); }
-	void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED | WIDGET_PRESSED); draw(); }
-	void handleTickle();
+	void handleMouseEntered(int button)	{ if (_duringPress) { setFlags(WIDGET_PRESSED); } else { setFlags(WIDGET_HILITED); } markAsDirty(); }
+	void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED | WIDGET_PRESSED); markAsDirty(); }
 
 	void setHighLighted(bool enable);
 	void setPressedState();
-	void startAnimatePressedState();
-	void stopAnimatePressedState();
-
-	void lostFocusWidget() { stopAnimatePressedState(); }
+	void setUnpressedState();
 protected:
 	void drawWidget();
-	void wantTickle(bool tickled);
-private:
-	uint32 _lastTime;
+	bool _duringPress;
+};
+
+/* DropdownButtonWidget */
+class DropdownButtonWidget : public ButtonWidget {
+public:
+	DropdownButtonWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &label, const char *tooltip = nullptr, uint32 cmd = 0, uint8 hotkey = 0);
+	DropdownButtonWidget(GuiObject *boss, const Common::String &name, const Common::String &label, const char *tooltip = nullptr, uint32 cmd = 0, uint8 hotkey = 0);
+
+	void handleMouseMoved(int x, int y, int button) override;
+	void handleMouseUp(int x, int y, int button, int clickCount) override;
+	void reflowLayout() override;
+
+	void appendEntry(const Common::String &label, uint32 cmd);
+	void clearEntries();
+
+protected:
+	struct Entry {
+		Common::String label;
+		uint32 cmd;
+	};
+	typedef Common::Array<Entry> EntryList;
+
+	// Widget API
+	void drawWidget() override;
+
+	void reset();
+	bool isInDropDown(int x, int y) const;
+
+	EntryList _entries;
+
+	uint32 _dropdownWidth;
+	bool _inDropdown;
+	bool _inButton;
 };
 
 /* PicButtonWidget */
@@ -222,18 +269,20 @@ public:
 	PicButtonWidget(GuiObject *boss, const Common::String &name, const char *tooltip = 0, uint32 cmd = 0, uint8 hotkey = 0);
 	~PicButtonWidget();
 
-	void setGfx(const Graphics::Surface *gfx);
-	void setGfx(int w, int h, int r, int g, int b);
+	void setGfx(const Graphics::Surface *gfx, int statenum = kPicButtonStateEnabled);
+	void setGfx(int w, int h, int r, int g, int b, int statenum = kPicButtonStateEnabled);
 
 	void useAlpha(int alpha) { _alpha = alpha; }
 	void useThemeTransparency(bool enable) { _transparency = enable; }
+	void setButtonDisplay(bool enable) {_showButton = enable; }
 
 protected:
 	void drawWidget();
 
-	Graphics::Surface _gfx;
+	Graphics::Surface _gfx[kPicButtonStateMax + 1];
 	int _alpha;
 	bool _transparency;
+	bool _showButton;
 };
 
 /* CheckboxWidget */
@@ -245,8 +294,8 @@ public:
 	CheckboxWidget(GuiObject *boss, const Common::String &name, const Common::String &label, const char *tooltip = 0, uint32 cmd = 0, uint8 hotkey = 0);
 
 	void handleMouseUp(int x, int y, int button, int clickCount);
-	virtual void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); draw(); }
-	virtual void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); draw(); }
+	virtual void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); markAsDirty(); }
+	virtual void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); markAsDirty(); }
 
 	void setState(bool state);
 	void toggleState()			{ setState(!_state); }
@@ -291,8 +340,8 @@ public:
 	RadiobuttonWidget(GuiObject *boss, const Common::String &name, RadiobuttonGroup *group, int value, const Common::String &label, const char *tooltip = 0, uint8 hotkey = 0);
 
 	void handleMouseUp(int x, int y, int button, int clickCount);
-	virtual void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); draw(); }
-	virtual void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); draw(); }
+	virtual void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); markAsDirty(); }
+	virtual void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); markAsDirty(); }
 
 	void setState(bool state, bool setGroup = true);
 	void toggleState()			{ setState(!_state); }
@@ -331,8 +380,8 @@ public:
 	void handleMouseMoved(int x, int y, int button);
 	void handleMouseDown(int x, int y, int button, int clickCount);
 	void handleMouseUp(int x, int y, int button, int clickCount);
-	void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); draw(); }
-	void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); draw(); }
+	void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); markAsDirty(); }
+	void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); markAsDirty(); }
 	void handleMouseWheel(int x, int y, int direction);
 
 protected:
@@ -371,6 +420,7 @@ public:
 	ContainerWidget(GuiObject *boss, const Common::String &name);
 	~ContainerWidget();
 
+	virtual bool containsWidget(Widget *) const;
 	virtual Widget *findWidget(int x, int y);
 	virtual void removeWidget(Widget *widget);
 protected:
